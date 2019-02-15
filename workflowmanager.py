@@ -6,6 +6,7 @@ import mupifDB
 import collections
 from mupifDB import workflowrunner
 from bson import ObjectId
+import gridfs
 import re
 
 #pool to handle workflow execution requests
@@ -123,7 +124,24 @@ class WorkflowExecutionIODataSet():
         else:
             raise KeyError ("Input parameter " + name +" obj_id "+str(obj_id)+" not found")
  
+    def setAttributes (self, name, attributes, obj_id=None):
+        """
+        Sets the value of output parameter attributes identified by name to given value
+        @param: name parameter name
+        @param: attributes dict of kye, value to set
+        @param: value associated value
+        @throws: KeyError if input parameter name not found
+        """
+        ddict = {}
+        for key, val in attributes.items():
+            ddict["DataSet.$[r].%s"%key]=val
 
+        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': ddict}, array_filters=[{"r.Name": name, "r.objID":obj_id}])
+        if (res.matched_count == 1):
+            return
+        else:
+            raise KeyError ("Input parameter " + name +" obj_id "+str(obj_id)+" not found")
+ 
 class WorkflowExecutionContext():
 
 
@@ -310,4 +328,58 @@ def setWEInputCGI (db, eid, form):
             print (e)
         #set source and origin 
         c = c+1
-    
+
+def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
+    wec = WorkflowExecutionContext(db, ObjectId(eid))
+    #execution input doc
+    out = wec.getIODataDoc('Outputs')
+    # map value 
+    print ('Mapping %s, name:%s'%(typeID, name))
+    if (type == 'Property'):
+        
+        prop = app.getProperty(mupif.PropertyID[typeID], objectID, tstep.getTargetTime())
+        out.setAttributes(name, {"Value": prop.getValue(), "Units":str(prop.getUnits())}, objectID)
+    elif (type == 'Field'):
+        with tempfile.TemporaryDirectory() as tempDir:
+            fs = gridfs.GridFS(db)
+            field = app.getField(mupif.FieldID.FID_Temperature, tstep.getTargetTime()) # timestep as None!!
+            field.field2VTKData().tofile(tempDir+'/field')
+            with open(tempDir+'/field.vtk', 'rb') as f:
+                logID=fs.put(f)
+                print ("Uploaded fiel.vtk as id: %s"%logID) 
+                out.setAttributes(name, {"Value": logID, "Units":str(field.getUnits())}, objectID)
+
+    else:
+        raise KeyError ('Handling of io param of type %s not implemented'%type)
+
+
+
+def mapOutputs (app, db, eid, tstep):
+    #request workflow execution doc
+    print ('Maping Outputs for eid %s'%eid)
+    wec = WorkflowExecutionContext(db, ObjectId(eid))
+    #get worflow doc
+    wd = wec._getWorkflowDocument()
+    #execution out doc
+    inp = wec.getIODataDoc('Outputs')
+    # loop over workflow inputs
+    for irec in wd['IOCard']['Outputs']:
+        name = irec['Name']
+        type = irec['Type']
+        typeID=irec['TypeID']
+        # try to get raw PID from typeID
+        match = re.search('\w+\Z', typeID)
+        if match:
+            typeID = match.group()
+        
+        objID = irec['objID']
+        compulsory = irec['Compulsory']
+        units = irec['Units']
+
+        if isinstance(objID, collections.Iterable):
+            for oid in objID:
+                value = inp.get(name, oid)
+                mapOutput(app, db, name, type, typeID, oid, eid, tstep)
+        else:
+                value = inp.get(name, objID)
+                mapOutput(app, db, name, type, typeID, objID, eid, tstep)

@@ -5,6 +5,7 @@ import subprocess
 import mupifDB
 from datetime import datetime
 from pymongo import MongoClient
+import gridfs
 
 #client = MongoClient()
 #db = client.MuPIF
@@ -13,6 +14,7 @@ def execWorkflow (id, wed, wd):
 
     client = MongoClient()
     db = client.MuPIF
+    fs = gridfs.GridFS(db)
 
     print ("__executeWorkflow called")
     print (" workflow execution status is %s"%wed['Status'])
@@ -37,11 +39,15 @@ def execWorkflow (id, wed, wd):
         completed = subprocess.call(cmd, cwd=tempDir)
         print (tempDir)
         print ('command:' + str(cmd) + ' Return Code:'+str(completed))
+        #store execution log
+        logID = None
+        with open(tempDir+'/mupif.log', 'rb') as f:
+            logID=fs.put(f)
         #set execution code to completed
         if (completed == 0):
-            db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now())}})
+            db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
         else:
-            db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Failed', 'EndDate':str(datetime.now())}})
+            db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Failed', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
         return 0
     else:
         print ("Workflow execution already scheduled for execution")

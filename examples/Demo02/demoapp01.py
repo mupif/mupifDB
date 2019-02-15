@@ -545,10 +545,9 @@ if __name__ == "__main__":
     mupifDB.workflowmanager.mapInputs(app, db, args.id)
 
     tstep = TimeStep.TimeStep(1.,1.,10,'s')
-
-
-
     app.solveStep(tstep)
+    mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
+    
     app.terminate()
 
     f = app.getField(FieldID.FID_Temperature, tstep.getTargetTime())
