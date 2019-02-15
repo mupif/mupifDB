@@ -5,6 +5,7 @@ from flask import jsonify
 from flask import request
 from flask_pymongo import PyMongo
 import mupifDB
+import gridfs
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 
@@ -78,8 +79,14 @@ def get_workflowexecution(id):
   output = []
   print (str(id))
   for s in we.find({"_id": id}):
-    output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs']})
-  return jsonify({'result' : output})
+    log = None
+    if s['ExecutionLog'] is not None:
+      log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+      print (log)
+    
+    output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': log})
+    return jsonify({'result' : output})
+
 
 @app.route('/workflowexecutions/<ObjectId:id>/inputs')
 def get_workflowexecutioninputs(id):
@@ -117,6 +124,11 @@ def executeworkflow (id):
 @app.route("/uploads/<path:filename>")
 def get_upload(filename):
     return mongo.send_file(filename)
+
+@app.route('/gridfs/<ObjectId:id>')
+def download (id):
+  fs = gridfs.GridFSBucket(mongo.db)
+  return fs.open_download_stream(id).read()
 
 @app.route("/uploads/<path:filename>", methods=["POST"])
 def save_upload(filename):
