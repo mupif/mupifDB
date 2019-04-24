@@ -7,7 +7,7 @@ import mupif
 import mupif.Physics.PhysicalQuantities as PQ
 
 class Workflow02 (mupif.Workflow.Workflow):
-    def __init__(self, targetTime=PQ.PhysicalQuantity('0 s'), metaData={}):
+    def __init__(self, metaData={}):
         """
         Initializes the workflow.
         """
@@ -27,7 +27,7 @@ class Workflow02 (mupif.Workflow.Workflow):
                  'Description': 'Displacement field on 2D domain', 'Units': 'm'}
             ]
         }
-        super(Workflow02, self).__init__(targetTime=targetTime, metaData=MD)
+        super(Workflow02, self).__init__(metaData=MD)
         self.updateMetadata(metaData)
 
 

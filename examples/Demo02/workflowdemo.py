@@ -4,7 +4,7 @@ import mupif.Physics.PhysicalQuantities as PQ
 
 
 class workflowdemo (mupif.Workflow.Workflow):
-    def __init__(self, targetTime=PQ.PhysicalQuantity('0 s'), metaData={}):
+    def __init__(self, metaData={}):
         """
         Initializes the workflow.
         """
@@ -24,7 +24,7 @@ class workflowdemo (mupif.Workflow.Workflow):
                 {'Name':'Temperature field', 'Type': 'Field', 'Required':True,'Type_ID':'mupif.FieldID.FID_Temperature', 'Units':'T', 'Obj_ID': None}
             ]
         }
-        super(workflowdemo, self).__init__(targetTime=targetTime, metaData=MD)
+        super(workflowdemo, self).__init__(metaData=MD)
         self.updateMetadata(metaData)
 
 
