@@ -40,11 +40,11 @@ def insertWorkflowDefinition (db, id, description, version, source, useCases, wo
     rec = {'_id': id, 'Description':description,'Version':version, 'Source':source, 'UseCases':useCases, 'IOCard': None}
     Inputs = []
     for i in workflowInputs:
-        irec = {'Name': i['name'], 'Type': i['type'], 'TypeID': i['obj_type'], 'Units': i['units'], 'objID': i['obj_id'], 'Compulsory': not i['optional']}
+        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
-        irec = {'Name': i['name'], 'Type': i['type'], 'TypeID': i['obj_type'], 'Units': i['units'], 'objID': i['obj_id'], 'Compulsory': not i['optional']}
+        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
 
@@ -68,12 +68,12 @@ class WorkflowExecutionIODataSet():
         rec = {}
         data = []
         for io in IOCard[type]: #loop over workflow inputs
-            if isinstance(io['objID'], collections.Iterable):
-                for id in io['objID']:
+            if isinstance(io.get('ObjID', None), collections.Iterable):
+                for id in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'objID': id, 'Source':None, 'OriginId':None })
+                    data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'ObjID': id, 'Source':None, 'OriginId':None })
             else: # single obj_id provided
-                data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'objID': io['objID'], 'Source':None, 'OriginId':None })
+                data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'ObjID': io.get('ObjID', None), 'Source':None, 'OriginId':None })
         rec['Type']=type
         rec['DataSet'] = data
         result = db.IOData.insert_one(rec)
@@ -98,9 +98,9 @@ class WorkflowExecutionIODataSet():
         doc = self._getDocument()
     
         for rec in doc['DataSet']:
-            if (rec['Name'] == name) and (rec['objID'] == obj_id):
+            if (rec['Name'] == name) and (rec['ObjID'] == obj_id):
                 return rec
-        raise KeyError ("Input parameter " + name +" obj_id "+str(obj_id)+" not found")
+        raise KeyError ("Input parameter " + name +" Obj_ID "+str(obj_id)+" not found")
          
     def get (self, name, obj_id=None):
         """
@@ -118,11 +118,11 @@ class WorkflowExecutionIODataSet():
         @param: value associated value
         @throws: KeyError if input parameter name not found
         """
-        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': {"DataSet.$[r].Value": value}}, array_filters=[{"r.Name": name, "r.objID":obj_id}])
+        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': {"DataSet.$[r].Value": value}}, array_filters=[{"r.Name": name, "r.ObjID":obj_id}])
         if (res.matched_count == 1):
             return
         else:
-            raise KeyError ("Input parameter " + name +" obj_id "+str(obj_id)+" not found")
+            raise KeyError ("Input parameter " + name +" Obj_id "+str(obj_id)+" not found")
  
     def setAttributes (self, name, attributes, obj_id=None):
         """
@@ -136,11 +136,11 @@ class WorkflowExecutionIODataSet():
         for key, val in attributes.items():
             ddict["DataSet.$[r].%s"%key]=val
 
-        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': ddict}, array_filters=[{"r.Name": name, "r.objID":obj_id}])
+        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': ddict}, array_filters=[{"r.Name": name, "r.ObjID":obj_id}])
         if (res.matched_count == 1):
             return
         else:
-            raise KeyError ("Input parameter " + name +" obj_id "+str(obj_id)+" not found")
+            raise KeyError ("Input parameter " + name +" Obj_id "+str(obj_id)+" not found")
  
 class WorkflowExecutionContext():
 
@@ -266,7 +266,7 @@ def mapInputs (app, db, eid):
         if match:
             typeID = match.group()
         
-        objID = irec['objID']
+        objID = irec.get('ObjID', None)
         compulsory = irec['Compulsory']
         units = irec['Units']
 
@@ -289,7 +289,7 @@ def generateWEInputCGI (db, eid):
     print ("<form action=\"/cgi-bin/demo01b.py\" method=\"post\">")
 
     #table header
-    print ("<table><tr><th>Name</th><th>Type</th><th>objID</th><th>Value</th><th>Source</th><th>Origin</th></tr>")
+    print ("<table><tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Source</th><th>Origin</th></tr>")
 
     # loop over workflow inputs
     c = 0
@@ -297,7 +297,7 @@ def generateWEInputCGI (db, eid):
         name = irec['Name']
         type = irec['Type']
         #typeID=irec['TypeID']
-        objID = irec['objID']
+        objID = irec['ObjID']
         print ("<tr><td><b>%s</b></td><td>%s</td><td>%s</td>"%(name, type, objID))
         print ("<td><input type=\"text\" name=\"Value_%d\" /></td>"%c)
         print ("<td><input type=\"text\" name=\"Source_%d\" /></td>"%c)
@@ -315,11 +315,11 @@ def setWEInputCGI (db, eid, form):
     c = 0
     for irec in inp._getDocument()['DataSet']:
         name = irec['Name']
-        objID = irec['objID']
+        objID = irec['ObjID']
         value = form.getvalue('Value_%d'%c)
         source = form.getvalue('Source_%d'%c)
         originID  = form.getvalue('OriginID_%d'%c)
-        print ('Setting %s, objID %s to %s '%(name, objID, value))
+        print ('Setting %s, ObjID %s to %s '%(name, objID, value))
         try:
             inp.set(name, value, objID)
             print (' OK<br>')
@@ -372,7 +372,7 @@ def mapOutputs (app, db, eid, tstep):
         if match:
             typeID = match.group()
         
-        objID = irec['objID']
+        objID = irec.get('ObjID', None)
         compulsory = irec['Compulsory']
         units = irec['Units']
 
