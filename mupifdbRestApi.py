@@ -23,7 +23,24 @@ mongo = PyMongo(app)
 
 @app.route('/')
 def home_page():
-    return "MuPIFDB Connected"
+    ans = "MuPIFDB Connected"
+    ans +="<br>Basic REST API services:</br>"
+    ans +="<ul>"
+    ans +="<li><a href=\"http://127.0.0.1:5000/usecases\">List of UseCases</a></li>"
+    ans +="<li><a href=\"http://127.0.0.1:5000/workflows\">List of Workflows<a></li>"
+    ans +="<li><a href=\"http://127.0.0.1:5000/workflowexecutions\">List of Workflow Executions<a></li>"
+    ans +="</ul>"
+
+    ans +="<br>Advanced REST API services:</br>"
+    ans +="<ul>"
+    ans +="<li>http://127.0.0.1:5000/usecase/ID Deatils of usecase with given ID</li>"
+    ans +="<li>http://127.0.0.1:5000/usecase/ID/workflows Workflows available for Usecase ID</li>"
+    ans +="<li>http://127.0.0.1:5000/workflow/ID Details of workflow ID</li>"
+    
+    ans +="</ul>"
+    
+
+    return ans
 
 @app.route('/usecases', methods=['GET'])
 def get_usecases():

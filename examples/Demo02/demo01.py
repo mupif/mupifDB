@@ -5,7 +5,7 @@ from bson import ObjectId
 from datetime import datetime
 import mupif
 import mupif.Physics.PhysicalQuantities as PQ
-import workflowdemo
+from mupifDB import workflowdemo
 
 
 
@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     id = db.Workflows.find_one({"_id":wid})
     if (id is None):
-        id = mupifDB.workflowmanager.insertWorkflowDefinition(db,wid,'thermal','1.0','file://localhost/home/bp/devel/mupifDB/examples/Demo02/workflowdemo.py', 
+        id = mupifDB.workflowmanager.insertWorkflowDefinition(db,wid,'thermal','1.0','file://localhost/home/bp/devel/mupifDB/workflowdemo.py', 
                                                              'DemoUseCase', workflow.getMetadata('Inputs'), workflow.getMetadata('Outputs'))
     # schedule execution
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(db, wid, 'borpat@senam.cz')

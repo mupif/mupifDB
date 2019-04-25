@@ -3,7 +3,9 @@ from pymongo import MongoClient
 import mupifDB
 from bson import ObjectId
 from datetime import datetime
-import demoapp01
+
+from mupifDB import workflowdemo
+
 import cgi
 
 if __name__ == "__main__":
@@ -13,10 +15,14 @@ if __name__ == "__main__":
 
     form = cgi.FieldStorage() 
     if "eid" not in form:
-        #generate new execution record
+        workflow = workflowdemo.workflowdemo()
         wid = 'Workflow99'
-        #mupifDB.workflowmanager.insertWorkflowDefinition(db,wid,'Demo','1.0','file://localhost/home/bp/devel/mupifDB/examples/Demo02/demoapp01.py', 
-        #                                                'DemoUseCase', workflow.getMetadata('inputs'), workflow.getMetadata('outputs'))
+
+        id = db.Workflows.find_one({"_id":wid})
+        if (id is None):
+            id = mupifDB.workflowmanager.insertWorkflowDefinition(db,wid,'thermal','1.0','file://localhost/home/bp/devel/mupifDB/workflowdemo.py', 
+                                                                 'DemoUseCase', workflow.getMetadata('Inputs'), workflow.getMetadata('Outputs'))
+        #generate new execution record
         # schedule execution
         c = mupifDB.workflowmanager.WorkflowExecutionContext.create(db, wid, 'borpat@senam.cz' )
         #set inputs in DB

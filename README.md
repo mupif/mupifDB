@@ -7,7 +7,7 @@ http://www.mupif.org
 
 ## Prerequisites
 * mongoDB server
-* Python modules: pymongo, flask, bson
+* Python modules: pymongo, flask, bson, flask_pymongo. isodate
 * for REST API debugging and development install chrome extension (ARC - Advanced REST client or Postman)
 
 ## Instalation

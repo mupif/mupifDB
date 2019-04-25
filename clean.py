@@ -1,25 +1,21 @@
 import pymongo
-from bson import ObjectId
 
-
-client = pymongo.MongoClient()
+client = pymongo.MongoClient("mongodb://localhost:27017/")
 db = client.MuPIF
 
 
 def cleanAllWorkflowExecutions (wid):
-    query = {"WorkflowID": wid}
     # first loop over executions
-    wer = db.WorkflowExecutions
-    for s in wer.find(query):
-        print (s)
+    workflows = db.WorkflowExecutions
+    for s in workflows.find({"WorkflowID": wid}):
         #get IO Records
         inputs = s['Inputs']
         outputs= s['Outputs']
         #delete IO records
-        db.IOData.delete_one({'_id':ObjectId(inputs)})
-        db.IOData.delete_one({'_id':ObjectId(outputs)})
+        db.IOData.delete_one({'_id':inputs})
+        db.IOData.delete_one({'_id':outputs})
     # delete all execution records
-    count = wer.delete_many(query)
+    count = db.WorkflowExecutions.delete_many({'WorkflowId':wid})
     print (count.deleted_count, " records deleted")
     
 

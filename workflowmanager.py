@@ -238,7 +238,7 @@ import mupif
 def mapInput(app, value, type, typeID, units, compulsory, objectID):
     if (value is not None):
         # map value 
-        if (type == 'Property'):
+        if (type == 'mupif.Property'):
             print ('Mapping %s, units %s, value:%s'%(mupif.PropertyID[typeID], units,value))
             app.setProperty(mupif.Property.ConstantProperty(float(value), mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
         else:
@@ -335,11 +335,11 @@ def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
     out = wec.getIODataDoc('Outputs')
     # map value 
     print ('Mapping %s, name:%s'%(typeID, name))
-    if (type == 'Property'):
+    if (type == 'mupif.Property'):
         
         prop = app.getProperty(mupif.PropertyID[typeID], objectID, tstep.getTargetTime())
         out.setAttributes(name, {"Value": prop.getValue(), "Units":str(prop.getUnits())}, objectID)
-    elif (type == 'Field'):
+    elif (type == 'mupif.Field'):
         with tempfile.TemporaryDirectory() as tempDir:
             fs = gridfs.GridFS(db)
             field = app.getField(mupif.FieldID.FID_Temperature, tstep.getTargetTime()) # timestep as None!!
@@ -373,7 +373,7 @@ def mapOutputs (app, db, eid, tstep):
             typeID = match.group()
         
         objID = irec.get('ObjID', None)
-        compulsory = irec['Compulsory']
+        #compulsory = irec['Compulsory']
         units = irec['Units']
 
         if isinstance(objID, collections.Iterable):
