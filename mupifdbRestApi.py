@@ -23,25 +23,45 @@ mongo = PyMongo(app)
 
 @app.route('/')
 def home_page():
-    ans = "MuPIFDB Connected"
-    ans +="<br>Basic REST API services:</br>"
-    ans +="<ul>"
-    ans +="<li><a href=\"http://127.0.0.1:5000/usecases\">List of UseCases</a></li>"
-    ans +="<li><a href=\"http://127.0.0.1:5000/workflows\">List of Workflows<a></li>"
-    ans +="<li><a href=\"http://127.0.0.1:5000/workflowexecutions\">List of Workflow Executions<a></li>"
-    ans +="</ul>"
+  return "MuPIFDB REST API</br>Database Connected</br></br>Follow <a href=\"http://127.0.0.1:5000/help\">http://127.0.0.1:5000/help</a> for API documentation"
 
-    ans +="<br>Advanced REST API services:</br>"
-    ans +="<ul>"
-    ans +="<li>http://127.0.0.1:5000/usecase/ID Deatils of usecase with given ID</li>"
-    ans +="<li>http://127.0.0.1:5000/usecase/ID/workflows Workflows available for Usecase ID</li>"
-    ans +="<li>http://127.0.0.1:5000/workflow/ID Details of workflow ID</li>"
-    
-    ans +="</ul>"
-    
+
+@app.route('/help')
+def help():
+    ans = """
+    <style>
+    table, th, td {border: 1px solid black; border-collapse: collapse;}
+    th, td { padding: 5px; text-align: left; }
+    </style>
+
+    <br>Basic MuPIFDB REST API services:</br>
+    <table>
+    <tr><th>Service</th><th>Description</th></tr>
+    <tr><td>/usecases</td><td><List of UseCases</td></tr>
+    <tr><td>/workflows</td><td>List of Workflows</td></tr>
+    <tr><td>/workflowexecutions</td><td>List of Workflow Executions</td></tr>
+    </table>
+
+    <br>Advanced REST API services:</br>
+    <table>
+    <tr>
+    <th>Service</th><th>Description</th>
+    </tr>
+    <tr><td>/usecase/ID</td><td> Deatils of usecase with given ID</td></tr>
+    <tr><td>/usecase/ID/workflows</td><td> Workflows available for Usecase ID</td></tr>
+    <tr><td>/workflows/ID</td><td> Details of workflow ID</td></tr>
+    <tr><td>/workflowexecutions/ID</td><td>Show execution ID status</td></tr>
+    <tr><td>/workflowexecutions/ID/inputs</td><td>Show inputs for execution ID </td></tr>
+    <tr><td>/workflowexecutions/ID/outputs</td><td>Show outputs for execution ID </td></tr>
+    <tr><td>/executeworkflow/ID</td><td>Execute workflow ID </td></tr>
+    <tr><td>/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
+    <tr><td>/uploads/filenamepath", methods=["POST"]</td><td></td></tr>
+    <tr><td>/gridfs/ID</td><td>Show stored file with given ID</td></tr>
+    </table>
+    """
 
     return ans
-
+    
 @app.route('/usecases', methods=['GET'])
 def get_usecases():
   usecases = mongo.db.UseCases
