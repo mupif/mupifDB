@@ -4,7 +4,7 @@
 ## Prerequsites for running all examples
 * export PYTHONPATH=/home/bp/devel/mupif.git:/home/bp/devel/mupifDB
 
-## Run REst API demo 
+## Run REST API demo 
 * $ python3 mupifdbRestApi.py
 * open http://127.0.0.1:5000 in your browser
 

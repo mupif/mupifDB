@@ -118,6 +118,7 @@ class WorkflowExecutionIODataSet():
         @param: value associated value
         @throws: KeyError if input parameter name not found
         """
+        #print (f'WorkflowExecutionIODataSet:set self={self.IOid}: {name}={value}, objid={obj_id}')
         res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': {"DataSet.$[r].Value": value}}, array_filters=[{"r.Name": name, "r.ObjID":obj_id}])
         if (res.matched_count == 1):
             return

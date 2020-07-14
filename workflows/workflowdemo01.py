@@ -19,14 +19,14 @@ class workflowdemo (mupif.Workflow.Workflow):
             'Description': 'Demo thermal problem using finite elements on rectangular domain',
             'Model_refs_ID': [],
             'Inputs': [
-                {'Name': 'Effective conductivity', 'Type': 'mupif.Property', 'Required': False, 'Type_ID': 'mupif.PropertyID.PID_effective_conductivity', 'Units':'W/m/K', 'Obj_ID': None},
-                {'Name': 'Dimension', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_Dimension', 'Units':'m', 'Obj_ID': (0,1)},
-                {'Name': 'Prescribed temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_dirichletBC', 'Units':'K', 'Obj_ID': (0,1,2,3)},
-                {'Name': 'External temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_conventionExternalTemperature', 'Units':'K', 'Obj_ID': (0,1,2,3)},
-                {'Name': 'Convention coefficient', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_conventionCoefficient', 'Units':'none', 'Obj_ID': (0,1,2,3)}
+                {'Name': 'Effective conductivity', 'Type': 'mupif.Property', 'Required': False, 'Type_ID': 'mupif.PropertyID.PID_effective_conductivity', 'Units':'W/m/K'},
+                {'Name': 'Dimension', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_Dimension', 'Units':'m', 'Obj_ID': [0,1]},
+                {'Name': 'Prescribed temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_dirichletBC', 'Units':'K', 'Obj_ID': [0,1,2,3]},
+                {'Name': 'External temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_conventionExternalTemperature', 'Units':'K', 'Obj_ID': [0,1,2,3]},
+                {'Name': 'Convention coefficient', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_conventionCoefficient', 'Units':'none', 'Obj_ID': [0,1,2,3]}
             ],
             'Outputs': [
-                {'Name':'Temperature field', 'Type': 'mupif.Field', 'Required':True,'Type_ID':'mupif.FieldID.FID_Temperature', 'Units':'T', 'Obj_ID': None}
+                {'Name':'Temperature field', 'Type': 'mupif.Field', 'Required':True,'Type_ID':'mupif.FieldID.FID_Temperature', 'Units':'T'}
             ]
         }
         super(workflowdemo, self).__init__(metaData=MD)
@@ -62,6 +62,18 @@ if __name__ == "__main__":
     # execute only if run as a script
     client = MongoClient()
     db = client.MuPIF
+
+    workflow = workflowdemo()
+    wid = 'Workflow99'
+
+    id = db.Workflows.find_one({"_id":wid})
+    if (id is None):
+        id = mupifDB.workflowmanager.insertWorkflowDefinition(db,wid,'Demo','1.0','file://localhost/home/bp/devel/mupifDB/workflows/workflowdemo01.py', 
+                                                    'DemoUseCase', workflow.getMetadata('Inputs'), workflow.getMetadata('Outputs'))
+        print("workflow registered")
+        exit
+
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-eid', '--executionID', required=True, dest="id")
     args = parser.parse_args()
