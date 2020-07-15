@@ -1,6 +1,6 @@
 # MuPIFDB 
 
-MuPIF is modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. MuPIFDB is database layer to provide storage for simulation results based on MongoDB.
+MuPIF is modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. MuPIFDB is database layer (based on MongoDB) and workflow manager for MuPIF with REST API.
 
 ## Project website
 http://www.mupif.org
