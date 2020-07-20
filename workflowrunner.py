@@ -6,6 +6,7 @@ import mupifDB
 from datetime import datetime
 from pymongo import MongoClient
 import gridfs
+import error
 
 #client = MongoClient()
 #db = client.MuPIF
@@ -51,4 +52,4 @@ def execWorkflow (id, wed, wd):
         return 0
     else:
         print ("Workflow execution already scheduled for execution")
-        raise KeyError ("Workflow execution already scheduled for execution")
+

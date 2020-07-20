@@ -8,6 +8,7 @@ from mupifDB import workflowrunner
 from bson import ObjectId
 import gridfs
 import re
+import error
 
 #pool to handle workflow execution requests
 #ctx = multiprocessing.get_context('spawn')
@@ -52,8 +53,9 @@ def insertWorkflowDefinition (db, id, description, version, source, useCases, wo
     return result.inserted_id 
 
 class WorkflowExecutionIODataSet():
-    def __init__(self, db, IOid):
+    def __init__(self, db, wec, IOid):
         self.db = db
+        self.wec = wec
         self.IOid = IOid
     
     @staticmethod
@@ -119,11 +121,14 @@ class WorkflowExecutionIODataSet():
         @throws: KeyError if input parameter name not found
         """
         #print (f'WorkflowExecutionIODataSet:set self={self.IOid}: {name}={value}, objid={obj_id}')
-        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': {"DataSet.$[r].Value": value}}, array_filters=[{"r.Name": name, "r.ObjID":obj_id}])
-        if (res.matched_count == 1):
-            return
+        if (self.wec.getStatus() == 'Created'):
+            res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': {"DataSet.$[r].Value": value}}, array_filters=[{"r.Name": name, "r.ObjID":obj_id}])
+            if (res.matched_count == 1):
+                return
+            else:
+                raise KeyError ("Input parameter " + name +" Obj_id "+str(obj_id)+" not found")
         else:
-            raise KeyError ("Input parameter " + name +" Obj_id "+str(obj_id)+" not found")
+            raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
  
     def setAttributes (self, name, attributes, obj_id=None):
         """
@@ -214,8 +219,12 @@ class WorkflowExecutionContext():
         return doc[name]
 
     def getIODataDoc (self, type='Inputs'):
-        return WorkflowExecutionIODataSet(self.db, self.get(type))
-    
+        doc = self._getWorkflowExecutionDocument()    
+        return WorkflowExecutionIODataSet(self.db, self, self.get(type))
+
+    def getStatus(self):
+        wed = self._getWorkflowExecutionDocument()
+        return wed['Status']
             
 
     def execute (self):
@@ -225,11 +234,15 @@ class WorkflowExecutionContext():
         #return pool.apply_async(self.__executeWorkflow, (wed, wd)).wait()
         print (wed)
         print (wd)
-        
-        req = pool.apply_async(workflowrunner.execWorkflow, (self.executionID, wed, wd))
-        req.wait()
-        if (not req.successful()):
-            print ("execute Failed")
+
+        if (wed['Status']=='Created'):
+            req = pool.apply_async(workflowrunner.execWorkflow, (self.executionID, wed, wd))
+            req.wait()
+            if (not req.successful()):
+                print ("execute Failed")
+        else:
+            #raise KeyError ("Workflow execution already scheduled/executed")
+            raise error.InvalidUsage ("Workflow execution already scheduled/executed")
 
         return 0
 
