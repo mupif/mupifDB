@@ -93,13 +93,15 @@ def help():
     <li> Get list of available UseCases: <a href="/usecases">/usecases</a></li>
     <li> Get list of available workflows for specific usecase: <a href="/usecases/DemoUseCase/workflows">/usecases/DemoUseCase/workflows</a></li>
     <li> Get info on specific workflow: <a href="/workflows/Workflow98">/workflows/Workflow98</a></li>
-    <li> Schedule execution of workflow: <a href="/workflowexecutions/init/Workflow98">/workflowexecutions/init/Workflow98</a>, returned workflow execution ID</li>
-    <li> Get status of workflow execution: <a href="/workflowexecutions/5f0d97ded1186552c4da9163">/workflowexecutions/5f0d97ded1186552c4da9163</a></li>
-    <li> Get workflow execution inputs: <a href="/workflowexecutions/5f0d97ded1186552c4da9163/inputs">/workflowexecutions/5f0d97ded1186552c4da9163/inputs</a></li>
-    <li> Setting workflow execution inputs: <a href="/workflowexecutions/5f0d97ded1186552c4da9163/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3">/workflowexecutions/5f0d97ded1186552c4da9163/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3</a></li>
-    <li> Executing workflow: <a href="/executeworkflow/5f0d97ded1186552c4da9163">/executeworkflow/5f0d97ded1186552c4da9163</a></li>
-    <li> Get status of workflow execution: <a href="/workflowexecutions/5f0d97ded1186552c4da9163">/workflowexecutions/5f0d97ded1186552c4da9163</a></li>
-    <li> Get Workflow execution outputs: <a href="/workflowexecutions/5f0d97ded1186552c4da9163/outputs">/workflowexecutions/5f0d97ded1186552c4da9163/outputs</a></li>
+    <li> Schedule execution of workflow: <a href="/workflowexecutions/init/Workflow98">/workflowexecutions/init/Workflow98</a>, returns workflow execution id (WEID)</li>
+    <li>For given execution id (WEID):<ul>
+            <li> Get status of workflow execution: <a href="/workflowexecutions/WEID">/workflowexecutions/WEID</a></li>
+            <li> Get workflow execution inputs: <a href="/workflowexecutions/WEID/inputs">/workflowexecutions/WEID/inputs</a></li>
+            <li> Setting workflow execution inputs (inputs can be set only for execution with status 'Created'): <a href="/workflowexecutions/WEID/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3">/workflowexecutions/WEID/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3</a></li>
+            <li> Executing workflow (workflow can be executed only with status 'Created'): <a href="/executeworkflow/WEID">/executeworkflow/WEID</a></li>
+            <li> Get status of workflow execution: <a href="/workflowexecutions/WEID">/workflowexecutions/WEID</a></li>
+            <li> Get Workflow execution outputs: <a href="/workflowexecutions/WEID/outputs">/workflowexecutions/WEID/outputs</a></li>
+            </ul></li>
     </ul>
 
     """
