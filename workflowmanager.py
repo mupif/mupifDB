@@ -8,7 +8,7 @@ from mupifDB import workflowrunner
 from bson import ObjectId
 import gridfs
 import re
-import error
+from mupifDB import error
 
 #pool to handle workflow execution requests
 #ctx = multiprocessing.get_context('spawn')

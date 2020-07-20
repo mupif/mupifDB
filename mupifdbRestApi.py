@@ -7,7 +7,6 @@ from flask_pymongo import PyMongo
 import mupifDB
 import gridfs
 import re
-import error
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 
@@ -20,13 +19,14 @@ app.url_map.converters['objectid'] = ObjectIdConverter
 
 app.config['MONGO_DBNAME'] = 'MuPIF'
 app.config['MONGO_URI'] = 'mongodb://localhost:27017/MuPIF'
+app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
 
 nameObjectIDpair = re.compile('([\w ]+){(\d+)}')
 
 mongo = PyMongo(app)
 
 # Registering an Error Handler
-@app.errorhandler(error.InvalidUsage)
+@app.errorhandler(mupifDB.error.InvalidUsage)
 def handle_invalid_usage(error):
     response = jsonify(error.to_dict())
     response.status_code = error.status_code

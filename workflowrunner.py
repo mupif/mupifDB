@@ -6,7 +6,7 @@ import mupifDB
 from datetime import datetime
 from pymongo import MongoClient
 import gridfs
-import error
+
 
 #client = MongoClient()
 #db = client.MuPIF
