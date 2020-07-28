@@ -237,9 +237,9 @@ class WorkflowExecutionContext():
 
         if (wed['Status']=='Created'):
             req = pool.apply_async(workflowrunner.execWorkflow, (self.executionID, wed, wd))
-            req.wait()
-            if (not req.successful()):
-                print ("execute Failed")
+            # req.wait()
+            # if (not req.successful()):
+            #    print ("execute Failed")
         else:
             #raise KeyError ("Workflow execution already scheduled/executed")
             raise error.InvalidUsage ("Workflow execution already scheduled/executed")
@@ -283,6 +283,8 @@ def mapInputs (app, db, eid):
         objID = irec.get('ObjID', None)
         compulsory = irec['Compulsory']
         units = irec['Units']
+        if (units == 'None'):
+            units = mupif.Physics.PhysicalQuantities.getDimensionlessUnit()
 
         if isinstance(objID, collections.Iterable):
             for oid in objID:
@@ -359,7 +361,7 @@ def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
             field = app.getField(mupif.FieldID.FID_Temperature, tstep.getTargetTime()) # timestep as None!!
             field.field2VTKData().tofile(tempDir+'/field')
             with open(tempDir+'/field.vtk', 'rb') as f:
-                logID=fs.put(f)
+                logID=fs.put(f, filename="field.vtk")
                 print ("Uploaded fiel.vtk as id: %s"%logID) 
                 out.setAttributes(name, {"Value": logID, "Units":str(field.getUnits())}, objectID)
 

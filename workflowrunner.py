@@ -43,7 +43,7 @@ def execWorkflow (id, wed, wd):
         #store execution log
         logID = None
         with open(tempDir+'/mupif.log', 'rb') as f:
-            logID=fs.put(f)
+            logID=fs.put(f, filename="mupif.log")
         #set execution code to completed
         if (completed == 0):
             db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
