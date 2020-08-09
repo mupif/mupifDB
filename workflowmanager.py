@@ -230,16 +230,16 @@ class WorkflowExecutionContext():
     def execute (self):
         wed = self._getWorkflowExecutionDocument()
         wd = self._getWorkflowDocument()
-        print ('pooling the new execution')
+        print ('Scheduling the new execution:%s'%(self.executionID))
         #return pool.apply_async(self.__executeWorkflow, (wed, wd)).wait()
         print (wed)
         print (wd)
 
+
         if (wed['Status']=='Created'):
-            req = pool.apply_async(workflowrunner.execWorkflow, (self.executionID, wed, wd))
-            # req.wait()
-            # if (not req.successful()):
-            #    print ("execute Failed")
+            # freeze the execution record by setting state to "Pending"
+            self.db.WorkflowExecutions.update_one({'_id': self.executionID}, {'$set': {'Status': 'Pending'}})
+            print ("Execution %s state changed to Pending"%(self.executionID))
         else:
             #raise KeyError ("Workflow execution already scheduled/executed")
             raise error.InvalidUsage ("Workflow execution already scheduled/executed")

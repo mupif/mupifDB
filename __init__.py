@@ -28,7 +28,8 @@ __version__ = '0.0.1'
 __author__  = 'Borek Patzak'
 
 #List all submodules, so they can all be imported: from mupif import *
-__all__ = ['workflowmanager','error']
+__all__ = ['workflowmanager','schedulerstat', 'error']
 
 from . import workflowmanager
+from . import schedulerstat
 from . import error

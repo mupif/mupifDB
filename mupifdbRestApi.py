@@ -7,10 +7,10 @@ from flask_pymongo import PyMongo
 import mupifDB
 import gridfs
 import re
+import os,psutil
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
-
-
+import pygal
 
 
 app = Flask(__name__)
@@ -60,9 +60,12 @@ def help():
     <br>Basic MuPIFDB REST API services:</br>
     <table>
     <tr><th>Service</th><th>Description</th></tr>
+    <tr><td>/status</td><td>MupifDB status</td></tr>
     <tr><td>/usecases</td><td>List of UseCases</td></tr>
     <tr><td>/workflows</td><td>List of Workflows</td></tr>
     <tr><td>/workflowexecutions</td><td>List of Workflow Executions</td></tr>
+    <tr><td>/schedulerStats/total2.svg</td><td>Scheduler statistics (svg chart)</td></tr>
+    <tr><td>/schedulerStats/weekly.svg</td><td>Scheduler weekly statistics (svg chart)</td></tr>
     </table>
 
     <br>Advanced REST API services:</br>
@@ -267,6 +270,79 @@ def save_upload(filename):
     #return "Uploaded"
     return redirect(url_for("get_upload", filename=filename))
 
+@app.route("/status")
+def status():
+    output=[]
+    mupifDBStatus='OK'
+    schedulerStatus='OK'
+
+    pidfile='mupifDB_scheduler_pidfile'
+    if not os.path.exists(pidfile):
+        schedulerStatus= 'Failed'
+    else:
+        with open(pidfile, "r") as f:
+          try:
+            pid = int(f.read())
+          except (OSError, ValueError):
+            schedulerStatus = 'Failed'
+
+        if not psutil.pid_exists(pid):
+          schedulerStatus ='Failed'
+
+    # get some scheduler stats
+    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)          
+    output.append({'mupifDBStatus':mupifDBStatus, 'schedulerStatus':schedulerStatus, 'schedulerStats':stat})
+    return jsonify({'result' : output})  
+    
+@app.route("/schedulerStats/total.svg")
+def schedulerStat():
+    # get some scheduler stats
+    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)
+    #render some graphics
+    gauge = pygal.SolidGauge(
+        width=800, height=300, explicit_size=True,
+        half_pie=True, inner_radius=0.70,
+        style=pygal.style.styles['default'](value_font_size=10))
+    #gauge = pygal.SolidGauge(inner_radius=0.70)
+    percent_formatter = lambda x: '{:.10g}%'.format(x)
+    value_formatter = lambda x: '{:.10g}'.format(x)
+    gauge.value_formatter = percent_formatter
+
+    gauge.add('Finished executions', [{'value': stat['finishedExecutions'], 'max_value': stat['totalExecutions']}], formatter=value_formatter)
+    gauge.add('Failed executions', [{'value': round(100*stat['failedExecutions']/stat['totalExecutions']), 'max_value': 100}])
+    gauge.add('Created executions', [{'value': round(100*stat['createdExecutions']/stat['totalExecutions']), 'max_value': 100}])
+    gauge.add('Pending executions', [{'value': round(100*stat['pendingExecutions']/stat['totalExecutions']), 'max_value': 100}])
+    gauge.add('Scheduled executions', [{'value': round(100*stat['scheduledExecutions']/stat['totalExecutions']), 'max_value': 100}])
+    gauge.add('Running executions', [{'value': round(100*stat['runningExecutions']/stat['totalExecutions']), 'max_value': 100}])
+
+    return gauge.render_response()
+
+@app.route("/schedulerStats/total2.svg")
+def schedulerStat2():
+    # get some scheduler stats
+    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)
+    #render some graphics
+    gauge = pygal.Pie(width=800, height=300, inner_radius=.4, print_values=True)
+    gauge.add('Finished executions', stat['finishedExecutions'])
+    gauge.add('Failed executions', stat['failedExecutions'])
+    gauge.add('Created executions', stat['createdExecutions'])
+    gauge.add('Pending executions', stat['pendingExecutions'])
+    gauge.add('Scheduled executions', stat['scheduledExecutions'])
+    gauge.add('Running executions', stat['runningExecutions'])
+
+    return gauge.render_response()
+ 
+
+
+@app.route("/schedulerStats/weekly.svg")
+def schedulerStatWeekly():
+    ws = mupifDB.schedulerstat.getWeeklyExecutionStat(mongo.db)
+    line_chart = pygal.Bar(width=800, height=300, explicit_size=True)
+    line_chart.title = 'MupifDB Scheduler Usage Weekly Statistics'
+    #line_chart.x_labels = map(str, range(2002, 2013))
+    for label, data in ws.items():
+        line_chart.add(label, data)
+    return line_chart.render_response()    
 
 
 if __name__ == '__main__':
