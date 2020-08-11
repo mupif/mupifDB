@@ -60,12 +60,12 @@ def help():
     <br>Basic MuPIFDB REST API services:</br>
     <table>
     <tr><th>Service</th><th>Description</th></tr>
-    <tr><td>/status</td><td>MupifDB status</td></tr>
-    <tr><td>/usecases</td><td>List of UseCases</td></tr>
-    <tr><td>/workflows</td><td>List of Workflows</td></tr>
-    <tr><td>/workflowexecutions</td><td>List of Workflow Executions</td></tr>
-    <tr><td>/schedulerStats/total2.svg</td><td>Scheduler statistics (svg chart)</td></tr>
-    <tr><td>/schedulerStats/weekly.svg</td><td>Scheduler weekly statistics (svg chart)</td></tr>
+    <tr><td><a href="/status">/status</a></td><td>MupifDB status</td></tr>
+    <tr><td><a href="/usecases">/usecases</a></td><td>List of UseCases</td></tr>
+    <tr><td><a href="/workflows">/workflows</a></td><td>List of Workflows</td></tr>
+    <tr><td><a href="/workflowexecutions">/workflowexecutions</a></td><td>List of Workflow Executions</td></tr>
+    <tr><td><a href="/schedulerStats/total2.svg">/schedulerStats/total2.svg</a></td><td>Scheduler statistics (svg chart)</td></tr>
+    <tr><td><a href="/schedulerStats/weekly.svg">/schedulerStats/weekly.svg</a></td><td>Scheduler weekly statistics (svg chart)</td></tr>
     </table>
 
     <br>Advanced REST API services:</br>
