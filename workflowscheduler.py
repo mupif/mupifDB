@@ -232,7 +232,7 @@ if __name__ == '__main__':
                     lt = time.localtime(time.time())
                     print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" "+str(p))
                     p.commit()
-                    time.sleep(10)
+                    time.sleep(60)
             except Exception as err:
                 log.info ("Error: " + repr(err))
                 stop()
