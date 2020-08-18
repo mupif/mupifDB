@@ -10,7 +10,7 @@ def getWeeklyExecutionStat(db):
     #get the current date
     today = datetime.date.today()
     monday = (today - datetime.timedelta(days=today.weekday()))
-    print("today:"+str(today)+" monday:"+str(monday))
+    #print("today:"+str(today)+" monday:"+str(monday))
     for wed in db.WorkflowExecutions.find():
         ScheduledDate = None
         if ('ScheduledDate' in wed.keys()):
@@ -20,23 +20,23 @@ def getWeeklyExecutionStat(db):
         if (scheduledDate):
             if isinstance(scheduledDate, str):
                 scheduledDate = dateutil.parser.parse(scheduledDate).date()
-            print ("Scheduled:"+str(scheduledDate))
+            #print ("Scheduled:"+str(scheduledDate))
             # get difference in weeks
             monday2 = (scheduledDate - datetime.timedelta(days=scheduledDate.weekday()))
-            print("Monday2:", monday2, (monday-monday2).days)
+            #print("Monday2:", monday2, (monday-monday2).days)
             diff = (monday - monday2).days // 7
-            print(monday2, diff)
+            #print(monday2, diff)
             if (diff < 52):
                 weeklyScheduledExecutions[51-diff]+=1
         if ('EndDate' in wed.keys()):
             finishedDate = wed['EndDate']
             if (finishedDate):
                 if isinstance(finishedDate, str):                                                                                                                                                                              finishedDate = dateutil.parser.parse(finishedDate).date()
-                print ('finishedDate:'+str(finishedDate))
+                #print ('finishedDate:'+str(finishedDate))
                 # get difference in weeks
                 monday2 = (scheduledDate - datetime.timedelta(days=scheduledDate.weekday()))
                 diff = (monday - monday2).days // 7
-                print("Monday2:",monday2, diff)
+                #print("Monday2:",monday2, diff)
                 if (diff < 52):
                     weeklyFinishedExecutions[51-diff]+=1
     return {'ScheduledExecutions':weeklyScheduledExecutions, 'ProcessedExecutions':weeklyFinishedExecutions}
