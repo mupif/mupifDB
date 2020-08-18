@@ -239,7 +239,7 @@ if __name__ == '__main__':
             except:
                 log.info("Unknown error encountered")
                 stop()
-    except pidfile.r:
+    except pidfile.AlreadyRunningError:
         log.error ('Already running.')
 
     log.info ("Exiting MupifDB Workflow Scheduler\n")

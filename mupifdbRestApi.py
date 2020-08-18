@@ -123,7 +123,7 @@ def get_usecases():
 def get_usecase(usecase):
   usecases = mongo.db.UseCases
   output = []
-  for s in usecases.find():
+  for s in usecases.find({"_id": usecase}):
     output.append({'id' : s['_id'], 'Description' : s['Description']})
   return jsonify({'result' : output})
 
