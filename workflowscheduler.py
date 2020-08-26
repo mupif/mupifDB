@@ -172,7 +172,7 @@ def executeWorkflow(weid):
             db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
             return (weid, ExecutionResult.Finished)
         else:
-            log.info ("Workflow execution %w Failed"%(weid))
+            log.info ("Workflow execution %s Failed"%(weid))
             db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Failed', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
             return (weid, ExecutionResult.Failed)
         
