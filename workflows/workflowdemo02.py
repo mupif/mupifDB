@@ -6,6 +6,9 @@ from datetime import datetime
 import mupif
 import mupif.Physics.PhysicalQuantities as PQ
 import argparse
+import sys
+import logging
+log=logging.getLogger()
 
 class Workflow02 (mupif.Workflow.Workflow):
     def __init__(self, metaData={}):
@@ -101,23 +104,32 @@ if __name__ == "__main__":
                                                     'DemoUseCase', workflow.getMetadata('Inputs'), workflow.getMetadata('Outputs'))
         print("workflow registered")
         exit
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-eid', '--executionID', required=True, dest="id")
-    args = parser.parse_args()
-    weid = args.id
-    print ('WEID:', weid)
-    wec = mupifDB.workflowmanager.WorkflowExecutionContext(db, ObjectId(args.id))
-    inp = wec.getIODataDoc('Inputs')
-    # print (inp)
+    try:
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-eid', '--executionID', required=True, dest="id")
+        args = parser.parse_args()
+        weid = args.id
+        print ('WEID:', weid)
+        wec = mupifDB.workflowmanager.WorkflowExecutionContext(db, ObjectId(args.id))
+        inp = wec.getIODataDoc('Inputs')
+        # print (inp)
 
-    app = Workflow02()
-    app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
-    mupifDB.workflowmanager.mapInputs(app, db, args.id)
+        app = Workflow02()
+        app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
+        mupifDB.workflowmanager.mapInputs(app, db, args.id)
 
-    tstep = mupif.TimeStep.TimeStep(1.,1.,10,'s')
-    print("Solving....")
-    app.solveStep(tstep)
-    mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
+        tstep = mupif.TimeStep.TimeStep(1.,1.,10,'s')
+        print("Solving....")
+        app.solveStep(tstep)
+        mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
     
-    app.terminate()
+        app.terminate()
+    except Exception as err:
+        log.info("Error:" + repr(err))
+        app.terminate()
+        sys.exit(1)
+    except:
+        log.info("Unknown error")
+        app.terminate()
+        sys.exit(1)
 

@@ -73,28 +73,37 @@ if __name__ == "__main__":
         print("workflow registered")
         exit
 
+    try:
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-eid', '--executionID', required=True, dest="id")
+        args = parser.parse_args()
+        weid = args.id
+        print ('WEID:', weid)
+        wec = mupifDB.workflowmanager.WorkflowExecutionContext(db, ObjectId(args.id))
+        inp = wec.getIODataDoc('Inputs')
+        print (inp)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-eid', '--executionID', required=True, dest="id")
-    args = parser.parse_args()
-    weid = args.id
-    print ('WEID:', weid)
-    wec = mupifDB.workflowmanager.WorkflowExecutionContext(db, ObjectId(args.id))
-    inp = wec.getIODataDoc('Inputs')
-    print (inp)
+        log.info(inp.get('Effective conductivity', None))
+        log.info(inp.get('External temperature', obj_id=0))
+        
+        app = workflowdemo()
+        app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
+        mupifDB.workflowmanager.mapInputs(app, db, args.id)
+        
+        tstep = mupif.TimeStep.TimeStep(1.,1.,10,'s')
+        app.solveStep(tstep)
+        mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
+        
+        app.terminate()
+    except Exception as err:
+        log.info("Error:" + repr(err))
+        app.terminate()
+        sys.exit(1)
+    except:
+        log.info("Unknown error")
+        app.terminate()
+        sys.exit(1)
 
-    log.info(inp.get('Effective conductivity', None))
-    log.info(inp.get('External temperature', obj_id=0))
-
-    app = workflowdemo()
-    app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
-    mupifDB.workflowmanager.mapInputs(app, db, args.id)
-
-    tstep = mupif.TimeStep.TimeStep(1.,1.,10,'s')
-    app.solveStep(tstep)
-    mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
-    
-    app.terminate()
 
     #f = app.getField(FieldID.FID_Temperature, tstep.getTargetTime())
     #f.field2VTKData().tofile('temperature')
