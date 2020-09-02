@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     doc = db.WorkflowExecutions.find_one({'_id': weid})
     if (doc):
-        db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': state}})
+        db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': state, 'StartDate':None, 'EndDate':None, 'ScheduledDate':None}})
         print ('WEID: %s state set to \'%s\''%(weid, state))
     else:
         print('WorkflowExecution %s record not found'%(weid))
