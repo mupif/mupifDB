@@ -250,6 +250,10 @@ def getWorkflowExecutionParameter(id):
 @app.route('/executeworkflow/<ObjectId:id>')
 def executeworkflow (id):
     #print(id)
+    user = request.headers.get('From')
+    remoteAddr = request.remote_addr
+    print ("Execution request by %s from %s"%(user, remoteAddr))
+        
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
     c.execute()
     return redirect(url_for("get_workflowexecution", id=id))

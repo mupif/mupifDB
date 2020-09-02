@@ -73,9 +73,9 @@ class WorkflowExecutionIODataSet():
             if isinstance(io.get('ObjID', None), collections.Iterable):
                 for id in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'ObjID': id, 'Source':None, 'OriginId':None })
+                    data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': id, 'Source':None, 'OriginId':None })
             else: # single obj_id provided
-                data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'ObjID': io.get('ObjID', None), 'Source':None, 'OriginId':None })
+                data.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': io.get('ObjID', None), 'Source':None, 'OriginId':None })
         rec['Type']=type
         rec['DataSet'] = data
         result = db.IOData.insert_one(rec)
