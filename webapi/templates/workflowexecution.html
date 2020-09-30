@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block title %} {{ title }} {% endblock %}
+{% block content %} 
+WorkflowID: {{wid}}</br>
+Execution record ID: {{id}}</br>
+<dl>
+    <dt>Status:{{status['Status']}}</dt>
+    <dt>Start Date:{{status['Start Date']}}</dt>
+    <dt>End Date:{{status['End Date']}}</dt>
+    <dt></dt>
+</dl>
+
+Actions:</br>
+<ul>
+    <li> <a href={{ [server, "workflowexecutions/", id, "/inputs"] | join }}>Set inputs</a></li>
+    <li> <a href={{ [server, "executeworkflow/", id] | join }}>Schedule execution</a></li>
+    <li> <a href={{ [server, "workflowexecutions/", id, "/outputs"] | join }}>Discover outputs</a></li>
+</ul>
+{% endblock %}

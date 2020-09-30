@@ -1,0 +1,64 @@
+.sidenav {
+    height: 100%;
+    width: 160px;
+    float: left;
+    background-color: rgb(187, 200, 236);
+    /*padding-top: 20px;*/
+    clear:both;
+  }
+  
+  .sidenav a {
+    padding: 2px 2px 2px 4px;
+    text-decoration: none;
+    font-size: 25px;
+    color: #818181;
+    display: block;
+  }
+  
+  .sidenav a:hover {
+    color: #f1f1f1;
+  }
+  
+  .footer {
+      clear: both;
+      width: 100%;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+  
+  table, th, td {
+    border: 1px solid black;
+  }
+
+head {
+    clear: both;
+}
+
+.main {
+    clear: both;
+}
+
+body {
+    clear: both;
+    height: 600px;
+}
+  
+.right {
+    font-size: 16px; /* Increased text to enable scrolling */
+    padding: 0px 10px;
+    /*float: right;*/
+    /*width: 100%;*/
+    background-color: rgb(108, 199, 202);
+  }
+
+  .sidenav, .right {
+    height: 600px;		
+    height: 600px;
+    overflow: scroll;		
+    overflow: auto;
+ 
+    
+}
+

@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block title %} {{ title }} {% endblock %}
+{% block content %} 
+<table>
+    <tr><th>ID</th><th>Description</th><th>Workflows</th></tr>
+    {% for item in items %}
+    <TR>
+       <TD class="c1">{{item.id}}</TD>
+       <TD class="c2">{{item.Description}}</TD>
+       <TD class="c3"><a href={{ [ server, "usecases/", item.id, "/workflows"] | join }}>link</a> </TD>
+    </TR>
+    {% endfor %}
+    </table>
+{% endblock %}

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+    <link rel="stylesheet" href="/static/style.css" />
+    <head>
+        {% block head %}
+        <img src="/static/images/composelector_logo.png">
+        <p>MuPIFDB web interface</p>
+        <title>{% block title %}{% endblock %}</title>
+        {% endblock %}
+    </head>
+    <body>   
+        <div class="main">
+            {% include 'navigation.html' %}
+            <div class="right">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+        <div class="footer">
+            {% block footer %}
+            &copy; Copyright 2020 by CTU.
+            {% endblock %}
+        </div>
+    </body>
+</html>
