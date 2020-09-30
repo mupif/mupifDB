@@ -116,7 +116,7 @@ def get_usecases():
   usecases = mongo.db.UseCases
   output = []
   for s in usecases.find():
-    output.append({'id' : s['_id']})
+    output.append({'id' : s['_id'], 'Description' : s['Description']})
   return jsonify({'result' : output})
 
 @app.route('/usecases/<usecase>', methods=['GET'])
