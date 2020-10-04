@@ -2,7 +2,7 @@
     height: 100%;
     width: 160px;
     float: left;
-    background-color: rgb(187, 200, 236);
+    background-color: rgb(212, 212, 212);
     /*padding-top: 20px;*/
     clear:both;
   }
@@ -10,13 +10,14 @@
   .sidenav a {
     padding: 2px 2px 2px 4px;
     text-decoration: none;
-    font-size: 25px;
-    color: #818181;
+    font-size: 20px;
+    color: #000;
     display: block;
   }
   
   .sidenav a:hover {
-    color: #f1f1f1;
+    color: #2836fd;
+    background-color: rgb(230, 230, 230);
   }
   
   .footer {
@@ -50,7 +51,7 @@ body {
     padding: 0px 10px;
     /*float: right;*/
     /*width: 100%;*/
-    background-color: rgb(108, 199, 202);
+    background-color: rgb(238, 242, 255);
   }
 
   .sidenav, .right {
