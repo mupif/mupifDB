@@ -22,6 +22,7 @@ app.config['MONGO_URI'] = 'mongodb://localhost:27017/MuPIF'
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
 
 nameObjectIDpair = re.compile('([\w ]+){(\d+)}')
+nameObjectIDpairNone = re.compile('([\w ]+){None}')
 
 mongo = PyMongo(app)
 
@@ -164,11 +165,11 @@ def get_workflowexecution(id):
   we = mongo.db.WorkflowExecutions
   output = []
   print (str(id))
-  for s in we.find({"_id": id}):
-    log = None
-    if s['ExecutionLog'] is not None:
-      log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-      print (log)
+  #for s in we.find({"_id": id}):
+  #  log = None
+  #  if s['ExecutionLog'] is not None:
+  #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+  #    print (log)
     
     output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': log})
     return jsonify({'result' : output})
@@ -217,11 +218,16 @@ def setWorkflowExecutionParameter(id):
     for key, value in request.args.items():
       
       m = nameObjectIDpair.match (key)
+      mnone = nameObjectIDpairNone.match (key)
       if (m):
         name = m.group(1)
         objid = m.group(2)
         print(f'Setting {name}({objid}):{value}')
         inp.set(name, value, obj_id=int(objid))
+      elif (mnone):
+        name = mnone.group(1)
+        print(f'Setting {name}:{value}')
+        inp.set(name, value)
       else:
         print(f'Setting {key}:{value}')
         inp.set(key, value)
