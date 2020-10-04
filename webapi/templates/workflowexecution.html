@@ -15,5 +15,6 @@ Actions:</br>
     <li> <a href={{ [server, "workflowexecutions/", id, "/inputs"] | join }}>Set inputs</a></li>
     <li> <a href={{ [server, "executeworkflow/", id] | join }}>Schedule execution</a></li>
     <li> <a href={{ [server, "workflowexecutions/", id, "/outputs"] | join }}>Discover outputs</a></li>
+    <li> <a href={{ [RESTserver, "gridfs/", logID] | join }}> Execution log</a></li>
 </ul>
 {% endblock %}
