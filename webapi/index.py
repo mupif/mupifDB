@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Markup
+from flask import Flask, render_template, Markup, escape, redirect, url_for
 #from flask_wtf import FlaskForm
 #from wtforms import StringField
 from flask import request
@@ -40,7 +40,7 @@ def contact():
 
 @app.route('/usecases')
 def usecases():
-    r = requests.get(url=RESTserver+"usecases/any")
+    r = requests.get(url=RESTserver+"usecases")
     print (type(r.json()))
     data = r.json()
     return render_template('usecases.html', title="MuPIFDB web interface", server=server, items=data["result"])
@@ -87,20 +87,22 @@ def workflow (id):
 def initexecution(id):
     r = requests.get(url=RESTserver+"workflowexecutions/init/"+id)
     data = r.json()["result"]
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=server, wid=id, id = data, status=data)
+    return redirect(url_for("executionStatus", id=data))
 
 @app.route('/workflowexecutions/<id>')
 def executionStatus(id):
     r = requests.get(url=RESTserver+"workflowexecutions/"+str(id))
     data = r.json()["result"][0]
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=server, wid=data['WorkflowID'], id = id, status=data)
+    logID = data.get('ExecutionLog')
+    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=server, RESTserver=RESTserver, wid=data['WorkflowID'], id = id, logID=logID, status=data)
 
 @app.route('/executeworkflow/<id>')
 def executeworkflow(id):
     r = requests.get(url=RESTserver+'executeworkflow/'+id)
     r = requests.get(url=RESTserver+"workflowexecutions/"+str(id))
     data = r.json()["result"][0]
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=server, wid=data['WorkflowID'], id = id, status=data)
+    logID = data['ExecutionLog']
+    return redirect(url_for("executionStatus", id=id))
 
 
 
@@ -131,7 +133,7 @@ def setExecutionInputs(id):
             #source = request.form.getvalue('Source_%d'%c)
             #originID  = request.form.getvalue('OriginID_%d'%c)
             msg += 'Setting %s (ObjID %s) to %s [%s]</br>'%(name, objID, value, units)
-            payload[name]=value
+            payload[name+'{'+str(objID)+'}']=value
             #try:
             #    inp.set(name, value, objID)
             #    print (' OK<br>')
@@ -147,7 +149,7 @@ def setExecutionInputs(id):
     else:      
         # generate input form
         form = "<h3>Workflow: %s</h3>Input record for weid %s<table>"%(wid, id)
-        form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Unit</th></tr>"
+        form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
         c = 0
         print("huhuh")
         for i in inprec:
@@ -176,10 +178,10 @@ def getExecutionOutputs(id):
 
     # generate result table form
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>"%(wid, id)
-    form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Unit</th></tr>"
+    form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
     for i in outrec:
         print(i)
-        form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'], i['Value'], i.get('Units'))
+        form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'], i['Value'], escape(i.get('Units')))
     form+="</table>"
     form+="</br><a href=\""+server+"workflowexecutions/"+id+"\">Continue to Execution record "+id+"</a>"
     print (form)
