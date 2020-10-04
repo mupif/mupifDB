@@ -8,6 +8,7 @@ from mupifDB import workflowrunner
 from bson import ObjectId
 import gridfs
 import re
+from ast import literal_eval 
 from mupifDB import error
 
 #pool to handle workflow execution requests
@@ -255,6 +256,14 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
         if (type == 'mupif.Property'):
             print ('Mapping %s, units %s, value:%s'%(mupif.PropertyID[typeID], units,value))
             app.setProperty(mupif.Property.ConstantProperty(float(value), mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
+        elif (type == 'mupif.Field'):
+            # assume Field == ConstantField
+            print ('Mapping %s, units %s, value:%s'%(mupif.FieldID[typeID], units, value))
+            fvalue = literal_eval(value)
+            if (isinstance(fvalue, tuple)):
+                app.setField(mupif.ConstantField.ConstantField(None, mupif.FieldID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
+            else:
+                raise TypeError ('Tuple expected when handling io param of type %s'%type)
         else:
             raise KeyError ('Handling of io param of type %s not implemented'%type)
     elif (value is None) and (compulsory is True):
