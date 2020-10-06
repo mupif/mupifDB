@@ -165,14 +165,13 @@ def get_workflowexecution(id):
   we = mongo.db.WorkflowExecutions
   output = []
   print (str(id))
-  #for s in we.find({"_id": id}):
-  #  log = None
-  #  if s['ExecutionLog'] is not None:
-  #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-  #    print (log)
-    
-    output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': log})
-    return jsonify({'result' : output})
+  for s in we.find({"_id": id}):
+      #  log = None
+      #  if s['ExecutionLog'] is not None:
+      #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+      #    print (log)
+      output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+  return jsonify({'result' : output})
 
 
 @app.route('/workflowexecutions/<ObjectId:id>/inputs')
