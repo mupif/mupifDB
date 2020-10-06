@@ -84,7 +84,7 @@ def help():
     <tr><td>/workflowexecutions/ID</td><td>Show execution ID status</td></tr>
     <tr><td>/workflowexecutions/ID/inputs</td><td>Show inputs for execution ID </td></tr>
     <tr><td>/workflowexecutions/ID/outputs</td><td>Show outputs for execution ID </td></tr>
-    <tr><td>/workflowexecutions/ID/set?NAME=value</td><td>Sets input parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>
+    <tr><td>/workflowexecutions/ID/set?NAME=value</td><td>Sets input parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id. The value is string with format depending on input type. If type is mupif.Property then value should be string convertible to number (integer or floating point). If type is mupif.Field then string should be convertible to python tuple used to initialize ConstantField (Example "permeability=(1.e-3, 1.e-3, 1.e-3)").</td></tr>
     <tr><td>/workflowexecutions/ID/get?NAME</td><td>Gets output parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>
     <tr><td>/executeworkflow/ID</td><td>Execute workflow ID. Note that scheduled workflow execution can be executed only once from "Created" state, for another executions one has to schedule new execution and set inputs.</td></tr>
     <tr><td>/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
@@ -165,14 +165,13 @@ def get_workflowexecution(id):
   we = mongo.db.WorkflowExecutions
   output = []
   print (str(id))
-  #for s in we.find({"_id": id}):
-  #  log = None
-  #  if s['ExecutionLog'] is not None:
-  #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-  #    print (log)
-    
-    output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': log})
-    return jsonify({'result' : output})
+  for s in we.find({"_id": id}):
+      #  log = None
+      #  if s['ExecutionLog'] is not None:
+      #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+      #    print (log)
+      output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+  return jsonify({'result' : output})
 
 
 @app.route('/workflowexecutions/<ObjectId:id>/inputs')
