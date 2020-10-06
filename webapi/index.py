@@ -17,11 +17,16 @@ server = "http://127.0.0.1:5000/"
 
 @app.route('/')
 def homepage():
-    return render_template('basic.html', title="MuPIFDB web interface", body="Welcome to MuPIFDB web interface")
+    return render_template('basic.html', title="MuPIFDB web interface", body=Markup("<h3>Welcome to MuPIFDB web interface</h3>"))
 
 @app.route('/about')
 def about():
-    return render_template('basic.html', title="MuPIFDB web interface", body="Welcome to MuPIFDB web interface")
+    msg = """
+        <h3>Welcome to MuPIFDB web interface</h3>
+        <p>This web interface allows to use MupifDB REST API from web browser in a user friendly way.</p>
+        <p>It allows to inspect all the stored data and to intialize, schedule and monitor individual workflow executions.</p> 
+    """
+    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
 
 @app.route('/status')
 def status():
