@@ -18,6 +18,7 @@ pool = multiprocessing.Pool()
 
 
 emptyWorkflowExecutionRecord = {'WorkflowID': None, 
+                                'WorkflowVer:': None,
                                 'Status': "Created",
                                 'StartDate': None,
                                 'EndDate': None,
@@ -27,9 +28,11 @@ emptyWorkflowExecutionRecord = {'WorkflowID': None,
                                 'Outputs':None}
 
 
-def insertWorkflowDefinition (db, id, description, version, source, useCases, workflowInputs, workflowOutputs):
+def insertWorkflowDefinition (db, wid, description, source, useCases, workflowInputs, workflowOutputs):
     """
-    Inserts new workflow definition into DB
+    Inserts new workflow definition into DB. 
+    Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
+    The old versions (with the same wid but different version) are stored in workflowsHistory.
     @param db database
     @param id unique workflow id
     @param description Description
@@ -39,19 +42,59 @@ def insertWorkflowDefinition (db, id, description, version, source, useCases, wo
     @workflowInputs workflow input metadata (list of dicts)
     @workflowOutputs workflow output metadata (list of dicts)
     """
-    rec = {'_id': id, 'Description':description,'Version':version, 'Source':source, 'UseCases':useCases, 'IOCard': None}
-    Inputs = []
-    for i in workflowInputs:
-        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
-        Inputs.append(irec)
-    Outputs = []
-    for i in workflowOutputs:
-        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
-        Outputs.append(irec)
-    rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
+    # prepare document to insert
+    # save workflow source (python script) to gridfs
+    with open(source, 'rb') as f:
+            sourceID=fs.put(f, filename="workflow_"+wid+","+version+".py")
+    
+    rec = {'wid': wid, 'Description':description,'Source':sourceID, 'UseCases':useCases, 'IOCard': None}
+        Inputs = []
+        for i in workflowInputs:
+            irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
+            Inputs.append(irec)
+        Outputs = []
+        for i in workflowOutputs:
+            irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
+            Outputs.append(irec)
+        rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
+    
+    # first check if workflow with wid already exist in workflows collections
+    id = db.Workflows.find_one({"wid":wid})
+    if (id is None): #can safely create a new doment in workflows collection
+        version = 1
+        rec.append({'Version':version}) 
+        result = db.Workflows.insert_one(rec)
+        return result.inserted_id 
+    else:
+        # the workflow already exists, need to make a new version
+        # clone latest version to History
+        id.forEach(function(user_data){
+	        db.WorkflowsHistory.insert(user_data)})
+        # update the latest document
+        version = int(id['Version']) + 1
+        rec.append({'Version':version}) 
 
-    result = db.Workflows.insert_one(rec)
-    return result.inserted_id 
+        result = db.Workflows.db.test.find_one_and_update({'wid':wid}, '$set': rec, return_document=ReturnDocument.AFTER)
+        return result.inserted_id
+
+def getWorkflowDoc (wid, version=-1):
+    """ Returns workflow document with given wid and version"""
+    wdoclatest = db.Workflows.find_one({"wid": wid})
+    if (wdoclatest is None):
+            raise KeyError ("Workflow document wit WID" + wid +" not found")
+    lastversion = wdoclatest['Version']
+    if (version == -1 or version == lastversion): #get the latest one
+        return wdoclatest
+    elif (version < lastversion):
+        wdoc = db.WorkflowsHistory.find_one({"wid": wid, 'Version': version})
+        if (wdoc is None):
+            raise KeyError ("Workflow document wit WID" + wid + "Version"+version+" not found")
+        return wdoc
+    else:
+        raise KeyError ("Workflow document wit WID" + wid + "Version"+version+": bad version")
+
+
+
 
 class WorkflowExecutionIODataSet():
     def __init__(self, db, wec, IOid):
@@ -60,10 +103,10 @@ class WorkflowExecutionIODataSet():
         self.IOid = IOid
     
     @staticmethod
-    def create (db, workflowID, type='Input'):    
+    def create (db, workflowID, type='Input', workflowVer=-1):    
         rec = {'Type': type, 'DataSet': []}
 
-        wdoc = db.Workflows.find_one({"_id": workflowID})
+        wdoc = getWorkflowDoc (workflowID, version=workflowVer)
         if (wdoc is None):
             raise KeyError ("Workflow document wit ID" + workflowID +" not found")
 
@@ -158,17 +201,16 @@ class WorkflowExecutionContext():
         self.executionID = executionID
 
     @staticmethod
-    def create (db, workflowID, requestedBy):
+    def create (db, workflowID, requestedBy, workflowVer=-1):
         """
         """
         #first query for workflow document
-        wdoc = db.Workflows.find_one({"_id": workflowID})
+        wdoc = getWorkflowDoc (workflowID, version=workflowVer)
         if (wdoc is not None):
-
-
             #IOCard = wdoc['IOCard']
             rec = emptyWorkflowExecutionRecord.copy()
             rec['WorkflowID']=workflowID
+            rec['WorkflowVer']= wdoc['Version']
             rec['RequestedBy'] = requestedBy
             #inputs = []
             #for io in IOCard['Inputs']: #loop over workflow inputs
@@ -182,7 +224,7 @@ class WorkflowExecutionContext():
             return WorkflowExecutionContext(db, result.inserted_id)
 
         else:
-            raise KeyError ("Workflow record " + workflowID + " not found")
+            raise KeyError ("Workflow record " + workflowID + ", Version "+version+" not found")
 
     def _getWorkflowExecutionDocument(self):
         """
@@ -199,7 +241,8 @@ class WorkflowExecutionContext():
         """
         doc = self._getWorkflowExecutionDocument()
         wid = doc['WorkflowID']
-        wdoc = self.db.Workflows.find_one({"_id": wid})
+        version = doc['WorkflowVer']
+        wdoc = getWorkflowDoc (wid, version=version)
         if (wdoc is None):
             raise KeyError ("Workflow document wit ID" + wid +" not found")
         return wdoc

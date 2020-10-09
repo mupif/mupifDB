@@ -143,7 +143,10 @@ def executeWorkflow(weid):
             log.info("temp dir created")
             #copy workflow source to tempDir
             try:
-                urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
+                wpy = db.gridfs.get(wd['Source']).read()
+                with open ("tempDir+'/w.py", "w") as f:
+                    f.write(wpy)
+                #urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
             except Exception as e:
                 log.error (str(e))
                 # set execution code to failed
