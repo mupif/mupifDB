@@ -234,7 +234,7 @@ class WorkflowExecutionContext():
         print ('Scheduling the new execution:%s'%(self.executionID))
         #return pool.apply_async(self.__executeWorkflow, (wed, wd)).wait()
         print (wed)
-        print (wd)
+        #print (wd)
 
 
         if (wed['Status']=='Created'):
