@@ -182,7 +182,7 @@ def get_workflowexecutioninputs(id):
   output = []
   if (wid is not None):
     inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
-    print (inp)
+    #print (inp)
     output = inp['DataSet']
     
   return jsonify({'result' : output})
@@ -196,7 +196,7 @@ def get_workflowexecutionoutputs(id):
 
   if (wid is not None):
     inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
-    print (inp)
+    #print (inp)
     output=inp['DataSet']
 
   return jsonify({'result' : output})
@@ -213,7 +213,7 @@ def setWorkflowExecutionParameter(id):
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
     print (c)
     inp = c.getIODataDoc ('Inputs')
-    print (inp)
+    #print (inp)
     for key, value in request.args.items():
       
       m = nameObjectIDpair.match (key)
@@ -332,8 +332,8 @@ def schedulerStat2():
     stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)
     #render some graphics
     gauge = pygal.Pie(width=800, height=300, inner_radius=.4, print_values=True)
-    gauge.add('Finished executions', stat['finishedExecutions'])
-    gauge.add('Failed executions', stat['failedExecutions'])
+    #gauge.add('Finished executions', stat['finishedExecutions'])
+    #gauge.add('Failed executions', stat['failedExecutions'])
     gauge.add('Created executions', stat['createdExecutions'])
     gauge.add('Pending executions', stat['pendingExecutions'])
     gauge.add('Scheduled executions', stat['scheduledExecutions'])
