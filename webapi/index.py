@@ -27,9 +27,13 @@ def about():
 def status():
     r = requests.get(url=RESTserver+"status")
     data=r.json()['result'][0]
-    msg = "<dl><dt>mupifDBStatus:"+data['mupifDBStatus']+"</dt>"
-    msg+= "<dl>schedulerStatus:"+data['schedulerStatus']+"</dl>"
-    msg+= "</dt>"
+    stat = data['schedulerStats']
+    msg = "<dl><dt>MupifDBStatus:"+data['mupifDBStatus']+"</dt>"
+    msg+= "<dt>SchedulerStatus:"+data['schedulerStatus']+"</dt>"
+    msg+= "    <dd>Total    executions:"+stat['totalExecutions']+"</dd>"
+    msg+= "    <dd>Finished executions:"+stat['finishedExecutions']+"</dd>"
+    msg+= "    <dd>Failed   executions:"+stat['failedExecutions']+"</dd>"
+    msg+= "</dl>"
     msg+= "<img src=\""+RESTserver+"schedulerStats/total2.svg"+"\">"
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
 
