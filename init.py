@@ -13,6 +13,7 @@ if (not db):
 
     #force creation of empty collections
     db.create_collection("Workflows")
+    db.create_collection("WorkflowsHistory")
     db.create_collection("WorkflowExecutions")
     db.create_collection("IOData")
     print ("MuPIF DB init completed")
