@@ -35,9 +35,9 @@ def status():
     stat = data['schedulerStats']
     msg = "<dl><dt>MupifDBStatus:"+data['mupifDBStatus']+"</dt>"
     msg+= "<dt>SchedulerStatus:"+data['schedulerStatus']+"</dt>"
-    msg+= "    <dd>Total    executions:"+stat['totalExecutions']+"</dd>"
-    msg+= "    <dd>Finished executions:"+stat['finishedExecutions']+"</dd>"
-    msg+= "    <dd>Failed   executions:"+stat['failedExecutions']+"</dd>"
+    msg+= "    <dd>Total    executions:"+str(stat['totalExecutions'])+"</dd>"
+    msg+= "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
+    msg+= "    <dd>Failed   executions:"+str(stat['failedExecutions'])+"</dd>"
     msg+= "</dl>"
     msg+= "<img src=\""+RESTserver+"schedulerStats/total2.svg"+"\">"
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
