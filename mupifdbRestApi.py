@@ -12,6 +12,11 @@ import os,psutil
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 import pygal
 
+# for small stat use plain matplotlib 
+import matplotlib.pyplot as plt
+plt.switch_backend('agg')
+from io import BytesIO
+import base64
 
 app = Flask(__name__)
 app.json_encoder = MongoJSONEncoder
@@ -66,6 +71,7 @@ def help():
     <tr><td><a href="/workflows">/workflows</a></td><td>List of Workflows</td></tr>
     <tr><td><a href="/workflowexecutions">/workflowexecutions</a></td><td>List of Workflow Executions</td></tr>
     <tr><td><a href="/schedulerStats/total2.svg">/schedulerStats/total2.svg</a></td><td>Scheduler statistics (svg chart)</td></tr>
+    <tr><td><a href="/schedulerStats/hourly.svg">/schedulerStats/hourly.svg</a></td><td>Scheduler hourly statistics (svg chart)</td></tr>
     <tr><td><a href="/schedulerStats/weekly.svg">/schedulerStats/weekly.svg</a></td><td>Scheduler weekly statistics (svg chart)</td></tr>
     </table>
 
@@ -346,7 +352,7 @@ def schedulerStat2():
 @app.route("/schedulerStats/weekly.svg")
 def schedulerStatWeekly():
     ws = mupifDB.schedulerstat.getWeeklyExecutionStat(mongo.db)
-    line_chart = pygal.Bar(width=800, height=300, explicit_size=True)
+    line_chart = pygal.Bar(width=800, height=300, explicit_size=True, legend_at_bottom=True)
     line_chart.title = 'MupifDB Scheduler Usage Weekly Statistics'
     #line_chart.x_labels = map(str, range(2002, 2013))
     for label, data in ws.items():
@@ -356,12 +362,42 @@ def schedulerStatWeekly():
 @app.route("/schedulerStats/hourly.svg")
 def schedulerStatHourly():
     ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db)
-    line_chart = pygal.Bar(width=800, height=300, explicit_size=True)
-    line_chart.title = 'MupifDB Scheduler Usage Horly Statistics (last 48 hrs)'
+    line_chart = pygal.Bar(width=800, height=300, explicit_size=True, legend_at_bottom=True)
+    line_chart.title = 'MupifDB Scheduler Usage Hourly Statistics (last 48 hrs)'
     line_chart.x_labels = ws['xlabels']
     line_chart.add('ScheduledExecutions', ws['ScheduledExecutions'])
     line_chart.add('ProcessedExecutions', ws['ProcessedExecutions'])
     return line_chart.render_response()    
+
+@app.route("/schedulerStats/loadsmall.svg")
+def schedulerStatSmall():
+    ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db, nrec=24)
+    plt.figure(figsize=(1.5,0.5))
+    plt.bar(ws['xlabels'], ws['ProcessedExecutions'])
+    plt.yticks([])
+    plt.xticks([])
+    #plt.box(False)
+    img = io.StringIO()
+    plt.savefig(img, format='svg', transparent=True, bbox_inches='tight')
+    #clip off the xml headers from the image
+    svg_img = '<svg' + img.getvalue().split('<svg')[1]
+    return svg_img
+    
+@app.route("/schedulerStats/loadsmall.png")
+def schedulerStatSmallPng():
+    ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db, nrec=24)
+    plt.figure(figsize=(3,0.5))
+    plt.bar(ws['xlabels'], ws['ProcessedExecutions'])
+    plt.yticks([])
+    plt.xticks([])
+    #plt.box(False)
+    img = BytesIO()
+    plt.savefig(img, format='png', transparent=True, bbox_inches='tight')
+    plot_url = base64.b64encode(img.getvalue()).decode('utf8')
+    return "<img src=\"data:image/png;charset=utf-8;base64,"+plot_url+"\">"
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
