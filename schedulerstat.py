@@ -5,10 +5,10 @@ import dateutil.parser
 import pygal
 
 
-def getHourlyExecutionStat(db):
-    # for last 48 hours
-    hourlyScheduledExecutions = [0]*48
-    hourlyFinishedExecutions  = [0]*48
+def getHourlyExecutionStat(db, nrec=48):
+    # for last nrec hours
+    hourlyScheduledExecutions = [0]*nrec
+    hourlyFinishedExecutions  = [0]*nrec
     #get the current date
     now = datetime.datetime.now()
     nowh1 = now+datetime.timedelta(hours=1, minutes=-now.minute, seconds=-now.second, microseconds=-now.microsecond) 
@@ -24,9 +24,9 @@ def getHourlyExecutionStat(db):
             #print ("Scheduled:"+str(scheduledDate))
             # get difference in hours
             diff = int((nowh1-scheduledDate).total_seconds()//3600)
-            if (diff < 48):
-                print (diff)
-                hourlyScheduledExecutions[47-diff]+=1
+            if (diff < nrec):
+                #print (diff)
+                hourlyScheduledExecutions[nrec-1-diff]+=1
         if ('EndDate' in wed.keys()):
             finishedDate = wed['EndDate']
             if (finishedDate):
@@ -36,11 +36,11 @@ def getHourlyExecutionStat(db):
                 # get difference in hours
                 diff = int((nowh1-finishedDate).total_seconds() // 3600)
                 #print("Monday2:",monday2, diff)
-                if (diff < 48):
-                    hourlyFinishedExecutions[47-diff]+=1
+                if (diff < nrec):
+                    hourlyFinishedExecutions[nrec-1-diff]+=1
     xlabels=[]
-    startDateTime = nowh1-datetime.timedelta(hours=48)
-    for hr in range(48):
+    startDateTime = nowh1-datetime.timedelta(hours=nrec)
+    for hr in range(nrec):
         xlabels.append((startDateTime+datetime.timedelta(hours=hr)).hour)
     return {'ScheduledExecutions':hourlyScheduledExecutions, 'ProcessedExecutions':hourlyFinishedExecutions, 'xlabels':xlabels}
 

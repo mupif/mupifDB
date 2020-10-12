@@ -39,7 +39,7 @@ def status():
     msg+= "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
     msg+= "    <dd>Failed   executions:"+str(stat['failedExecutions'])+"</dd>"
     msg+= "</dl>"
-    msg+= "<img src=\""+RESTserver+"schedulerStats/total2.svg"+"\">"
+    msg+= "<img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\">"
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
 
 @app.route('/contact')
