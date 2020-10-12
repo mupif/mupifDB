@@ -353,6 +353,15 @@ def schedulerStatWeekly():
         line_chart.add(label, data)
     return line_chart.render_response()    
 
+@app.route("/schedulerStats/hourly.svg")
+def schedulerStatHourly():
+    ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db)
+    line_chart = pygal.Bar(width=800, height=300, explicit_size=True)
+    line_chart.title = 'MupifDB Scheduler Usage Horly Statistics (last 48 hrs)'
+    line_chart.x_labels = ws['xlabels']
+    line_chart.add('ScheduledExecutions', ws['ScheduledExecutions'])
+    line_chart.add('ProcessedExecutions', ws['ProcessedExecutions'])
+    return line_chart.render_response()    
 
 if __name__ == '__main__':
     app.run(debug=True)
