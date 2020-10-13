@@ -1,6 +1,6 @@
 # MuPIFDB 
 
-MuPIF is modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. MuPIFDB is database layer (based on MongoDB) and workflow manager for MuPIF with REST API.
+MuPIF is modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. MuPIFDB is database layer (based on MongoDB) and workflow manager/scheduler for MuPIF with REST API.
 
 ## Project website
 http://www.mupif.org
@@ -15,8 +15,11 @@ http://www.mupif.org
 
 ## Runnig
 *export FLASK_APP=mupifdbRestApi.py*
+
 *nohup python3 -m flask run --host 172.30.0.1 &*
+
 To support statistics graphs (using schedulerstat.py), the schedulerstat.py should be run periodically (using cron) to regenerate the charts. Dynamic generation is costly. Suggested crontab entry to update charts every 5 minutes:
+
 **/5 * * * * python3 /home/bp/mupifDB/schedulerstat.py -w -h*
 
 
