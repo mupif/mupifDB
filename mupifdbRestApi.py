@@ -1,6 +1,6 @@
 # mupifDbRestApi.py
 
-from flask import Flask,redirect, url_for
+from flask import Flask,redirect, url_for, send_file
 from flask import jsonify
 from flask import request
 from flask_pymongo import PyMongo
@@ -70,7 +70,6 @@ def help():
     <tr><td><a href="/usecases">/usecases</a></td><td>List of UseCases</td></tr>
     <tr><td><a href="/workflows">/workflows</a></td><td>List of Workflows</td></tr>
     <tr><td><a href="/workflowexecutions">/workflowexecutions</a></td><td>List of Workflow Executions</td></tr>
-    <tr><td><a href="/schedulerStats/total2.svg">/schedulerStats/total2.svg</a></td><td>Scheduler statistics (svg chart)</td></tr>
     <tr><td><a href="/schedulerStats/hourly.svg">/schedulerStats/hourly.svg</a></td><td>Scheduler hourly statistics (svg chart)</td></tr>
     <tr><td><a href="/schedulerStats/weekly.svg">/schedulerStats/weekly.svg</a></td><td>Scheduler weekly statistics (svg chart)</td></tr>
     </table>
@@ -309,93 +308,24 @@ def status():
     output.append({'mupifDBStatus':mupifDBStatus, 'schedulerStatus':schedulerStatus, 'schedulerStats':stat})
     return jsonify({'result' : output})  
     
-@app.route("/schedulerStats/total.svg")
-def schedulerStat():
-    # get some scheduler stats
-    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)
-    #render some graphics
-    gauge = pygal.SolidGauge(
-        width=800, height=300, explicit_size=True,
-        half_pie=True, inner_radius=0.70,
-        style=pygal.style.styles['default'](value_font_size=10))
-    #gauge = pygal.SolidGauge(inner_radius=0.70)
-    percent_formatter = lambda x: '{:.10g}%'.format(x)
-    value_formatter = lambda x: '{:.10g}'.format(x)
-    gauge.value_formatter = percent_formatter
-
-    gauge.add('Finished executions', [{'value': stat['finishedExecutions'], 'max_value': stat['totalExecutions']}], formatter=value_formatter)
-    gauge.add('Failed executions', [{'value': round(100*stat['failedExecutions']/stat['totalExecutions']), 'max_value': 100}])
-    gauge.add('Created executions', [{'value': round(100*stat['createdExecutions']/stat['totalExecutions']), 'max_value': 100}])
-    gauge.add('Pending executions', [{'value': round(100*stat['pendingExecutions']/stat['totalExecutions']), 'max_value': 100}])
-    gauge.add('Scheduled executions', [{'value': round(100*stat['scheduledExecutions']/stat['totalExecutions']), 'max_value': 100}])
-    gauge.add('Running executions', [{'value': round(100*stat['runningExecutions']/stat['totalExecutions']), 'max_value': 100}])
-
-    return gauge.render_response()
-
-@app.route("/schedulerStats/total2.svg")
-def schedulerStat2():
-    # get some scheduler stats
-    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)
-    #render some graphics
-    gauge = pygal.Pie(width=800, height=300, inner_radius=.4, print_values=True)
-    #gauge.add('Finished executions', stat['finishedExecutions'])
-    #gauge.add('Failed executions', stat['failedExecutions'])
-    gauge.add('Created executions', stat['createdExecutions'])
-    gauge.add('Pending executions', stat['pendingExecutions'])
-    gauge.add('Scheduled executions', stat['scheduledExecutions'])
-    gauge.add('Running executions', stat['runningExecutions'])
-
-    return gauge.render_response()
- 
-
-
 @app.route("/schedulerStats/weekly.svg")
 def schedulerStatWeekly():
-    ws = mupifDB.schedulerstat.getWeeklyExecutionStat(mongo.db)
-    line_chart = pygal.Bar(width=800, height=300, explicit_size=True, legend_at_bottom=True)
-    line_chart.title = 'MupifDB Scheduler Usage Weekly Statistics'
-    #line_chart.x_labels = map(str, range(2002, 2013))
-    for label, data in ws.items():
-        line_chart.add(label, data)
-    return line_chart.render_response()    
+    return send_file("static/images/scheduler_weekly_stat.svg", cache_timeout=60)  
 
 @app.route("/schedulerStats/hourly.svg")
 def schedulerStatHourly():
-    ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db)
-    line_chart = pygal.Bar(width=800, height=300, explicit_size=True, legend_at_bottom=True)
-    line_chart.title = 'MupifDB Scheduler Usage Hourly Statistics (last 48 hrs)'
-    line_chart.x_labels = ws['xlabels']
-    line_chart.add('ScheduledExecutions', ws['ScheduledExecutions'])
-    line_chart.add('ProcessedExecutions', ws['ProcessedExecutions'])
-    return line_chart.render_response()    
+    return send_file("static/images/scheduler_hourly_stat.svg", cache_timeout=60)  
+
 
 @app.route("/schedulerStats/loadsmall.svg")
 def schedulerStatSmall():
-    ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db, nrec=24)
-    plt.figure(figsize=(1.5,0.5))
-    plt.bar(ws['xlabels'], ws['ProcessedExecutions'])
-    plt.yticks([])
-    plt.xticks([])
-    #plt.box(False)
-    img = io.StringIO()
-    plt.savefig(img, format='svg', transparent=True, bbox_inches='tight')
-    #clip off the xml headers from the image
-    svg_img = '<svg' + img.getvalue().split('<svg')[1]
-    return svg_img
+    return send_file('static/images/scheduler_hourly_stat_small.svg', cache_timeout=60) 
+
     
 @app.route("/schedulerStats/loadsmall.png")
 def schedulerStatSmallPng():
-    ws = mupifDB.schedulerstat.getHourlyExecutionStat(mongo.db, nrec=24)
-    plt.figure(figsize=(3,0.5))
-    plt.bar(ws['xlabels'], ws['ProcessedExecutions'])
-    plt.yticks([])
-    plt.xticks([])
-    #plt.box(False)
-    img = BytesIO()
-    plt.savefig(img, format='png', transparent=True, bbox_inches='tight')
-    plot_url = base64.b64encode(img.getvalue()).decode('utf8')
-    return "<img src=\"data:image/png;charset=utf-8;base64,"+plot_url+"\">"
-
+    return send_file('static/images/scheduler_hourly_stat_small.png', cache_timeout=60) 
+    
 
 
 
