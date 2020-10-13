@@ -13,6 +13,17 @@ http://www.mupif.org
 ## Instalation
 *git clone https://github.com/mupif/mupifDB.git mupifDB.git*
 
+## Runnig
+*export FLASK_APP=mupifdbRestApi.py*
+*nohup python3 -m flask run --host 172.30.0.1 &*
+To support statistics graphs (using schedulerstat.py), the schedulerstat.py should be run periodically (using cron) to regenerate the charts. Dynamic generation is costly. Suggested crontab entry to update charts every 5 minutes:
+**/5 * * * * python3 /home/bp/mupifDB/schedulerstat.py -w -h*
+
+
+
+
+
+
 ## License
 MuPIF has been developped at Czech Technical University by Borek Patzak and coworkers and is available under GNU Library or Lesser General Public License version 3.0 (LGPLv3).
 

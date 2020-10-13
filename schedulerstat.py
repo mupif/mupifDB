@@ -3,7 +3,17 @@ from timeit import default_timer as timer
 import datetime
 import dateutil.parser
 import pygal
+import getopt, sys
+import pygal
 
+# for small stat use plain matplotlib 
+import matplotlib.pyplot as plt
+plt.switch_backend('agg')
+from io import BytesIO
+import base64
+
+# directory where to save generated figs
+imageDir = "/home/bp/mupifDB/static/images/"
 
 def getHourlyExecutionStat(db, nrec=48):
     # for last nrec hours
@@ -118,25 +128,75 @@ def getGlobalStat(db):
         'scheduledExecutions':scheduledExecutions,
         'runningExecutions':runningExecutions}
 
+def usage():
+    print ("schedulerstat [-w] [-h]")
+    print ("  -w generates weekly (last 52 weeks) statistics")
+    print ("  -h generates hourly statistics")
 
 if __name__ == '__main__':
     client = MongoClient()                                                                                                                                                                                 
     db = client.MuPIF
 
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "wh")
+    except getopt.GetoptError as err:
+        # print help information and exit:
+        usage()
+        sys.exit(2)
+
+    weekly = False
+    hourly = False
+    # override by commandline setting, if provided
+    for o, a in opts:
+        if o in ("-w"):
+            weekly = True
+        elif o in ("-h"):
+            hourly = True
+
     start = timer ()
+    if (weekly):
+        ws = getWeeklyExecutionStat(db)
+        line_chart = pygal.Bar(width=800, height=300, explicit_size=True, legend_at_bottom=True)
+        line_chart.title = 'MupifDB Scheduler Usage Weekly Statistics'
+        #line_chart.x_labels = map(str, range(2002, 2013))
+        for label, data in ws.items():
+            line_chart.add(label, data)
+        line_chart.render_to_file (imageDir+"scheduler_weekly_stat.svg")
+    if (hourly):
+        ws = getHourlyExecutionStat(db)
+        line_chart = pygal.Bar(width=800, height=300, explicit_size=True, legend_at_bottom=True)
+        line_chart.title = 'MupifDB Scheduler Usage Hourly Statistics (last 48 hrs)'
+        line_chart.x_labels = ws['xlabels']
+        line_chart.add('ScheduledExecutions', ws['ScheduledExecutions'])
+        line_chart.add('ProcessedExecutions', ws['ProcessedExecutions'])
+        line_chart.render_to_file(imageDir+"scheduler_hourly_stat.svg")    
+        # generate small 24 hrs stat badge
+        ws = getHourlyExecutionStat(db, nrec=48)
+        xl = ws['xlabels']
+        xt = []
+        xtl = []
+        for i in range(len(xl)):
+            if xl[i] % 6 == 0:
+               xt.append(i)
+               xtl.append(xl[i])
+        print (ws)
+        print (xt)
+        print (xtl)
+        plt.figure(figsize=(1.5,0.5))
+        plt.bar(ws['xlabels'], ws['ProcessedExecutions'])
+        plt.yticks([])
+        plt.xticks(xt, xtl, fontsize="4")
+        #plt.box(False)
+        #with open (imageDir+"scheduler_hourly_stat.svg", "w") as img:
+        plt.savefig(imageDir+"scheduler_hourly_stat_small.svg", format='svg', transparent=True, bbox_inches='tight')
+        #clip off the xml headers from the image
+        #svg_img = '<svg' + img.getvalue().split('<svg')[1]
+        #return svg_img
+        #with open (imageDir+"scheduler_hourly_stat.png","w") as img:
+        plt.savefig(imageDir+"scheduler_hourly_stat_small.png", format='png', transparent=False, bbox_inches='tight')
+
     print (getGlobalStat(db))
     end=timer()
     print ('getGlobalStat took %s'%(end-start))
 
-    start=timer()
-    ws = getHourlyExecutionStat(db)
-    print(ws)
-    line_chart = pygal.Bar()
-    line_chart.title = 'MupifDB Scheduler Usage Hourly Statistics'
-    #line_chart.x_labels = map(str, range(2002, 2013))
-    for label, data in ws.items():
-        line_chart.add(label, data)
-    line_chart.render()
-    line_chart.render_to_file('hourly.svg')
-    end=timer()                                                                                                                                                                                            
-    print ('hourlyStat took %s'%(end-start))   
+ 
