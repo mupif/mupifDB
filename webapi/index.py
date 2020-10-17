@@ -13,8 +13,8 @@ app = Flask(__name__)
 app.url_map.converters['objectid'] = ObjectIdConverter
 
 RESTserver="http://172.30.0.1:5000/"
-#server = "http://172.30.0.1:5555/"
-server = "http://127.0.0.1:5000/"
+server = "http://172.30.0.1:5555/"
+#server = "http://127.0.0.1:5000/"
 
 @app.route('/')
 def homepage():
@@ -165,7 +165,7 @@ def setExecutionInputs(id):
         for i in inprec:
             print(i)
             type = i['Type']
-            if (i.get('Compulsory', False) == "True"):
+            if (i.get('Compulsory', False) == True):
                 required = "required"
             else:
                 required = ""
