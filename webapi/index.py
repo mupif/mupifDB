@@ -13,7 +13,8 @@ app = Flask(__name__)
 app.url_map.converters['objectid'] = ObjectIdConverter
 
 RESTserver="http://172.30.0.1:5000/"
-server = "http://172.30.0.1:5555/"
+#server = "http://172.30.0.1:5555/"
+server = "http://127.0.0.1:5000/"
 
 @app.route('/')
 def homepage():
@@ -163,7 +164,19 @@ def setExecutionInputs(id):
         print("huhuh")
         for i in inprec:
             print(i)
-            form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" /></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], i.get('Units'))
+            type = i['Type']
+            if (i.get('Compulsory', False) == "True"):
+                required = "required"
+            else:
+                required = ""
+            if (type == "mupif.Property"):
+                # float assumed
+                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
+            elif (type == "mupif.Field"):
+               form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
+            else:
+                #fallback input no check except for required
+                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
             c+= 1
         form+="</table>"
         form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>"%id
