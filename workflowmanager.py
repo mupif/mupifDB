@@ -42,11 +42,11 @@ def insertWorkflowDefinition (db, id, description, version, source, useCases, wo
     rec = {'_id': id, 'Description':description,'Version':version, 'Source':source, 'UseCases':useCases, 'IOCard': None}
     Inputs = []
     for i in workflowInputs:
-        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
-        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
 
