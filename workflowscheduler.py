@@ -50,17 +50,18 @@ poolsize = 3
 statusLock = multiprocessing.Lock()
 statusArray = multiprocessing.Array(ctypes.c_int, [1,0,0,0], lock=False)
 
-# open 
-with (statusLock):  
-    #create new empty file to back memory map on disk
-    fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
 
+def procInit ():
+    #create new empty file to back memory map on disk
+    fd = os.open('/tmp/workflowscheduler', os.O_RDWR)
     # Create the mmap instace with the following params:
     # fd: File descriptor which backs the mapping or -1 for anonymous mapping
     # length: Must in multiples of PAGESIZE (usually 4 KB)
     # flags: MAP_SHARED means other processes can share this mmap
     # prot: PROT_WRITE means this process can write to this mmap
     buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
+
+
 
 def updateStatRunning():
     with (statusLock):
@@ -200,7 +201,7 @@ def stop ():
 
 
 atexit.register(stop)
-pool = multiprocessing.Pool(processes=poolsize)
+pool = multiprocessing.Pool(processes=poolsize, initializer=procinit)
 
 
 if __name__ == '__main__':
@@ -210,6 +211,9 @@ if __name__ == '__main__':
     setupLogger(fileName="scheduler.log")
     with (statusLock):  
         statusArray[index.status] = 1
+        # open 
+        #create new empty file to back memory map on disk
+        fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
         #zero out the file to ensure it's the right size
         assert os.write(fd, b'\x00'*mmap.PAGESIZE) == mmap.PAGESIZE
     
