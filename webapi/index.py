@@ -128,6 +128,9 @@ def setExecutionInputs(id):
     r = requests.get(url=RESTserver+"workflowexecutions/"+id+'/inputs')
     inprec = r.json()["result"]
     print(inprec)
+    # get corresponding workflow record
+    r = requests.get(url=RESTserver+"workflows/"+wid)
+    winprec = r.json()["result"][0]["IOCard"]["Inputs"]
 
     if (request.form):
         #process submitted data
@@ -159,11 +162,19 @@ def setExecutionInputs(id):
     else:      
         # generate input form
         form = "<h3>Workflow: %s</h3>Input record for weid %s<table>"%(wid, id)
-        form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
+        form+="<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
         c = 0
         print("huhuh")
         for i in inprec:
             print(i)
+            name = i['Name']
+            # get description from workflow rec
+            description = ""
+            for ii in winprec:
+                if (ii["Name"] == name):
+                    description = ii.get("Description")
+                    break
+
             type = i['Type']
             if (i.get('Compulsory', False) == True):
                 required = "required"
@@ -171,12 +182,12 @@ def setExecutionInputs(id):
                 required = ""
             if (type == "mupif.Property"):
                 # float assumed
-                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
+                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
             elif (type == "mupif.Field"):
-               form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
+               form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
             else:
                 #fallback input no check except for required
-                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
+                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
             c+= 1
         form+="</table>"
         form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>"%id
