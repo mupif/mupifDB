@@ -50,21 +50,40 @@ poolsize = 3
 statusLock = multiprocessing.Lock()
 statusArray = multiprocessing.Array(ctypes.c_int, [1,0,0,0], lock=False)
 
+# open 
+with (statusLock):  
+    #create new empty file to back memory map on disk
+    fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
+
+    # Create the mmap instace with the following params:
+    # fd: File descriptor which backs the mapping or -1 for anonymous mapping
+    # length: Must in multiples of PAGESIZE (usually 4 KB)
+    # flags: MAP_SHARED means other processes can share this mmap
+    # prot: PROT_WRITE means this process can write to this mmap
+    buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
+
 def updateStatRunning():
     with (statusLock):
         statusArray[index.runningTasks] += 1
         statusArray[index.scheduledTasks] -= 1
         statusArray[index.load] = statusArray[index.runningTasks]/poolsize
+        fileStat()
 
 def updateStatScheduled():
     with statusLock:
         statusArray[index.scheduledTasks] += 1
+        fileStat()
 
 def updateStatFinished():
     with statusLock:
         statusArray[index.runningTasks] -= 1
         statusArray[index.load] = statusArray[index.runningTasks]/poolsize
+        fileStat()
 
+def fileStat():
+    ans = {'Status': statusArray[index.status],'Load': statusArray[index.load], 'RunningTaks': statusArray[index.runningTasks], 'ScheduledTasks': statusArray[index.scheduledTasks]}
+    buf.seek(0)
+    buf.write(str(ans).encode())
 
 def setupLogger(fileName, level=logging.DEBUG):
     """
@@ -191,18 +210,10 @@ if __name__ == '__main__':
     setupLogger(fileName="scheduler.log")
     with (statusLock):  
         statusArray[index.status] = 1
+        #zero out the file to ensure it's the right size
+        assert os.write(fd, b'\x00'*mmap.PAGESIZE) == mmap.PAGESIZE
     
 
-    #create new empty file to back memory map on disk
-    fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
-    #zero out the file to ensure it's the right size
-    assert os.write(fd, '\x00'*mmap.PAGESIZE) == mmap.PAGESIZE
-    # Create the mmap instace with the following params:
-    # fd: File descriptor which backs the mapping or -1 for anonymous mapping
-    # length: Must in multiples of PAGESIZE (usually 4 KB)
-    # flags: MAP_SHARED means other processes can share this mmap
-    # prot: PROT_WRITE means this process can write to this mmap
-    buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
 
     try:
         with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
@@ -216,7 +227,6 @@ if __name__ == '__main__':
                     # add the correspoding weid to the pool, change status to scheduled                                                                                                                
                     weid = wed['_id']
                     req = pool.apply_async(executeWorkflow, args=(weid,), callback=p.updateProgress)
-                    p.updateTotals()
                     log.info("WEID %s added to the execution pool"%(weid))
                 log.info("Done\n")
 
@@ -237,8 +247,6 @@ if __name__ == '__main__':
                     lt = time.localtime(time.time())
                     print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:"+
                         str(statusArray[index.scheduledTasks])+"/"+str(statusArray[index.runningTasks])+""+str(statusArray[index.load]))                    
-                    # update status in mmap
-                    buf.write(struct.pack('iiii', statusArray[0], statusArray[1], statusArray[2], statusArray[3]))
                     time.sleep(60)
             except Exception as err:
                 log.info ("Error: " + repr(err))
