@@ -13,8 +13,8 @@ from mongoflask import MongoJSONEncoder, ObjectIdConverter
 import pygal
 
 # for small stat use plain matplotlib 
-import matplotlib.pyplot as plt
-plt.switch_backend('agg')
+#import matplotlib.pyplot as plt
+#plt.switch_backend('agg')
 from io import BytesIO
 import base64
 
@@ -284,6 +284,7 @@ def save_upload(filename):
     #return "Uploaded"
     return redirect(url_for("get_upload", filename=filename))
 
+
 @app.route("/status")
 def status():
     output=[]
@@ -304,8 +305,9 @@ def status():
           schedulerStatus ='Failed'
 
     # get some scheduler stats
-    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)          
-    output.append({'mupifDBStatus':mupifDBStatus, 'schedulerStatus':schedulerStatus, 'schedulerStats':stat})
+    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)   
+    schedulerstat = mongo.db.Stat.find_one()['scheduler']
+    output.append({'mupifDBStatus':mupifDBStatus, 'schedulerStatus':schedulerStatus, 'totalStat':stat, 'schedulerStat': schedulerstat})
     return jsonify({'result' : output})  
     
 @app.route("/schedulerStats/weekly.svg")
