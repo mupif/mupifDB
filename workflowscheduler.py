@@ -13,8 +13,8 @@ import enum
 import math
 import pidfile
 import ctypes
-import mmap # for sharing data between processes
-import struct
+#import mmap # for sharing data between processes
+#import struct
 
 import logging
 #logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
@@ -58,48 +58,43 @@ def procInit ():
     global fd
     global buf
     #create new empty file to back memory map on disk
-    fd = os.open('/tmp/workflowscheduler', os.O_RDWR)
+    #fd = os.open('/tmp/workflowscheduler', os.O_RDWR)
+
     # Create the mmap instace with the following params:
     # fd: File descriptor which backs the mapping or -1 for anonymous mapping
     # length: Must in multiples of PAGESIZE (usually 4 KB)
     # flags: MAP_SHARED means other processes can share this mmap
     # prot: PROT_WRITE means this process can write to this mmap
-    buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
+    #buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
+    print("procInit called")
 
 
+def procFinish(r):
+    print ("procFinish called")
+    #fd.close()
 
-def updateStatRunning():
+def procError(r):
+    print ("procError called")
+    
+def updateStatRunning(db):
     with (statusLock):
         print ("updateStatRunning called")
         statusArray[index.runningTasks] += 1
-        print (".")
         statusArray[index.scheduledTasks] -= 1
-        print(".")
         statusArray[index.load] = ctypes.c_int(int(100 *statusArray[index.runningTasks]/poolsize))
-        print ("StatusArray updated")
-        fileStat()
+        db.Stat.update_one({}, {'$inc': {'scheduler.runningTasks': 1, 'scheduler.scheduledTasks': -1}, '$set': {'scheduler.load': statusArray[index.load]}})
 
-def updateStatScheduled():
+def updateStatScheduled(db):
     with statusLock:
         statusArray[index.scheduledTasks] += 1
-        fileStat()
+        db.Stat.update_one({}, {'$inc': {'scheduler.scheduledTasks': 1}})         
 
-def updateStatFinished():
+def updateStatFinished(db):
     with statusLock:
         statusArray[index.runningTasks] -= 1
         statusArray[index.processedTasks] += 1   
         statusArray[index.load] = ctypes.c_int(int(100*statusArray[index.runningTasks]/poolsize))
-        fileStat()
-
-def fileStat():
-    print ("fileStat ....")
-    ans = {'Status': statusArray[index.status],'Load': statusArray[index.load], 'RunningTaks': statusArray[index.runningTasks], 'ScheduledTasks': statusArray[index.scheduledTasks], 'ProcessedTasks': statusArray[index.processedTasks]}
-    print (str(ans).encode())
-    print (buf)
-    buf.seek(0)
-    print ("buf seek(0)")
-    buf.write(str(ans).encode())
-    print ("buf write")
+        db.Stat.update_one({}, {'$inc': {'scheduler.runningTasks': -1, 'scheduler.processedTasks': 1}, '$set': {'scheduler.load': statusArray[index.load]}})    
 
 def setupLogger(fileName, level=logging.DEBUG):
     """
@@ -176,7 +171,7 @@ def executeWorkflow(weid):
             log.info("Executing weid %s, tempdir %s"%(weid, tempDir))
             #print("Executing weid %s, tempdir %s"%(weid, tempDir))
             # update status
-            updateStatRunning()
+            updateStatRunning(db)
             db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Running', 'StartDate':str(datetime.now())}})
             #wec.set('StartDate', str(datetime.now()))
             cmd = ['/usr/bin/python3',tempDir+'/w.py', '-eid', str(weid) ]
@@ -191,7 +186,7 @@ def executeWorkflow(weid):
                 logID=fs.put(f, filename="mupif.log")
             log.info("Copying log files done")
             # update status
-            updateStatFinished()
+            updateStatFinished(db)
         log.info ("Updating weid %s status to %s"%(weid, completed))
         #set execution code to completed
         if (completed == 0):
@@ -210,6 +205,9 @@ def executeWorkflow(weid):
 
 def stop (pool):
     log.info("Stopping the scheduler, waiting for workers to terminate")
+    client = MongoClient()                                                                                                                                                                                
+    db = client.MuPIF
+    db.Stat.update_one({}, {'$set': {'scheduler.runningTasks': 0, 'scheduler.scheduledTasks': 0, 'scheduler.load': 0, 'scheduler.processedTasks':0}}, upsert=True) 
     pool.close() # close pool
     pool.join() # wait for comppletion
     log.info ("All tasks finished, exiting")
@@ -229,12 +227,13 @@ if __name__ == '__main__':
         statusArray[index.status] = 1
         # open 
         #create new empty file to back memory map on disk
-        fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
+        #fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
         #zero out the file to ensure it's the right size
-        assert os.write(fd, b'\x00'*mmap.PAGESIZE) == mmap.PAGESIZE
-        buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
-        print ("mmmap file initialized")
-        fileStat()
+        #assert os.write(fd, b'\x00'*mmap.PAGESIZE) == mmap.PAGESIZE
+        #buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
+        #print ("mmmap file initialized")
+        #fileStat()
+        db.Stat.update_one({}, {'$set': {'scheduler.runningTasks': 0, 'scheduler.scheduledTasks': 0, 'scheduler.load': 0, 'scheduler.processedTasks':0}}, upsert=True)
         
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
     atexit.register(stop, pool)
@@ -242,15 +241,15 @@ if __name__ == '__main__':
         with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
             log.info ("Starting MupifDB Workflow Scheduler\n")
 
-            #try:
-            if (1):
+            try:
+            #if (1):
 
                 #import first already scheduled executions
                 log.info("Importing already scheduled executions")
                 for wed in db.WorkflowExecutions.find({"Status": 'Scheduled'}):                                                                                                                           
                     # add the correspoding weid to the pool, change status to scheduled                                                                                                                
                     weid = wed['_id']
-                    req = pool.apply_async(executeWorkflow, args=(weid,)) # callback=p.updateProgress)
+                    req = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                     log.info("WEID %s added to the execution pool"%(weid))
                 log.info("Done\n")
 
@@ -262,8 +261,8 @@ if __name__ == '__main__':
                         # add the correspoding weid to the pool, change status to scheduled
                         weid = wed['_id']
                         db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Scheduled','ScheduledDate':str(datetime.now())}})
-                        updateStatScheduled() # update status
-                        req = pool.apply_async(executeWorkflow, args=(weid,))
+                        updateStatScheduled(db) # update status
+                        req = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                         log.info("WEID %s added to the execution pool"%(weid))
                     # ok, no more jobs to schedule for now, wait
 
@@ -272,12 +271,12 @@ if __name__ == '__main__':
                     print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:"+
                         str(statusArray[index.scheduledTasks])+"/"+str(statusArray[index.runningTasks])+"/"+str(statusArray[index.load]))                    
                     time.sleep(60)
-#            except Exception as err:
-#                log.info ("Error: " + repr(err))
-#                stop(pool)
-#            except:
-#                log.info("Unknown error encountered")
-#               stop(pool)
+            except Exception as err:
+                log.info ("Error: " + repr(err))
+                stop(pool)
+            except:
+                log.info("Unknown error encountered")
+                stop(pool)
     except pidfile.AlreadyRunningError:
         log.error ('Already running.')
 
