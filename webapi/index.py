@@ -2,6 +2,7 @@ from flask import Flask, render_template, Markup, escape, redirect, url_for
 #from flask_wtf import FlaskForm
 #from wtforms import StringField
 from flask import request
+from flask_cors import CORS
 import requests 
 import json
 import sys
@@ -10,6 +11,7 @@ sys.path.insert(0,'..')
 from mongoflask import ObjectIdConverter
 
 app = Flask(__name__)
+CORS(app, resources={r"/static/*": {"origins": "*"}})
 app.url_map.converters['objectid'] = ObjectIdConverter
 
 RESTserver="http://172.30.0.1:5000/"
@@ -33,15 +35,23 @@ def about():
 def status():
     r = requests.get(url=RESTserver+"status")
     data=r.json()['result'][0]
-    stat = data['schedulerStats']
-    msg = "<dl><dt>MupifDBStatus:"+data['mupifDBStatus']+"</dt>"
+    stat = data['totalStat']
+    msg = "<div><div>"
+    msg+= "<dl><dt>MupifDBStatus:"+data['mupifDBStatus']+"</dt>"
     msg+= "<dt>SchedulerStatus:"+data['schedulerStatus']+"</dt>"
     msg+= "    <dd>Total    executions:"+str(stat['totalExecutions'])+"</dd>"
     msg+= "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
     msg+= "    <dd>Failed   executions:"+str(stat['failedExecutions'])+"</dd>"
-    msg+= "</dl>"
-    msg+= "<img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\">"
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
+    msg+= "</dl></div>"
+    msg+= "<div class=\"chart-container\" width=\"500\" height=\"200\">"
+    msg+= "<canvas id=\"updating-chart\" width=\"500\" height=\"200\" ></canvas>"
+    msg+= "</div></div>"
+    msg+= "<div style=\"clear: both\">"
+    msg+= "<a href=\""+RESTserver+"schedulerStats/hourly.svg\">48 hour statistics</a></br>"
+    msg+= "<a href=\""+RESTserver+"schedulerStats/weekly.svg\">52 week statistics</a></div>"  
+    #msg+= "<div><img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\"></div>"
+    msg+= ""
+    return render_template('stat.html', title="MuPIFDB web interface", body=Markup(msg))
 
 @app.route('/contact')
 def contact():

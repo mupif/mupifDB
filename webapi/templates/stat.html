@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block head %}
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.bundle.min.js " integrity="sha256-XF29CBwU1MWLaGEnsELogU6Y6rcc5nCkhhx89nFMIDQ=" crossorigin=" anonymous "></script>
+  
+    <img src="/static/images/composelector_logo.png">
+    <img src="/static/images/ctu-logo.png" height="60px" align="right" hspace="20">
+    <img src="/static/images/mupif-logo.png" height="60px" align="right" hspace="20">
+
+    <p>MuPIFDB web interface</p>
+    <title>{% block title %}{{ title }}{% endblock %}</title>
+{% endblock %}
+
+{% block content %}
+{{ body }}{% endblock %}
+
+{% block scripts %}    
+<script>
+    let data = new Array (30);
+    var ctx = document.getElementById("updating-chart").getContext("2d");
+    var myChart = new Chart(ctx, {
+        // type: "bar ",
+        type: "line",
+        data: {
+            labels: Array(30).fill(" "),
+            datasets: [{
+                label: "MuPIFDB Scheduler Load",
+                data: data,
+                backgroundColor: [
+                    "rgba(255, 99, 132, 0.2)",
+                    "rgba(54, 162, 235, 0.2)",
+                    "rgba(255, 206, 86, 0.2)",
+                    "rgba(75, 192, 192, 0.2)",
+                    "rgba(153, 102, 255, 0.2)",
+                    "rgba(255, 159, 64, 0.2)"
+                ],
+                borderColor: [
+                    "rgba(255,99,132,1)",
+                    "rgba(54, 162, 235, 1)",
+                    "rgba(255, 206, 86, 1)",
+                    "rgba(75, 192, 192, 1)",
+                    "rgba(153, 102, 255, 1)",
+                    "rgba(255, 159, 64, 1)"
+                ],
+                borderWidth: 1,
+                fill: "start",
+            }]
+        },
+        options: {
+            scales: {
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true
+                    }
+                }]
+            },
+            elements: {
+                line: {
+                    tension: 0,
+                    // no smooth
+                }
+            },
+            responsive:false
+        }
+    });
+    // update
+    function fetchData() {
+        $.ajax({
+            url: 'http://172.30.0.1:5000/status',
+            type: 'get',
+            success: function(newData){
+                //alert(JSON.stringify(newData));
+                var json = $.parseJSON(JSON.stringify(newData));
+                oldData = data.slice(1);
+                oldData.push(json.result[0].schedulerStat.load)
+                data = [].concat(oldData);
+                myChart.data.datasets[0].data = data;
+                myChart.update(0);
+            },
+            complete: function(data){
+                setTimeout(fetchData, 1000)
+            }
+        });
+    }
+    $(document).ready(function(){
+        setTimeout(fetchData,5000);
+    });
+</script>
+{% endblock %}
