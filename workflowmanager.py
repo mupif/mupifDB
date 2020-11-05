@@ -53,6 +53,37 @@ def insertWorkflowDefinition (db, id, description, version, source, useCases, wo
     result = db.Workflows.insert_one(rec)
     return result.inserted_id 
 
+
+def updateWorkflowDefinition (db, id, description, version, source, useCases, workflowInputs, workflowOutputs):
+    """
+    Updates the workflow definition into DB. 
+    Note this affects the exiting workflow executions as they refer to the old version! 
+    This to be solved by workflow versiong.
+    @param db database
+    @param id unique workflow id
+    @param description Description
+    @param version Version
+    @param source source URL
+    @param useCases tuple of useCase IDs the workflow belongs to
+    @workflowInputs workflow input metadata (list of dicts)
+    @workflowOutputs workflow output metadata (list of dicts)
+    """
+    rec = {'Description':description,'Version':version, 'Source':source, 'UseCases':useCases, 'IOCard': None}
+    Inputs = []
+    for i in workflowInputs:
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
+        Inputs.append(irec)
+    Outputs = []
+    for i in workflowOutputs:
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
+        Outputs.append(irec)
+    rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
+
+    result = db.Workflows.update_one({"_id":id}, {'$set': rec})
+    return result 
+
+
+
 class WorkflowExecutionIODataSet():
     def __init__(self, db, wec, IOid):
         self.db = db
