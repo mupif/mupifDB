@@ -11,12 +11,35 @@
     <title>{% block title %}{{ title }}{% endblock %}</title>
 {% endblock %}
 
-{% block content %}
-{{ body }}{% endblock %}
+    {% block content %}
+    <div>
+      {{ body }}
+    </div>
+    <div class="chart-container">
+      <canvas id="updating-chart" width="500" height="200" ></canvas>
+
+      <div> Update interval:
+	<select name="updateInterval">
+	  <option value="1000">1[s]</option>
+	  <option value="10000" selected="selected">10[s]</option>
+	  <option value="600000" >1[min]</option>
+	  <option value="3000000">5[min]</option>
+	</select>
+      </div>
+    </div>
+    <div style="clear: both">
+      <a href={{[server,"schedulerStats/hourly.svg"]|join}}>48 hour statistics</a></br>
+      <a href={{[server, "schedulerStats/weekly.svg"]|join}}>52 week statistics</a>
+    </div>  
+
+
+{% endblock %}
 
 {% block scripts %}    
 <script>
     let data = new Array (30);
+    let data2= new Array (30);
+    let timeout = 10000; // 10 [s] by default
     var ctx = document.getElementById("updating-chart").getContext("2d");
     var myChart = new Chart(ctx, {
         // type: "bar ",
@@ -28,27 +51,38 @@
                 data: data,
                 backgroundColor: [
                     "rgba(255, 99, 132, 0.2)",
-                    "rgba(54, 162, 235, 0.2)",
-                    "rgba(255, 206, 86, 0.2)",
-                    "rgba(75, 192, 192, 0.2)",
-                    "rgba(153, 102, 255, 0.2)",
-                    "rgba(255, 159, 64, 0.2)"
+                ],
+                borderColor: [
+                    "#3e95cd",
+                ],
+                borderWidth: 1,
+                fill: false,
+                yAxisID: 'A',
+            }, 
+            {
+                label: "MuPIFDB Scheduled Tasks",
+                data: data2,
+                backgroundColor: [
+                    "rgba(255, 99, 132, 0.2)",
                 ],
                 borderColor: [
                     "rgba(255,99,132,1)",
-                    "rgba(54, 162, 235, 1)",
-                    "rgba(255, 206, 86, 1)",
-                    "rgba(75, 192, 192, 1)",
-                    "rgba(153, 102, 255, 1)",
-                    "rgba(255, 159, 64, 1)"
                 ],
                 borderWidth: 1,
-                fill: "start",
+                fill: false, //"start",
+                yAxisID: 'B',
             }]
         },
         options: {
             scales: {
                 yAxes: [{
+                    id: 'A',
+                    ticks: {
+                        beginAtZero: true
+                    }
+                }, 
+                {
+                    id: 'B',
                     ticks: {
                         beginAtZero: true
                     }
@@ -75,15 +109,24 @@
                 oldData.push(json.result[0].schedulerStat.load)
                 data = [].concat(oldData);
                 myChart.data.datasets[0].data = data;
+                oldData = data2.slice(1);
+                oldData.push(json.result[0].schedulerStat.scheduledTasks)
+                data2 = [].concat(oldData);
+                myChart.data.datasets[1].data = data2;
                 myChart.update(0);
             },
             complete: function(data){
-                setTimeout(fetchData, 1000)
+                setTimeout(fetchData, timeout);
             }
         });
     }
     $(document).ready(function(){
-        setTimeout(fetchData,5000);
+        setTimeout(fetchData,1000);
+    });
+
+    $( "select" ).change(function() {
+        timeout = $(this).val();
+        setTimeout(fetchData, timeout);
     });
 </script>
 {% endblock %}
