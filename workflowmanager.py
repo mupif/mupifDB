@@ -8,6 +8,7 @@ from mupifDB import workflowrunner
 from bson import ObjectId
 import gridfs
 import re
+import io, zipfile
 from ast import literal_eval 
 from mupifDB import error
 
@@ -18,7 +19,7 @@ pool = multiprocessing.Pool()
 
 
 emptyWorkflowExecutionRecord = {'WorkflowID': None, 
-                                'WorkflowVer:': None,
+                                'WorkflowVersion:': None,
                                 'Status': "Created",
                                 'StartDate': None,
                                 'EndDate': None,
@@ -43,9 +44,23 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
     @workflowOutputs workflow output metadata (list of dicts)
     """
     # prepare document to insert
-    # save workflow source (python script) to gridfs
-    with open(source, 'rb') as f:
-            sourceID=fs.put(f, filename="workflow_"+wid+","+version+".py")
+    # save workflow source to gridfs
+    # to allow for more general case, workflow should be tar.gz 
+    # archive of all workflow inplamentation files 
+    if (zipfile.is_zipfile(source)):
+        # zip file provided; requirements: the main python workflow should have 'w.py' name 
+        with open(source, 'rb') as f:
+            sourceID=fs.put(f, filename="workflow_"+wid+","+version+".zip")
+    else:
+        # single (python) file given, create a zip achieve of it and store in db
+        mf = io.BytesIO()
+
+        with zipfile.ZipFile(mf, mode="w",compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write(source)
+
+        sourceID=fs.put(mf, filename="workflow_"+wid+","+version+".zip")
+
+    
     
     rec = {'wid': wid, 'Description':description,'Source':sourceID, 'UseCases':useCases, 'IOCard': None}
         Inputs = []
@@ -78,7 +93,10 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
         return result.inserted_id
 
 def getWorkflowDoc (wid, version=-1):
-    """ Returns workflow document with given wid and version"""
+    """ 
+        Returns workflow document with given wid and version
+        @param version workflow version, version == -1 means return the most recent version    
+    """
     wdoclatest = db.Workflows.find_one({"wid": wid})
     if (wdoclatest is None):
             raise KeyError ("Workflow document wit WID" + wid +" not found")
@@ -210,7 +228,7 @@ class WorkflowExecutionContext():
             #IOCard = wdoc['IOCard']
             rec = emptyWorkflowExecutionRecord.copy()
             rec['WorkflowID']=workflowID
-            rec['WorkflowVer']= wdoc['Version']
+            rec['WorkflowVersion']= wdoc['Version']
             rec['RequestedBy'] = requestedBy
             #inputs = []
             #for io in IOCard['Inputs']: #loop over workflow inputs
@@ -241,7 +259,7 @@ class WorkflowExecutionContext():
         """
         doc = self._getWorkflowExecutionDocument()
         wid = doc['WorkflowID']
-        version = doc['WorkflowVer']
+        version = doc['WorkflowVersion']
         wdoc = getWorkflowDoc (wid, version=version)
         if (wdoc is None):
             raise KeyError ("Workflow document wit ID" + wid +" not found")

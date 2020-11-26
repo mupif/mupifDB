@@ -12,6 +12,7 @@ import gridfs
 from enum import Enum
 import math
 import pidfile
+import workflowmanager
 
 import logging
 #logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
@@ -121,14 +122,15 @@ def executeWorkflow(weid):
     else:
         log.info ("Workflow Execution record %s found"%(weid))
 
-    #get workflow record (needed to get workflow source to execute)
+    #get workflow record (needed to get workflow source to execute
+    workflowVersion = wed['WorkflowVersion']
     wid = wed['WorkflowID']
-    wd = db.Workflows.find_one({"_id": wid})
+    wd = workflowmanager.getWorkflowDoc (wid, version=workflowVersion) 
     if (wd is None):
-        log.error ("Workflow document wit ID %s not found"%(wid))
-        raise KeyError ("Workflow document wit ID %s not found"%(wid))
+        log.error ("Workflow document wit ID %s, verison %s not found"%(wid, workflowVersion))
+        raise KeyError ("Workflow document wit ID %s, version %s not found"%(wid, workflowVersion))
     else:
-        log.info ("Workflow document wit ID %s found"%(wid))
+        log.info ("Workflow document wit ID %s, version %s found"%(wid, workflowVersion))
     
     #check if status is "Scheduled"
     if (wed['Status']=='Scheduled'):
@@ -143,9 +145,11 @@ def executeWorkflow(weid):
             log.info("temp dir created")
             #copy workflow source to tempDir
             try:
-                wpy = db.gridfs.get(wd['Source']).read()
-                with open ("tempDir+'/w.py", "w") as f:
-                    f.write(wpy)
+                #wpy = db.gridfs.get(wd['Source']).read()
+                #with open ("tempDir+'/w.py", "w") as f:
+                #    f.write(wpy)
+                wfile = fs.find_one(filter={'_id': wd['Source']}) #zipfile
+                zipfile.ZipFile(wfile, mode='r').extractall(path=tempDir)
                 #urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
             except Exception as e:
                 log.error (str(e))
