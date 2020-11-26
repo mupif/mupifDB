@@ -86,7 +86,7 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
         id.forEach(function(user_data){
 	        db.WorkflowsHistory.insert(user_data)})
         # update the latest document
-        version = int(id['Version']) + 1
+        version = int(id.get('Version', 1)) + 1
         rec.append({'Version':version}) 
 
         result = db.Workflows.db.test.find_one_and_update({'wid':wid}, '$set': rec, return_document=ReturnDocument.AFTER)
@@ -100,7 +100,7 @@ def getWorkflowDoc (wid, version=-1):
     wdoclatest = db.Workflows.find_one({"wid": wid})
     if (wdoclatest is None):
             raise KeyError ("Workflow document wit WID" + wid +" not found")
-    lastversion = wdoclatest['Version']
+    lastversion = wdoclatest.get('Version',1)
     if (version == -1 or version == lastversion): #get the latest one
         return wdoclatest
     elif (version < lastversion):
@@ -228,7 +228,7 @@ class WorkflowExecutionContext():
             #IOCard = wdoc['IOCard']
             rec = emptyWorkflowExecutionRecord.copy()
             rec['WorkflowID']=workflowID
-            rec['WorkflowVersion']= wdoc['Version']
+            rec['WorkflowVersion']= wdoc.get('Version', 1)
             rec['RequestedBy'] = requestedBy
             #inputs = []
             #for io in IOCard['Inputs']: #loop over workflow inputs

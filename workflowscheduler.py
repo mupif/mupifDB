@@ -13,6 +13,7 @@ from enum import Enum
 import math
 import pidfile
 import workflowmanager
+import zipfile
 
 import logging
 #logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
