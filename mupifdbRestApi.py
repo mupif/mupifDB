@@ -149,7 +149,7 @@ def get_workflow(wid):
   workflows = mongo.db.Workflows
   output = []
   for s in workflows.find({"wid": wid}):
-    output.append({'_id' : s['_id'], 'wid':s['wid'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'version':s.get('Version',1)})
+    output.append({'_id' : s['_id'], 'wid':s['wid'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version':s.get('Version',1)})
   return jsonify({'result' : output})
 
 @app.route('/workflowexecutions')
