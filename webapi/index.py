@@ -12,8 +12,9 @@ from mongoflask import ObjectIdConverter
 app = Flask(__name__)
 app.url_map.converters['objectid'] = ObjectIdConverter
 
-RESTserver="http://172.30.0.1:5000/"
-server = "http://127.0.0.1:5000/"
+#RESTserver="http://172.30.0.1:5000/"
+RESTserver="http://127.0.0.1:5000/"
+server = "http://127.0.0.1:5555/"
 
 @app.route('/')
 def homepage():
@@ -46,7 +47,7 @@ def contact():
 @app.route('/usecases')
 def usecases():
     r = requests.get(url=RESTserver+"usecases")
-    print (type(r.json()))
+    #print (type(r.json()))
     data = r.json()
     return render_template('usecases.html', title="MuPIFDB web interface", server=server, items=data["result"])
     #return r.json()
@@ -59,7 +60,7 @@ def usecaseworkflows (id):
     data = []
     for wid in rdata["result"]:
         #print (wid)
-        wr = requests.get(url=RESTserver+"workflows/"+wid["id"])
+        wr = requests.get(url=RESTserver+"workflows/"+wid["wid"])
         #print (wr.json())
         wdata = wr.json()["result"][0]
         data.append(wdata)
@@ -74,19 +75,21 @@ def worflows():
     data = []
     for wid in rdata["result"]:
         #print (wid)
-        wr = requests.get(url=RESTserver+"workflows/"+wid["id"])
+        wr = requests.get(url=RESTserver+"workflows/"+wid["wid"])
         #print (wr.json())
         wdata = wr.json()["result"][0]
         data.append(wdata)
     #print (data)
     return render_template('workflows.html', title="MuPIFDB web interface", server=server, items=data)
 
-@app.route('/workflows/<id>')
-def workflow (id):
-    wr = requests.get(url=RESTserver+"workflows/"+id)
+@app.route('/workflows/<wid>')
+def workflow (wid):
+    wr = requests.get(url=RESTserver+"workflows/"+wid)
     wdata = wr.json()["result"][0]
     return render_template('workflow.html', title="MuPIFDB web interface", server=server, 
-    id=id, UseCase=wdata["UseCases"], Description = wdata["Description"], inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"])
+    wid=wid, id=wdata['_id'], UseCase=wdata["UseCases"], Description = wdata["Description"], 
+    inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
+    version=wdata.get("Version",1))
 
 @app.route('/workflowexecutions/init/<id>')
 def initexecution(id):
@@ -116,18 +119,18 @@ def setExecutionInputs(id):
     # get we record
     r = requests.get(url=RESTserver+"workflowexecutions/"+str(id))
     we=r.json()["result"][0]
-    print(we)
+    #print(we)
     wid = we["WorkflowID"]
-    print(wid)
+    #print(wid)
     # get execution input record (to access inputs)
     r = requests.get(url=RESTserver+"workflowexecutions/"+id+'/inputs')
     inprec = r.json()["result"]
-    print(inprec)
+    #print(inprec)
 
     if (request.form):
         #process submitted data
         msg = ""
-        print (request.form.get('eid'))
+        #print (request.form.get('eid'))
         c=0
         payload = {}
         for i in inprec:
@@ -156,15 +159,15 @@ def setExecutionInputs(id):
         form = "<h3>Workflow: %s</h3>Input record for weid %s<table>"%(wid, id)
         form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
         c = 0
-        print("huhuh")
+        #print("huhuh")
         for i in inprec:
-            print(i)
+            #print(i)
             form += "<tr><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" /></td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'],c, i['Value'], i.get('Units'))
             c+= 1
         form+="</table>"
         form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>"%id
         form += "<input type=\"submit\" value=\"Submit\" />"
-        print (form)
+        #print (form)
         return render_template('form.html', title="MuPIFDB web interface", form=form)
 
 
@@ -185,11 +188,11 @@ def getExecutionOutputs(id):
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>"%(wid, id)
     form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
     for i in outrec:
-        print(i)
+        #print(i)
         form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"%(i['Name'], i['Type'],i['ObjID'], i['Value'], escape(i.get('Units')))
     form+="</table>"
     form+="</br><a href=\""+server+"workflowexecutions/"+id+"\">Continue to Execution record "+id+"</a>"
-    print (form)
+    #print (form)
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(form))
 
 

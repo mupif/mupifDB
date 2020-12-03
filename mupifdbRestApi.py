@@ -133,7 +133,7 @@ def get_usecase_workflows(usecase):
   workflows = mongo.db.Workflows
   output = []
   for s in workflows.find({"UseCases": usecase}):
-    output.append({'id' : s['_id']})
+    output.append({'wid' : s['wid'], '_id':s['_id']})
   return jsonify({'result' : output})
 
 @app.route('/workflows')
@@ -141,15 +141,15 @@ def get_workflows():
   workflows = mongo.db.Workflows
   output = []
   for s in workflows.find():
-    output.append({'id' : s['_id'], 'Description' : s['Description']})
+    output.append({'wid' : s['wid'], 'Description' : s['Description'], '_id': s['_id']})
   return jsonify({'result' : output})
 
-@app.route('/workflows/<id>')
-def get_workflow(id):
+@app.route('/workflows/<wid>')
+def get_workflow(wid):
   workflows = mongo.db.Workflows
   output = []
-  for s in workflows.find({"_id": id}):
-    output.append({'id' : s['_id'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard']})
+  for s in workflows.find({"wid": wid}):
+    output.append({'_id' : s['_id'], 'wid':s['wid'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'version':s.get('Version',1)})
   return jsonify({'result' : output})
 
 @app.route('/workflowexecutions')
@@ -260,7 +260,7 @@ def executeworkflow (id):
     print ("Execution request by %s from %s"%(user, remoteAddr))
         
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
-    c.execute()
+    c.execute(mongo.db)
     return redirect(url_for("get_workflowexecution", id=id))
     #return (id)
 

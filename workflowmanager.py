@@ -1,3 +1,5 @@
+from pymongo import MongoClient
+from pymongo import ReturnDocument
 import tempfile
 import urllib
 import multiprocessing
@@ -11,6 +13,7 @@ import re
 import io, zipfile
 from ast import literal_eval 
 from mupifDB import error
+import os
 
 #pool to handle workflow execution requests
 #ctx = multiprocessing.get_context('spawn')
@@ -43,6 +46,7 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
     @workflowInputs workflow input metadata (list of dicts)
     @workflowOutputs workflow output metadata (list of dicts)
     """
+    fs = gridfs.GridFS(db)
     # prepare document to insert
     # save workflow source to gridfs
     # to allow for more general case, workflow should be tar.gz 
@@ -50,49 +54,54 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
     if (zipfile.is_zipfile(source)):
         # zip file provided; requirements: the main python workflow should have 'w.py' name 
         with open(source, 'rb') as f:
-            sourceID=fs.put(f, filename="workflow_"+wid+","+version+".zip")
+            sourceID=fs.put(f, filename="workflow_"+wid+".zip")
     else:
         # single (python) file given, create a zip achieve of it and store in db
         mf = io.BytesIO()
 
         with zipfile.ZipFile(mf, mode="w",compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(source)
-
-        sourceID=fs.put(mf, filename="workflow_"+wid+","+version+".zip")
+            zf.write(source, arcname="w.py")
+        #print("huhu %s->"%(source))
+        #print (mf.getvalue())
+        sourceID=fs.put(mf.getvalue(), filename="workflow_"+wid+".zip")
 
     
     
-    rec = {'wid': wid, 'Description':description,'Source':sourceID, 'UseCases':useCases, 'IOCard': None}
-        Inputs = []
-        for i in workflowInputs:
-            irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
-            Inputs.append(irec)
-        Outputs = []
-        for i in workflowOutputs:
-            irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
-            Outputs.append(irec)
-        rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
+    rec = {'wid': wid, 'Description':description,'GridFSID':sourceID, 'SourceURL': source, 'UseCases':useCases, 'IOCard': None}
+    Inputs = []
+    for i in workflowInputs:
+        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
+        Inputs.append(irec)
+    Outputs = []
+    for i in workflowOutputs:
+        irec = {'Name': i['Name'], 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
+        Outputs.append(irec)
+    rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
     
     # first check if workflow with wid already exist in workflows collections
-    id = db.Workflows.find_one({"wid":wid})
-    if (id is None): #can safely create a new doment in workflows collection
+    wdoc = db.Workflows.find_one({"wid":wid})
+    if (wdoc is None): #can safely create a new doment in workflows collection
         version = 1
-        rec.append({'Version':version}) 
+        rec['Version']=version 
         result = db.Workflows.insert_one(rec)
         return result.inserted_id 
     else:
         # the workflow already exists, need to make a new version
         # clone latest version to History
-        id.forEach(function(user_data){
-	        db.WorkflowsHistory.insert(user_data)})
+        #print(wdoc)
+        wdoc.pop('_id') # remove original document id
+        db.WorkflowsHistory.insert(wdoc)
         # update the latest document
-        version = int(id.get('Version', 1)) + 1
-        rec.append({'Version':version}) 
-
-        result = db.Workflows.db.test.find_one_and_update({'wid':wid}, '$set': rec, return_document=ReturnDocument.AFTER)
-        return result.inserted_id
-
-def getWorkflowDoc (wid, version=-1):
+        version = (1+int(wdoc.get('Version', 1)))
+        rec['Version']=version
+        result = db.Workflows.find_one_and_update({'wid':wid}, {'$set': rec}, return_document=ReturnDocument.AFTER)
+        #print (result)
+        if (result):
+            return result['_id']
+        else:
+            print ("Update failed")
+            
+def getWorkflowDoc (db, wid, version=-1):
     """ 
         Returns workflow document with given wid and version
         @param version workflow version, version == -1 means return the most recent version    
@@ -124,7 +133,7 @@ class WorkflowExecutionIODataSet():
     def create (db, workflowID, type='Input', workflowVer=-1):    
         rec = {'Type': type, 'DataSet': []}
 
-        wdoc = getWorkflowDoc (workflowID, version=workflowVer)
+        wdoc = getWorkflowDoc (db, workflowID, version=workflowVer)
         if (wdoc is None):
             raise KeyError ("Workflow document wit ID" + workflowID +" not found")
 
@@ -223,7 +232,7 @@ class WorkflowExecutionContext():
         """
         """
         #first query for workflow document
-        wdoc = getWorkflowDoc (workflowID, version=workflowVer)
+        wdoc = getWorkflowDoc (db, workflowID, version=workflowVer)
         if (wdoc is not None):
             #IOCard = wdoc['IOCard']
             rec = emptyWorkflowExecutionRecord.copy()
@@ -253,14 +262,14 @@ class WorkflowExecutionContext():
             raise KeyError ("Document wit ID" + self.executionID +" not found")
         return doc
 
-    def _getWorkflowDocument(self):
+    def _getWorkflowDocument(self, db):
         """
         Returns workflow document corresponding to self.executionID
         """
         doc = self._getWorkflowExecutionDocument()
         wid = doc['WorkflowID']
         version = doc['WorkflowVersion']
-        wdoc = getWorkflowDoc (wid, version=version)
+        wdoc = getWorkflowDoc (db, wid, version=version)
         if (wdoc is None):
             raise KeyError ("Workflow document wit ID" + wid +" not found")
         return wdoc
@@ -289,13 +298,13 @@ class WorkflowExecutionContext():
         return wed['Status']
             
 
-    def execute (self):
+    def execute (self, db):
         wed = self._getWorkflowExecutionDocument()
-        wd = self._getWorkflowDocument()
+        wd = self._getWorkflowDocument(db)
         print ('Scheduling the new execution:%s'%(self.executionID))
         #return pool.apply_async(self.__executeWorkflow, (wed, wd)).wait()
-        print (wed)
-        print (wd)
+        #print (wed)
+        #print (wd)
 
 
         if (wed['Status']=='Created'):
@@ -337,7 +346,7 @@ def mapInputs (app, db, eid):
     print ('Map Inputs eid %s'%eid)
     wec = WorkflowExecutionContext(db, ObjectId(eid))
     #get worflow doc
-    wd = wec._getWorkflowDocument()
+    wd = wec._getWorkflowDocument(db)
     #execution input doc
     inp = wec.getIODataDoc('Inputs')
     # loop over workflow inputs
@@ -445,7 +454,7 @@ def mapOutputs (app, db, eid, tstep):
     print ('Maping Outputs for eid %s'%eid)
     wec = WorkflowExecutionContext(db, ObjectId(eid))
     #get worflow doc
-    wd = wec._getWorkflowDocument()
+    wd = wec._getWorkflowDocument(db)
     #execution out doc
     inp = wec.getIODataDoc('Outputs')
     # loop over workflow inputs

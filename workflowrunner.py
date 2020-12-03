@@ -29,7 +29,7 @@ def execWorkflow (id, wed, wd):
         try:
             # urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py'
             # uncompress zip achive in gridfs with workflow 
-            wfile = fs.find_one(filter={'_id': wd['Source']}) #zipfile
+            wfile = fs.find_one(filter={'_id': wd['GridFSID']}) #zipfile
             zipfile.ZipFile(wfile, mode='r').extractall(path=tempDir)
 
 
