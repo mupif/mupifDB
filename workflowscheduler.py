@@ -142,9 +142,9 @@ def executeWorkflow(weid):
         # take workflow source and run python interpreter on it in a temporary directory
         tempRoot = '/tmp'
         log.info("Creating temp dir")
-        #with tempfile.TemporaryDirectory(dir=tempRoot, prefix='mupifDB') as tempDir:
-        if (1):
-            tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
+        with tempfile.TemporaryDirectory(dir=tempRoot, prefix='mupifDB') as tempDir:
+            #if (1):  # uncomment this to keep temdDir 
+            #    tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
             log.info("temp dir %s created"%(tempDir,))
             #copy workflow source to tempDir
             try:
