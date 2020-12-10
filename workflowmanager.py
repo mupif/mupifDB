@@ -288,7 +288,7 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
             print ('Mapping %s, units %s, value:%s'%(mupif.PropertyID[typeID], units,value))
             fvalue = literal_eval(value)
             if (isinstance(fvalue, tuple)):
-                app.setProperty(mupif.Property.ConstantProperty(fvalue, mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
+                app.setProperty(mupif.Property.ConstantProperty(fvalue, mupif.PropertyID[typeID], mupif.ValueType.Vector, units), objectID)
             else:
                 app.setProperty(mupif.Property.ConstantProperty(float(value), mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
         elif (type == 'mupif.Field'):
