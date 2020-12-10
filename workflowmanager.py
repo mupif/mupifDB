@@ -394,10 +394,10 @@ def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
     #execution input doc
     out = wec.getIODataDoc('Outputs')
     # map value 
-    print ('Mapping %s, name:%s'%(typeID, name))
+    print ('Mapping %s, name:%s'%(typeID, name), flush=True)
     if (type == 'mupif.Property'):
-        
-        prop = app.getProperty(mupif.PropertyID[typeID], objectID, tstep.getTargetTime())
+        print("Requesting %s, objID %s, time %s"%(mupif.PropertyID[typeID], objectID, tstep.getTargetTime()), flush=True)
+        prop = app.getProperty(mupif.PropertyID[typeID], tstep.getTargetTime(), objectID)
         out.setAttributes(name, {"Value": prop.getValue(), "Units":str(prop.getUnits())}, objectID)
     elif (type == 'mupif.Field'):
         with tempfile.TemporaryDirectory() as tempDir:
@@ -416,7 +416,7 @@ def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
 
 def mapOutputs (app, db, eid, tstep):
     #request workflow execution doc
-    print ('Maping Outputs for eid %s'%eid)
+    print ('Maping Outputs for eid %s'%eid, flush=True)
     wec = WorkflowExecutionContext(db, ObjectId(eid))
     #get worflow doc
     wd = wec._getWorkflowDocument()
