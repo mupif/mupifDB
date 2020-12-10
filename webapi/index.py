@@ -16,7 +16,7 @@ app.url_map.converters['objectid'] = ObjectIdConverter
 
 RESTserver="http://172.30.0.1:5000/"
 server = "http://172.30.0.1:5555/"
-server = "http://127.0.0.1:5555/"
+#server = "http://127.0.0.1:5555/"
 
 @app.route('/')
 def homepage():
@@ -43,12 +43,12 @@ def status():
     msg+= "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
     msg+= "    <dd>Failed   executions:"+str(stat['failedExecutions'])+"</dd>"
     msg+= "</dl></div>"
-    msg+= "<div class=\"chart-container\" width=\"500\" height=\"200\">"
-    msg+= "<canvas id=\"updating-chart\" width=\"500\" height=\"200\" ></canvas>"
-    msg+= "</div></div>"
-    msg+= "<div style=\"clear: both\">"
-    msg+= "<a href=\""+RESTserver+"schedulerStats/hourly.svg\">48 hour statistics</a></br>"
-    msg+= "<a href=\""+RESTserver+"schedulerStats/weekly.svg\">52 week statistics</a></div>"  
+    #msg+= "<div class=\"chart-container\" width=\"500\" height=\"200\">"
+    #msg+= "<canvas id=\"updating-chart\" width=\"500\" height=\"200\" ></canvas>"
+    #msg+= "</div></div>"
+    #msg+= "<div style=\"clear: both\">"
+    #msg+= "<a href=\""+RESTserver+"schedulerStats/hourly.svg\">48 hour statistics</a></br>"
+    #msg+= "<a href=\""+RESTserver+"schedulerStats/weekly.svg\">52 week statistics</a></div>"  
     #msg+= "<div><img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\"></div>"
     msg+= ""
     return render_template('stat.html', title="MuPIFDB web interface", body=Markup(msg))
@@ -193,7 +193,7 @@ def setExecutionInputs(id):
             if (type == "mupif.Property"):
                 # float assumed
                 floatPattern="^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?"
-                tuplePattern="^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)"
+                tuplePattern="^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,\s*[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?)*\)"
                 pattern = "(%s|%s)"%(floatPattern, tuplePattern)
                 form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'], pattern, c, i['Value'], required, i.get('Units'))
             elif (type == "mupif.Field"):
