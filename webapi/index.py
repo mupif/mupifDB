@@ -16,7 +16,7 @@ app.url_map.converters['objectid'] = ObjectIdConverter
 
 RESTserver="http://172.30.0.1:5000/"
 server = "http://172.30.0.1:5555/"
-#server = "http://127.0.0.1:5000/"
+server = "http://127.0.0.1:5555/"
 
 @app.route('/')
 def homepage():
@@ -192,7 +192,10 @@ def setExecutionInputs(id):
                 required = ""
             if (type == "mupif.Property"):
                 # float assumed
-                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
+                floatPattern="^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?"
+                tuplePattern="^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)"
+                pattern = "(%s|%s)"%(floatPattern, tuplePattern)
+                form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'], pattern, c, i['Value'], required, i.get('Units'))
             elif (type == "mupif.Field"):
                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>"%(i['Name'], description, i['Type'],i['ObjID'],c, i['Value'], required, i.get('Units'))
             else:
