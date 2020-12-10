@@ -51,7 +51,7 @@ def status():
     #msg+= "<a href=\""+RESTserver+"schedulerStats/weekly.svg\">52 week statistics</a></div>"  
     #msg+= "<div><img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\"></div>"
     msg+= ""
-    return render_template('stat.html', title="MuPIFDB web interface", body=Markup(msg))
+    return render_template('stat.html', title="MuPIFDB web interface", server=RESTserver, body=Markup(msg))
 
 @app.route('/contact')
 def contact():
