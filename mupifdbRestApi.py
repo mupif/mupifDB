@@ -4,6 +4,7 @@ from flask import Flask,redirect, url_for, send_file
 from flask import jsonify
 from flask import request
 from flask_pymongo import PyMongo
+from flask_cors import CORS
 import mupifDB
 import gridfs
 import re
@@ -19,6 +20,7 @@ from io import BytesIO
 import base64
 
 app = Flask(__name__)
+CORS(app)
 app.json_encoder = MongoJSONEncoder
 app.url_map.converters['objectid'] = ObjectIdConverter
 
