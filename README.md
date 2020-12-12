@@ -10,10 +10,10 @@ http://www.mupif.org
 * Python modules: pymongo, flask, bson, flask_pymongo, isodate, dateutil, python-pidfile, pygal
 * for REST API debugging and development install chrome extension (ARC - Advanced REST client or Postman)
 
-## Instalation
+## Installation
 *git clone https://github.com/mupif/mupifDB.git mupifDB.git*
 
-## Runnig
+## Running
 *export FLASK_APP=mupifdbRestApi.py*
 
 *nohup python3 -m flask run --host 172.30.0.1 &*
@@ -28,7 +28,7 @@ To support statistics graphs (using schedulerstat.py), the schedulerstat.py shou
 
 
 ## License
-MuPIF has been developped at Czech Technical University by Borek Patzak and coworkers and is available under GNU Library or Lesser General Public License version 3.0 (LGPLv3).
+MuPIF has been developed at Czech Technical University by Borek Patzak and coworkers and is available under GNU Library or Lesser General Public License version 3.0 (LGPLv3).
 
 ## Further information
 Please consult MuPIF home page (http://www.mupif.org) for additional information.
