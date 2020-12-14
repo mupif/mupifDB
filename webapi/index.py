@@ -26,7 +26,7 @@ def homepage():
 def about():
     msg = """
         <h3>Welcome to MuPIFDB web interface</h3>
-        <p><a href=\"www.mupif.org\">MuPIF</a> is open-source, modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. MuPIFDB is database layer (based on MongoDB) and workflow manager/scheduler for MuPIF with REST API.</p>
+        <p><a href=\"http://www.mupif.org\">MuPIF</a> is open-source, modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. MuPIFDB is database layer (based on MongoDB) and workflow manager/scheduler for MuPIF with REST API.</p>
         <p>The MuPIFDB web interface allows to use MupifDB REST API from web browser in a user friendly way, allowing to inspect all the stored data and to intialize, schedule and monitor individual workflow executions.</p> 
     """
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
@@ -56,7 +56,7 @@ def status():
 @app.route('/contact')
 def contact():
     msg="""
-        <p>MuPIF and MuPIFDB have been developped at Czech Technical University in Prague by a research team at the Department of Mechanics of the Faculty of Civil Engineering</p>
+        <p>MuPIF and MuPIFDB have been developped at Czech Technical University in Prague by a research team at the Department of Mechanics of the Faculty of Civil Engineering.</p>
         <p>For more information and help please contact Borek Patzak (borek.patzak@fsv.cvut.cz)</p>  
     """
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
