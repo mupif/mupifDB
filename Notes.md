@@ -1,7 +1,7 @@
 ## TODO:
 - database init script
 
-## Prerequsites for running all examples
+## Prerequisites for running all examples
 * export PYTHONPATH=/home/bp/devel/mupif.git:/home/bp/devel/mupifDB
 
 ## Run REST API demo 
