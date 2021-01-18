@@ -1,5 +1,5 @@
 import mupif
-import mupif.Physics.PhysicalQuantities as PQ
+import mupif.physics.physicalquantities as PQ
 import logging
 from pymongo import MongoClient
 import argparse
@@ -8,7 +8,7 @@ from bson import ObjectId
 
 log = logging.getLogger()
 
-class workflowdemo (mupif.Workflow.Workflow):
+class workflowdemo (mupif.workflow.Workflow):
     def __init__(self, metaData={}):
         """
         Initializes the workflow.
@@ -41,7 +41,7 @@ class workflowdemo (mupif.Workflow.Workflow):
 
     def getField(self, fieldID, time, objectID=0):
         if fieldID == mupif.FieldID.FID_Temperature:
-            return mupif.Field.Field(mupif.Mesh.UnstructuredMesh(), mupif.FieldID.FID_Temperature,mupif.ValueType.Scalar, 'none', time)
+            return mupif.field.Field(mupif.mesh.UnstructuredMesh(), mupif.FieldID.FID_Temperature,mupif.ValueType.Scalar, 'none', time)
         else:
             pass
 
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
         mupifDB.workflowmanager.mapInputs(app, db, args.id)
         
-        tstep = mupif.TimeStep.TimeStep(1.,1.,10,'s')
+        tstep = mupif.timestep.TimeStep(1.,1.,10,'s')
         app.solveStep(tstep)
         mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
         

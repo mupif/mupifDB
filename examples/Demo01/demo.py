@@ -4,9 +4,9 @@ import mupifDB
 from bson import ObjectId
 from datetime import datetime
 import mupif
-import mupif.Physics.PhysicalQuantities as PQ
+import mupif.physics.physicalquantities as PQ
 
-class Workflow02 (mupif.Workflow.Workflow):
+class Workflow02 (mupif.workflow.Workflow):
     def __init__(self, metaData={}):
         """
         Initializes the workflow.

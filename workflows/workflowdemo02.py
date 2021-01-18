@@ -4,13 +4,13 @@ import mupifDB
 from bson import ObjectId
 from datetime import datetime
 import mupif
-import mupif.Physics.PhysicalQuantities as PQ
+import mupif.physics.physicalquantities as PQ
 import argparse
 import sys
 import logging
 log=logging.getLogger()
 
-class Workflow02 (mupif.Workflow.Workflow):
+class Workflow02 (mupif.workflow.Workflow):
     def __init__(self, metaData={}):
         """
         Initializes the workflow.
@@ -69,7 +69,7 @@ class Workflow02 (mupif.Workflow.Workflow):
             }
         }
         if (propID  == mupif.PropertyID.PID_maxDisplacement):
-            return mupif.Property.ConstantProperty(
+            return mupif.property.ConstantProperty(
                     self.w, mupif.PropertyID.PID_maxDisplacement, mupif.ValueType.Scalar, 'm', time, 0,metaData=md)
 
 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
         mupifDB.workflowmanager.mapInputs(app, db, args.id)
 
-        tstep = mupif.TimeStep.TimeStep(1.,1.,10,'s')
+        tstep = mupif.timestep.TimeStep(1.,1.,10,'s')
         print("Solving....")
         app.solveStep(tstep)
         mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)

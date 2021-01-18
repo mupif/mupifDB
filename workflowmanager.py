@@ -288,15 +288,15 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
             print ('Mapping %s, units %s, value:%s'%(mupif.PropertyID[typeID], units,value))
             fvalue = literal_eval(value)
             if (isinstance(fvalue, tuple)):
-                app.setProperty(mupif.Property.ConstantProperty(fvalue, mupif.PropertyID[typeID], mupif.ValueType.Vector, units), objectID)
+                app.setProperty(mupif.property.ConstantProperty(fvalue, mupif.PropertyID[typeID], mupif.ValueType.Vector, units), objectID)
             else:
-                app.setProperty(mupif.Property.ConstantProperty(float(value), mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
+                app.setProperty(mupif.property.ConstantProperty(float(value), mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
         elif (type == 'mupif.Field'):
             # assume Field == ConstantField
             print ('Mapping %s, units %s, value:%s'%(mupif.FieldID[typeID], units, value))
             fvalue = literal_eval(value)
             if (isinstance(fvalue, tuple)):
-                app.setField(mupif.ConstantField.ConstantField(None, mupif.FieldID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
+                app.setField(mupif.constantfield.ConstantField(None, mupif.FieldID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
             else:
                 raise TypeError ('Tuple expected when handling io param of type %s'%type)
         else:
@@ -328,7 +328,7 @@ def mapInputs (app, db, eid):
         compulsory = irec['Compulsory']
         units = irec['Units']
         if (units == 'None'):
-            units = mupif.Physics.PhysicalQuantities.getDimensionlessUnit()
+            units = mupif.physics.physicalquantities.getDimensionlessUnit()
 
         if isinstance(objID, collections.Iterable):
             for oid in objID:

@@ -4,7 +4,7 @@ import mupifDB
 from bson import ObjectId
 from datetime import datetime
 import mupif
-import mupif.Physics.PhysicalQuantities as PQ
+import mupif.physics.physicalquantities as PQ
 from mupifDB import workflowdemo
 
 
