@@ -6,6 +6,7 @@ import mupifDB
 from datetime import datetime
 from pymongo import MongoClient
 import gridfs
+import zipfile
 
 
 #client = MongoClient()
@@ -26,7 +27,12 @@ def execWorkflow (id, wed, wd):
         tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_tmp')
         #copy workflow source to tempDir
         try:
-            urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
+            # urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py'
+            # uncompress zip achive in gridfs with workflow 
+            wfile = fs.find_one(filter={'_id': wd['GridFSID']}) #zipfile
+            zipfile.ZipFile(wfile, mode='r').extractall(path=tempDir)
+
+
         except Exception as e:
             print (e)
             # set execution code to failed

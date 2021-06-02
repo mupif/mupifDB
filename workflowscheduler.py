@@ -12,9 +12,8 @@ import gridfs
 import enum
 import math
 import pidfile
-import ctypes
-#import mmap # for sharing data between processes
-#import struct
+import workflowmanager
+import zipfile
 
 import logging
 #logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
@@ -139,14 +138,16 @@ def executeWorkflow(weid):
     else:
         log.info ("Workflow Execution record %s found"%(weid))
 
-    #get workflow record (needed to get workflow source to execute)
+    #get workflow record (needed to get workflow source to execute
+    workflowVersion = wed['WorkflowVersion']
     wid = wed['WorkflowID']
-    wd = db.Workflows.find_one({"_id": wid})
+    id = wed['_id']
+    wd = workflowmanager.getWorkflowDoc (db, wid, version=workflowVersion) 
     if (wd is None):
-        log.error ("Workflow document wit ID %s not found"%(wid))
-        raise KeyError ("Workflow document wit ID %s not found"%(wid))
+        log.error ("Workflow document with wid %s, verison %s not found"%(wid, workflowVersion))
+        raise KeyError ("Workflow document wit ID %s, version %s not found"%(wid, workflowVersion))
     else:
-        log.info ("Workflow document wit ID %s found"%(wid))
+        log.info ("Workflow document with wid %s, id %s, version %s found"%(wid, id, workflowVersion))
     
     #check if status is "Scheduled"
     if (wed['Status']=='Scheduled'):
@@ -157,11 +158,22 @@ def executeWorkflow(weid):
         tempRoot = '/tmp'
         log.info("Creating temp dir")
         with tempfile.TemporaryDirectory(dir=tempRoot, prefix='mupifDB') as tempDir:
-            #tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_'+weid)
-            log.info("temp dir created")
+            #if (1):  # uncomment this to keep temdDir 
+            #    tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
+            log.info("temp dir %s created"%(tempDir,))
             #copy workflow source to tempDir
             try:
-                urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
+                #wpy = db.gridfs.get(wd['Source']).read()
+                #with open ("tempDir+'/w.py", "w") as f:
+                #    f.write(wpy)
+                #print (wd)
+                print("Opening gridfsID %s"%(wd['GridFSID']))
+                wfile = fs.find_one(filter={'_id': wd['GridFSID']}) #zipfile
+                with open (tempDir+'/w.zip', "wb") as f:
+                    f.write(wfile.read())
+                #print (wfile.read())
+                zipfile.ZipFile(tempDir+'/w.zip', mode='r').extractall(path=tempDir)
+                #urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
             except Exception as e:
                 log.error (str(e))
                 # set execution code to failed

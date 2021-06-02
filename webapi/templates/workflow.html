@@ -1,7 +1,8 @@
 {% extends "layout.html" %}
 {% block title %} {{ title }} {% endblock %}
 {% block content %} 
-WorkflowID: {{id}}</br>
+WorkflowID: {{wid}}</br>
+Version: {{version}}, id:{{id}}</br>
 UseCase: {{UseCase}}</br>
 Description: {{Description}}</br>
 Inputs:
@@ -34,5 +35,5 @@ Outputs:
     </TR>
     {% endfor %}
     </table>
-<a href={{ [server, "workflowexecutions/init/", id] | join }}>Initialize new execution record</a>
+<a href={{ [server, "workflowexecutions/init/", wid] | join }}>Initialize new execution record</a>
 {% endblock %}
