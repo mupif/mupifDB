@@ -15,6 +15,12 @@ class Collection():
             :param dict searchCrit: Dictionary, where key correspond to record name and value to criteria to match the value.
         """
         pass
+    def findDocument(self, searchCrit):
+        """
+            Returns single Document matching given search criteria
+            :param dict searchCrit: Dictionary, where key correspond to record name and value to criteria to match the value.
+        """
+        pass
     def createDocument(self):
         """
             Creates and returns new Document in collection
