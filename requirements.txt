@@ -1,0 +1,8 @@
+pygal
+python-pidfile
+mupif
+pymongo
+flask_pymongo
+flask_cors
+isodate
+flask
