@@ -6,4 +6,3 @@ flask_pymongo
 flask_cors
 isodate
 flask
-bson
