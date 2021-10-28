@@ -33,6 +33,21 @@ nameObjectIDpairNone = re.compile('([\w ]+){None}')
 
 mongo = PyMongo(app)
 
+## initialize the database, this is done only once
+if 'UseCases' not in mongo.db.list_collection_names():
+    usecases = mongo.db["UseCases"]
+    usecases.insert_one({"_id":"DemoUseCase", "Description":"Demo UseCase"})
+    Stat = mongo.db["Stat"]
+    Stat.insert_one({"scheduler": { "load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0 }})
+    #force creation of empty collections
+    mongo.db.create_collection("Workflows")
+    mongo.db.create_collection("WorkflowsHistory")
+    mongo.db.create_collection("WorkflowExecutions")
+    mongo.db.create_collection("IOData")
+    print('MuPIF DB fist-time setup completed.')
+
+
+
 # Registering an Error Handler
 @app.errorhandler(mupifDB.error.InvalidUsage)
 def handle_invalid_usage(error):
