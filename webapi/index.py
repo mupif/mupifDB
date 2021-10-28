@@ -14,9 +14,13 @@ app = Flask(__name__)
 CORS(app, resources={r"/static/*": {"origins": "*"}})
 app.url_map.converters['objectid'] = ObjectIdConverter
 
-RESTserver="http://172.30.0.1:5000/"
-server = "http://172.30.0.1:5555/"
-#server = "http://127.0.0.1:5555/"
+
+# unless overridden by the environment, use 172.30.0.1:5000
+RESTserver=os.environ.get('MUPIFDB_REST_SERVER',"http://172.30.0.1:5000/")
+
+## server (that is, our URL) is obtained within request handlers as flask.request.host_url
+# server = "http://172.30.0.1:5555/"
+# server = "http://127.0.0.1:5555/"
 
 @app.route('/')
 def homepage():
@@ -67,7 +71,7 @@ def usecases():
     r = requests.get(url=RESTserver+"usecases")
     #print (type(r.json()))
     data = r.json()
-    return render_template('usecases.html', title="MuPIFDB web interface", server=server, items=data["result"])
+    return render_template('usecases.html', title="MuPIFDB web interface", server=request.host_url, items=data["result"])
     #return r.json()
 
 @app.route('/usecases/<id>/workflows')
@@ -83,7 +87,7 @@ def usecaseworkflows (id):
         wdata = wr.json()["result"][0]
         data.append(wdata)
     #print (data)
-    return render_template('workflows.html', title="MuPIFDB web interface", server=server, items=data)
+    return render_template('workflows.html', title="MuPIFDB web interface", server=request.host_url, items=data)
 
 @app.route('/workflows')
 def worflows():
@@ -98,13 +102,13 @@ def worflows():
         wdata = wr.json()["result"][0]
         data.append(wdata)
     #print (data)
-    return render_template('workflows.html', title="MuPIFDB web interface", server=server, items=data)
+    return render_template('workflows.html', title="MuPIFDB web interface", server=request.host_url, items=data)
 
 @app.route('/workflows/<wid>')
 def workflow (wid):
     wr = requests.get(url=RESTserver+"workflows/"+wid)
     wdata = wr.json()["result"][0]
-    return render_template('workflow.html', title="MuPIFDB web interface", server=server, 
+    return render_template('workflow.html', title="MuPIFDB web interface", server=request.host_url, 
     wid=wid, id=wdata['_id'], UseCase=wdata["UseCases"], Description = wdata["Description"], 
     inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
     version=wdata.get("Version",1))
@@ -120,7 +124,7 @@ def executionStatus(id):
     r = requests.get(url=RESTserver+"workflowexecutions/"+str(id))
     data = r.json()["result"][0]
     logID = data.get('ExecutionLog')
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=server, RESTserver=RESTserver, wid=data['WorkflowID'], id = id, logID=logID, status=data)
+    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=request.host_url, RESTserver=RESTserver, wid=data['WorkflowID'], id = id, logID=logID, status=data)
 
 @app.route('/executeworkflow/<id>')
 def executeworkflow(id):
