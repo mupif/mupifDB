@@ -7,9 +7,8 @@ db = client.MuPIF
 if (db):
     usecases = db["UseCases"]
     usecases.insert_one({"_id":"DemoUseCase", "Description":"Demo UseCase"})
-    #workflows= db["Workflows"]
-    #workflowexecutions = db["WorkflowExecutions"]
-    #iodata = db["IOData"]
+    Stat = db["Stat"]
+    Stat.insert_one({"scheduler": { "load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0 }})
 
     #force creation of empty collections
     db.create_collection("Workflows")
