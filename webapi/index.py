@@ -6,6 +6,7 @@ from flask_cors import CORS
 import requests 
 import json
 import sys
+import os
 sys.path.insert(0,'..')
 
 from mongoflask import ObjectIdConverter
