@@ -18,7 +18,7 @@ import os
 #pool to handle workflow execution requests
 #ctx = multiprocessing.get_context('spawn')
 #pool = ctx.Pool()
-pool = multiprocessing.Pool()
+#pool = multiprocessing.Pool()
 
 
 emptyWorkflowExecutionRecord = {'WorkflowID': None, 
