@@ -19,6 +19,9 @@ app.url_map.converters['objectid'] = ObjectIdConverter
 # unless overridden by the environment, use 172.30.0.1:5000
 RESTserver=os.environ.get('MUPIFDB_REST_SERVER',"http://172.30.0.1:5000/")
 
+# RESTserver *must* have trailing /, fix if not
+if not RESTserver[-1]=='/': RESTserver+='/'
+
 ## server (that is, our URL) is obtained within request handlers as flask.request.host_url+'/'
 # server = "http://172.30.0.1:5555/"
 # server = "http://127.0.0.1:5555/"
