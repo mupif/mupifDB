@@ -44,7 +44,7 @@ if 'UseCases' not in mongo.db.list_collection_names():
     mongo.db.create_collection("WorkflowsHistory")
     mongo.db.create_collection("WorkflowExecutions")
     mongo.db.create_collection("IOData")
-    print('MuPIF DB fist-time setup completed.')
+    print('MuPIF DB first-time setup completed.')
 
 
 
