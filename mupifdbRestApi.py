@@ -69,7 +69,7 @@ def handle_error(e):
 
 @app.route('/')
 def home_page():
-  return f"MuPIFDB: MuPIF Database and Workflow Manager with REST API</br>Database Connected</br></br>Follow <a href=\"http://{request.host_url}/help\">{request.host_url}/help</a> for API documentation"
+  return f"MuPIFDB: MuPIF Database and Workflow Manager with REST API</br>Database Connected</br></br>Follow <a href=\"{request.host_url}/help\">{request.host_url}/help</a> for API documentation"
 
 
 @app.route('/help')
