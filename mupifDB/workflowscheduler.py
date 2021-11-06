@@ -1,4 +1,6 @@
-import sys, os
+import sys
+sys.path.extend(['..'])
+import os
 import time
 import atexit
 import tempfile
@@ -15,6 +17,7 @@ import pidfile
 import workflowmanager
 import zipfile
 import ctypes
+import requests
 
 import logging
 #logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
@@ -236,9 +239,9 @@ if __name__ == '__main__':
     db = client.MuPIF
     fs = gridfs.GridFS(db)
     setupLogger(fileName="scheduler.log")
-    with (statusLock):  
+    with (statusLock):
         statusArray[index.status] = 1
-        # open 
+        # open
         #create new empty file to back memory map on disk
         #fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
         #zero out the file to ensure it's the right size
@@ -259,8 +262,8 @@ if __name__ == '__main__':
 
                 #import first already scheduled executions
                 log.info("Importing already scheduled executions")
-                for wed in db.WorkflowExecutions.find({"Status": 'Scheduled'}):                                                                                                                           
-                    # add the correspoding weid to the pool, change status to scheduled                                                                                                                
+                for wed in db.WorkflowExecutions.find({"Status": 'Scheduled'}):
+                    # add the correspoding weid to the pool, change status to scheduled
                     weid = wed['_id']
                     req = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                     log.info("WEID %s added to the execution pool"%(weid))
@@ -282,7 +285,7 @@ if __name__ == '__main__':
                     # display progress (consider use of tqdm)
                     lt = time.localtime(time.time())
                     print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:"+
-                        str(statusArray[index.scheduledTasks])+"/"+str(statusArray[index.runningTasks])+"/"+str(statusArray[index.load]))                    
+                        str(statusArray[index.scheduledTasks])+"/"+str(statusArray[index.runningTasks])+"/"+str(statusArray[index.load]))
                     time.sleep(60)
             except Exception as err:
                 log.info ("Error: " + repr(err))
@@ -294,5 +297,3 @@ if __name__ == '__main__':
         log.error ('Already running.')
 
     log.info ("Exiting MupifDB Workflow Scheduler\n")
-        
-
