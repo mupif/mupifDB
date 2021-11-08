@@ -1,5 +1,6 @@
 # mupifDbRestApi.py
-
+import sys
+sys.path.append("..")
 from flask import Flask,redirect, url_for, send_file
 from flask import jsonify
 from flask import request
@@ -13,7 +14,7 @@ import os,psutil
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 import pygal
 
-# for small stat use plain matplotlib 
+# for small stat use plain matplotlib
 #import matplotlib.pyplot as plt
 #plt.switch_backend('agg')
 from io import BytesIO
@@ -133,7 +134,7 @@ def help():
     """
 
     return ans
-    
+
 @app.route('/usecases', methods=['GET'])
 def get_usecases():
   usecases = mongo.db.UseCases
@@ -179,7 +180,7 @@ def get_workflowexecutions():
   we = mongo.db.WorkflowExecutions
   output = []
   for s in we.find():
-    output.append({'id' : str(s['_id']), 'StartDate' : s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID']})
+    output.append({'id' : str(s['_id']), 'StartDate' : s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
   return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/<ObjectId:id>')
@@ -188,6 +189,19 @@ def get_workflowexecution(id):
   output = []
   print (str(id))
   for s in we.find({"_id": id}):
+      #  log = None
+      #  if s['ExecutionLog'] is not None:
+      #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+      #    print (log)
+      output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+  return jsonify({'result' : output})
+
+@app.route('/workflowexecutions/<Status>')
+def get_workflowexecutionWithStatus(Status):
+  we = mongo.db.WorkflowExecutions
+  output = []
+  print (str(Status))
+  for s in we.find({"Status": Status}):
       #  log = None
       #  if s['ExecutionLog'] is not None:
       #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
@@ -206,7 +220,7 @@ def get_workflowexecutioninputs(id):
     inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
     #print (inp)
     output = inp['DataSet']
-    
+
   return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/<ObjectId:id>/outputs')
@@ -230,14 +244,14 @@ def initWorkflowExecution(wid):
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, wid, 'borpat@senam.cz' )
     return jsonify({'result': c.executionID })
     
-@app.route('/workflowexecutions/<ObjectId:id>/set')
-def setWorkflowExecutionParameter(id):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
+@app.route('/workflowexecutions/<wid>/set/')
+def setWorkflowExecutionParameter(wid):
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, wid)
     print (c)
     inp = c.getIODataDoc ('Inputs')
     #print (inp)
     for key, value in request.args.items():
-      
+
       m = nameObjectIDpair.match (key)
       mnone = nameObjectIDpairNone.match (key)
       if (m):
@@ -260,7 +274,7 @@ def getWorkflowExecutionParameter(id):
     orec = c.getIODataDoc ('Outputs')
     output = []
     for key, value in request.args.items():
-      
+
       m = nameObjectIDpair.match (key)
       if (m):
         name = m.group(1)
@@ -272,7 +286,7 @@ def getWorkflowExecutionParameter(id):
         output.append(orec.getRec(key, obj_id=None))
 
     return jsonify({'result' : output})
-  
+
 
 @app.route('/executeworkflow/<ObjectId:id>')
 def executeworkflow (id):
@@ -280,7 +294,7 @@ def executeworkflow (id):
     user = request.headers.get('From')
     remoteAddr = request.remote_addr
     print ("Execution request by %s from %s"%(user, remoteAddr))
-        
+
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
     c.execute(mongo.db)
     return redirect(url_for("get_workflowexecution", id=id))
@@ -322,29 +336,29 @@ def status():
           schedulerStatus ='Failed'
 
     # get some scheduler stats
-    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)   
+    stat=mupifDB.schedulerstat.getGlobalStat(mongo.db)
     schedulerstat = mongo.db.Stat.find_one()['scheduler']
     output.append({'mupifDBStatus':mupifDBStatus, 'schedulerStatus':schedulerStatus, 'totalStat':stat, 'schedulerStat': schedulerstat})
-    return jsonify({'result' : output})  
-    
+    return jsonify({'result' : output})
+
 @app.route("/schedulerStats/weekly.svg")
 def schedulerStatWeekly():
-    return send_file("static/images/scheduler_weekly_stat.svg", cache_timeout=60)  
+    return send_file("static/images/scheduler_weekly_stat.svg", cache_timeout=60)
 
 @app.route("/schedulerStats/hourly.svg")
 def schedulerStatHourly():
-    return send_file("static/images/scheduler_hourly_stat.svg", cache_timeout=60)  
+    return send_file("static/images/scheduler_hourly_stat.svg", cache_timeout=60)
 
 
 @app.route("/schedulerStats/loadsmall.svg")
 def schedulerStatSmall():
-    return send_file('static/images/scheduler_hourly_stat_small.svg', cache_timeout=60) 
+    return send_file('static/images/scheduler_hourly_stat_small.svg', cache_timeout=60)
 
-    
+
 @app.route("/schedulerStats/loadsmall.png")
 def schedulerStatSmallPng():
-    return send_file('static/images/scheduler_hourly_stat_small.png', cache_timeout=60) 
-    
+    return send_file('static/images/scheduler_hourly_stat_small.png', cache_timeout=60)
+
 
 
 

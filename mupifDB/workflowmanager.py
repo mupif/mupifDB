@@ -108,17 +108,17 @@ def getWorkflowDoc (db, wid, version=-1):
     """
     wdoclatest = db.Workflows.find_one({"wid": wid})
     if (wdoclatest is None):
-            raise KeyError ("Workflow document wit WID" + wid +" not found")
+            raise KeyError ("Workflow document with WID" + wid +" not found")
     lastversion = wdoclatest.get('Version',1)
     if (version == -1 or version == lastversion): #get the latest one
         return wdoclatest
     elif (version < lastversion):
         wdoc = db.WorkflowsHistory.find_one({"wid": wid, 'Version': version})
         if (wdoc is None):
-            raise KeyError ("Workflow document wit WID" + wid + "Version"+version+" not found")
+            raise KeyError ("Workflow document with WID" + wid + "Version"+version+" not found")
         return wdoc
     else:
-        raise KeyError ("Workflow document wit WID" + wid + "Version"+version+": bad version")
+        raise KeyError ("Workflow document with WID" + wid + "Version"+version+": bad version")
 
 
 
@@ -166,7 +166,7 @@ class WorkflowExecutionIODataSet():
 
         wdoc = getWorkflowDoc (db, workflowID, version=workflowVer)
         if (wdoc is None):
-            raise KeyError ("Workflow document wit ID" + workflowID +" not found")
+            raise KeyError ("Workflow document with ID" + workflowID +" not found")
 
         IOCard = wdoc['IOCard']
         rec = {}
@@ -189,7 +189,7 @@ class WorkflowExecutionIODataSet():
         """
         doc = self.db.IOData.find_one({'_id': self.IOid})
         if (doc is None):
-            raise KeyError ("Document wit ID" + self.IOid +" not found")
+            raise KeyError ("Document with ID" + self.IOid +" not found")
         return doc
 
     def getRec (self, name, obj_id =None):
@@ -282,7 +282,7 @@ class WorkflowExecutionContext():
             return WorkflowExecutionContext(db, result.inserted_id)
 
         else:
-            raise KeyError ("Workflow record " + workflowID + ", Version "+version+" not found")
+            raise KeyError ("Workflow record " + workflowID + ", Version " + str(workflowVer) + " not found")
 
     def _getWorkflowExecutionDocument(self):
         """
@@ -290,7 +290,7 @@ class WorkflowExecutionContext():
         """
         doc = self.db.WorkflowExecutions.find_one({'_id': self.executionID})
         if (doc is None):
-            raise KeyError ("Document wit ID" + self.executionID +" not found")
+            raise KeyError ("Record with ID" + self.executionID +" not found")
         return doc
 
     def _getWorkflowDocument(self, db):
@@ -302,7 +302,7 @@ class WorkflowExecutionContext():
         version = doc['WorkflowVersion']
         wdoc = getWorkflowDoc (db, wid, version=version)
         if (wdoc is None):
-            raise KeyError ("Workflow document wit ID" + wid +" not found")
+            raise KeyError ("Workflow document with ID" + wid +" not found")
         return wdoc
 
     def set (self, name, value):
