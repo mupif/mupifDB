@@ -1,5 +1,6 @@
 import sys
-sys.path.append("..")
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import time
 import atexit
 import tempfile
@@ -248,7 +249,7 @@ def restApiQuery_getPendingExecutions():
 
 
 def restApiQuery_setExecutionStatusScheduled(execution_id):
-    response = requests.get(rest_api_url + "workflowexecutions/" + execution_id + "/set?Status=Scheduled&ScheduledDate=" + str(datetime.now()))
+    response = requests.get(rest_api_url + "workflowexecutions/" + execution_id + "/modify?Status=Scheduled&ScheduledDate=" + str(datetime.now()))
     response_json = response.json()
     return int(response_json['result'])
 

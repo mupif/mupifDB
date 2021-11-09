@@ -290,7 +290,7 @@ class WorkflowExecutionContext():
         """
         doc = self.db.WorkflowExecutions.find_one({'_id': self.executionID})
         if (doc is None):
-            raise KeyError ("Record with ID" + self.executionID +" not found")
+            raise KeyError ("Record with id=" + self.executionID + " not found")
         return doc
 
     def _getWorkflowDocument(self, db):

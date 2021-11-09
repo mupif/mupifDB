@@ -1,8 +1,10 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import tempfile
 import urllib.request
 import multiprocessing
 import subprocess
-import mupifDB
 from datetime import datetime
 from pymongo import MongoClient
 import gridfs

@@ -1,6 +1,7 @@
 # mupifDbRestApi.py
 import sys
-sys.path.append("..")
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 from flask import Flask,redirect, url_for, send_file
 from flask import jsonify
 from flask import request
@@ -9,7 +10,7 @@ from flask_cors import CORS
 import mupifDB
 import gridfs
 import re
-import os,psutil
+import psutil
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 import pygal
@@ -167,7 +168,7 @@ def get_workflows():
     output.append({'wid' : s['wid'], 'Description' : s['Description'], '_id': s['_id']})
   return jsonify({'result' : output})
 
-@app.route('/workflows/<wid>')
+@app.route('/workflows/<int:wid>')
 def get_workflow(wid):
   workflows = mongo.db.Workflows
   output = []
@@ -183,12 +184,12 @@ def get_workflowexecutions():
     output.append({'id' : str(s['_id']), 'StartDate' : s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
   return jsonify({'result' : output})
 
-@app.route('/workflowexecutions/<ObjectId:id>')
-def get_workflowexecution(id):
+@app.route('/workflowexecutions/<int:weid>')
+def get_workflowexecution(weid):
   we = mongo.db.WorkflowExecutions
   output = []
-  print (str(id))
-  for s in we.find({"_id": id}):
+  print (str(weid))
+  for s in we.find({"_id": weid}):
       #  log = None
       #  if s['ExecutionLog'] is not None:
       #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
@@ -210,45 +211,52 @@ def get_workflowexecutionWithStatus(Status):
   return jsonify({'result' : output})
 
 
-@app.route('/workflowexecutions/<ObjectId:id>/inputs')
-def get_workflowexecutioninputs(id):
+@app.route('/workflowexecutions/<int:weid>/inputs')
+def get_workflowexecutioninputs(weid):
   we = mongo.db.WorkflowExecutions
-  wi = we.find_one({"_id":id})
-  wid = wi['Inputs']
+  wi = we.find_one({"_id": weid})
+  w_id = wi['Inputs']
   output = []
-  if (wid is not None):
+  if (w_id is not None):
     inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
     #print (inp)
     output = inp['DataSet']
 
   return jsonify({'result' : output})
 
-@app.route('/workflowexecutions/<ObjectId:id>/outputs')
-def get_workflowexecutionoutputs(id):
+@app.route('/workflowexecutions/<int:weid>/outputs')
+def get_workflowexecutionoutputs(weid):
   we = mongo.db.WorkflowExecutions
-  wi = we.find_one({"_id":id})
-  wid = wi['Outputs']
+  wi = we.find_one({"_id": weid})
+  w_id = wi['Outputs']
   output = []
 
-  if (wid is not None):
+  if (w_id is not None):
     inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
     #print (inp)
     output=inp['DataSet']
 
   return jsonify({'result' : output})
 
-@app.route('/workflowexecutions/init/<wid>')
-def initWorkflowExecution(wid):
+@app.route('/workflowexecutions/init/<int:weid>')
+def initWorkflowExecution(weid):
     #generate new execution record
     # schedule execution
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, wid, 'borpat@senam.cz' )
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, weid, 'sulcstanda@seznam.cz' )
     return jsonify({'result': c.executionID })
-    
-@app.route('/workflowexecutions/<wid>/set/')
-def setWorkflowExecutionParameter(wid):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, wid)
+
+@app.route('/workflowexecutions/<int:weid>/modify')
+def modifyWorkflowExecution(weid):
+    for key, value in request.args.items():
+        mongo.db.WorkflowExecutions.update_one({'_id': weid}, {"$set": {key: value}})
+
+    return jsonify({'result': True})
+
+@app.route('/workflowexecutions/<int:weid>/set')
+def setWorkflowExecutionParameter(weid):
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     print (c)
-    inp = c.getIODataDoc ('Inputs')
+    inp = c.getIODataDoc('Inputs')
     #print (inp)
     for key, value in request.args.items():
 
@@ -268,9 +276,9 @@ def setWorkflowExecutionParameter(wid):
         inp.set(key, value)
     return jsonify({'result': c.executionID })
 
-@app.route('/workflowexecutions/<ObjectId:id>/get')
-def getWorkflowExecutionParameter(id):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
+@app.route('/workflowexecutions/<int:weid>/get')
+def getWorkflowExecutionParameter(weid):
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     orec = c.getIODataDoc ('Outputs')
     output = []
     for key, value in request.args.items():
@@ -288,26 +296,26 @@ def getWorkflowExecutionParameter(id):
     return jsonify({'result' : output})
 
 
-@app.route('/executeworkflow/<ObjectId:id>')
-def executeworkflow (id):
+@app.route('/executeworkflow/<int:weid>')
+def executeworkflow (weid):
     #print(id)
     user = request.headers.get('From')
     remoteAddr = request.remote_addr
     print ("Execution request by %s from %s"%(user, remoteAddr))
 
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, id)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     c.execute(mongo.db)
-    return redirect(url_for("get_workflowexecution", id=id))
+    return redirect(url_for("get_workflowexecution", id=weid))
     #return (id)
 
 @app.route("/uploads/<path:filename>")
 def get_upload(filename):
     return mongo.send_file(filename)
 
-@app.route('/gridfs/<ObjectId:id>')
-def download (id):
+@app.route('/gridfs/<int:wid>')
+def download (wid):
   fs = gridfs.GridFSBucket(mongo.db)
-  return fs.open_download_stream(id).read()
+  return fs.open_download_stream(wid).read()
 
 @app.route("/uploads/<path:filename>", methods=["POST"])
 def save_upload(filename):
