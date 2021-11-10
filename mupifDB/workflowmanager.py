@@ -1,24 +1,23 @@
-from pymongo import MongoClient
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 from pymongo import ReturnDocument
 import tempfile
-import urllib
-import multiprocessing
-import subprocess
-import mupifDB
 import collections
-from mupifDB import workflowrunner
 from bson import ObjectId
 import gridfs
 import re
 import io, zipfile
 from ast import literal_eval 
 from mupifDB import error
-import os
 
-#pool to handle workflow execution requests
-#ctx = multiprocessing.get_context('spawn')
-#pool = ctx.Pool()
-#pool = multiprocessing.Pool()
+import restApiControl
+
+
+# pool to handle workflow execution requests
+# ctx = multiprocessing.get_context('spawn')
+# pool = ctx.Pool()
+# pool = multiprocessing.Pool()
 
 
 emptyWorkflowExecutionRecord = {'WorkflowID': None, 
@@ -101,36 +100,36 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
         else:
             print ("Update failed")
             
-def getWorkflowDoc (db, wid, version=-1):
+def getWorkflowDoc(wid, version=-1):
     """ 
         Returns workflow document with given wid and version
         @param version workflow version, version == -1 means return the most recent version    
     """
-    wdoclatest = db.Workflows.find_one({"wid": wid})
+    wdoclatest = restApiControl.getWorkflowRecord(wid)
     if (wdoclatest is None):
             raise KeyError ("Workflow document with WID" + wid +" not found")
     lastversion = wdoclatest.get('Version',1)
     if (version == -1 or version == lastversion): #get the latest one
         return wdoclatest
     elif (version < lastversion):
-        wdoc = db.WorkflowsHistory.find_one({"wid": wid, 'Version': version})
+        wdoc = restApiControl.getWorkflowRecordFromHistory(wid, version)
         if (wdoc is None):
-            raise KeyError ("Workflow document with WID" + wid + "Version"+version+" not found")
+            raise KeyError ("Workflow document with WID" + wid + "Version" + str(version) + " not found")
         return wdoc
     else:
-        raise KeyError ("Workflow document with WID" + wid + "Version"+version+": bad version")
+        raise KeyError ("Workflow document with WID" + wid + "Version" + str(version) + ": bad version")
 
 
 
 
 
-def updateWorkflowDefinition (db, id, description, version, source, useCases, workflowInputs, workflowOutputs):
+def updateWorkflowDefinition (db, wid, description, version, source, useCases, workflowInputs, workflowOutputs):
     """
     Updates the workflow definition into DB. 
     Note this affects the exiting workflow executions as they refer to the old version! 
     This to be solved by workflow versiong.
     @param db database
-    @param id unique workflow id
+    @param wid unique workflow id
     @param description Description
     @param version Version
     @param source source URL
@@ -149,7 +148,7 @@ def updateWorkflowDefinition (db, id, description, version, source, useCases, wo
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs':Outputs}
 
-    result = db.Workflows.update_one({"_id":id}, {'$set': rec})
+    result = db.Workflows.update_one({"_id": wid}, {'$set': rec})
     return result 
 
 
@@ -164,7 +163,7 @@ class WorkflowExecutionIODataSet():
     def create (db, workflowID, type='Input', workflowVer=-1):    
         rec = {'Type': type, 'DataSet': []}
 
-        wdoc = getWorkflowDoc (db, workflowID, version=workflowVer)
+        wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if (wdoc is None):
             raise KeyError ("Workflow document with ID" + workflowID +" not found")
 
@@ -263,7 +262,7 @@ class WorkflowExecutionContext():
         """
         """
         #first query for workflow document
-        wdoc = getWorkflowDoc (db, workflowID, version=workflowVer)
+        wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if (wdoc is not None):
             #IOCard = wdoc['IOCard']
             rec = emptyWorkflowExecutionRecord.copy()
@@ -300,7 +299,7 @@ class WorkflowExecutionContext():
         doc = self._getWorkflowExecutionDocument()
         wid = doc['WorkflowID']
         version = doc['WorkflowVersion']
-        wdoc = getWorkflowDoc (db, wid, version=version)
+        wdoc = getWorkflowDoc(wid, version=version)
         if (wdoc is None):
             raise KeyError ("Workflow document with ID" + wid +" not found")
         return wdoc

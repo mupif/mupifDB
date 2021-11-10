@@ -48,15 +48,12 @@ if 'UseCases' not in mongo.db.list_collection_names():
     mongo.db.create_collection("IOData")
     print('MuPIF DB first-time setup completed.')
 
-
-
 # Registering an Error Handler
 @app.errorhandler(mupifDB.error.InvalidUsage)
 def handle_invalid_usage(error):
     response = jsonify(error.to_dict())
     response.status_code = error.status_code
     return response
-
 
 @app.errorhandler(KeyError)
 def handle_error(e):
@@ -68,11 +65,9 @@ def handle_error(e):
     #response.content_type = "application/json"
     return response
 
-
 @app.route('/')
 def home_page():
-  return f"MuPIFDB: MuPIF Database and Workflow Manager with REST API</br>Database Connected</br></br>Follow <a href=\"{request.host_url}/help\">{request.host_url}/help</a> for API documentation"
-
+    return f"MuPIFDB: MuPIF Database and Workflow Manager with REST API</br>Database Connected</br></br>Follow <a href=\"{request.host_url}/help\">{request.host_url}/help</a> for API documentation"
 
 @app.route('/help')
 def help():
@@ -138,105 +133,131 @@ def help():
 
 @app.route('/usecases', methods=['GET'])
 def get_usecases():
-  usecases = mongo.db.UseCases
-  output = []
-  for s in usecases.find():
-    output.append({'id' : s['_id'], 'Description' : s['Description']})
-  return jsonify({'result' : output})
+    usecases = mongo.db.UseCases
+    output = []
+    for s in usecases.find():
+        output.append({'id' : s['_id'], 'Description' : s['Description']})
+    return jsonify({'result' : output})
 
 @app.route('/usecases/<usecase>', methods=['GET'])
 def get_usecase(usecase):
-  usecases = mongo.db.UseCases
-  output = []
-  for s in usecases.find({"_id": usecase}):
-    output.append({'id' : s['_id'], 'Description' : s['Description']})
-  return jsonify({'result' : output})
+    usecases = mongo.db.UseCases
+    output = []
+    for s in usecases.find({"_id": usecase}):
+        output.append({'id' : s['_id'], 'Description' : s['Description']})
+    return jsonify({'result' : output})
 
 @app.route('/usecases/<usecase>/workflows', methods=['GET'])
 def get_usecase_workflows(usecase):
-  workflows = mongo.db.Workflows
-  output = []
-  for s in workflows.find({"UseCases": usecase}):
-    output.append({'wid' : s['wid'], '_id':s['_id']})
-  return jsonify({'result' : output})
+    workflows = mongo.db.Workflows
+    output = []
+    for s in workflows.find({"UseCases": usecase}):
+        output.append({'wid' : s['wid'], '_id':s['_id']})
+    return jsonify({'result' : output})
 
 @app.route('/workflows')
 def get_workflows():
-  workflows = mongo.db.Workflows
-  output = []
-  for s in workflows.find():
-    output.append({'wid' : s['wid'], 'Description' : s['Description'], '_id': s['_id']})
-  return jsonify({'result' : output})
+    workflows = mongo.db.Workflows
+    output = []
+    for s in workflows.find():
+        output.append({'wid' : s['wid'], 'Description' : s['Description'], '_id': s['_id']})
+    return jsonify({'result' : output})
+
+@app.route('/stat')
+def get_statScheduler():
+    workflows = mongo.db.Stat
+    output = {}
+    for s in workflows.find():
+        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
+        for k in keys:
+            if k in s["scheduler"]:
+                output[k] = s["scheduler"][k]
+        break
+    return jsonify({'result' : output})
+
+@app.route('/stat/set')
+def set_statScheduler():
+    for key, value in request.args.items():
+        print(key, value)
+        if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
+            mongo.db.Stat.update({}, {"$set": {key: value}})
+    return jsonify({'result': True})
 
 @app.route('/workflows/<int:wid>')
 def get_workflow(wid):
-  workflows = mongo.db.Workflows
-  output = []
-  for s in workflows.find({"wid": wid}):
-    output.append({'_id' : s['_id'], 'wid':s['wid'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version':s.get('Version',1)})
-  return jsonify({'result' : output})
+    table = mongo.db.Workflows
+    output = []
+    for s in table.find({"wid": wid}):
+        output.append({'_id' : s['_id'], 'wid':s['wid'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version':s.get('Version',1)})
+    return jsonify({'result' : output})
+
+@app.route('/workflowshistory/<int:wid>/<int:version>')
+def get_workflowFromHistory(wid, version):
+    table = mongo.db.WorkflowsHistory
+    output = []
+    for s in table.find({"wid": wid, "Version": version}):
+        output.append({'_id' : s['_id'], 'wid':s['wid'], 'Description' : s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version':s.get('Version',1)})
+    return jsonify({'result' : output})
 
 @app.route('/workflowexecutions')
 def get_workflowexecutions():
-  we = mongo.db.WorkflowExecutions
-  output = []
-  for s in we.find():
-    output.append({'id' : str(s['_id']), 'StartDate' : s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
-  return jsonify({'result' : output})
+    we = mongo.db.WorkflowExecutions
+    output = []
+    for s in we.find():
+        output.append({'id' : str(s['_id']), 'StartDate' : s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
+    return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/<int:weid>')
 def get_workflowexecution(weid):
-  we = mongo.db.WorkflowExecutions
-  output = []
-  print (str(weid))
-  for s in we.find({"_id": weid}):
-      #  log = None
-      #  if s['ExecutionLog'] is not None:
-      #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-      #    print (log)
-      output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
-  return jsonify({'result' : output})
+    we = mongo.db.WorkflowExecutions
+    output = []
+    print (str(weid))
+    for s in we.find({"_id": weid}):
+        #  log = None
+        #  if s['ExecutionLog'] is not None:
+        #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+        #    print (log)
+        output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+    return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/<Status>')
 def get_workflowexecutionWithStatus(Status):
-  we = mongo.db.WorkflowExecutions
-  output = []
-  print (str(Status))
-  for s in we.find({"Status": Status}):
-      #  log = None
-      #  if s['ExecutionLog'] is not None:
-      #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-      #    print (log)
-      output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
-  return jsonify({'result' : output})
-
+    we = mongo.db.WorkflowExecutions
+    output = []
+    print (str(Status))
+    for s in we.find({"Status": Status}):
+        #  log = None
+        #  if s['ExecutionLog'] is not None:
+        #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
+        #    print (log)
+        output.append({'Start Date' : str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs':s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+    return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/<int:weid>/inputs')
 def get_workflowexecutioninputs(weid):
-  we = mongo.db.WorkflowExecutions
-  wi = we.find_one({"_id": weid})
-  w_id = wi['Inputs']
-  output = []
-  if (w_id is not None):
-    inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
-    #print (inp)
-    output = inp['DataSet']
-
-  return jsonify({'result' : output})
+    we = mongo.db.WorkflowExecutions
+    wi = we.find_one({"_id": weid})
+    w_id = wi['Inputs']
+    output = []
+    if (w_id is not None):
+        inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
+        #print (inp)
+        output = inp['DataSet']
+    return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/<int:weid>/outputs')
 def get_workflowexecutionoutputs(weid):
-  we = mongo.db.WorkflowExecutions
-  wi = we.find_one({"_id": weid})
-  w_id = wi['Outputs']
-  output = []
+    we = mongo.db.WorkflowExecutions
+    wi = we.find_one({"_id": weid})
+    w_id = wi['Outputs']
+    output = []
 
-  if (w_id is not None):
-    inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
-    #print (inp)
-    output=inp['DataSet']
+    if (w_id is not None):
+        inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
+        #print (inp)
+        output=inp['DataSet']
 
-  return jsonify({'result' : output})
+    return jsonify({'result' : output})
 
 @app.route('/workflowexecutions/init/<int:weid>')
 def initWorkflowExecution(weid):
@@ -259,21 +280,20 @@ def setWorkflowExecutionParameter(weid):
     inp = c.getIODataDoc('Inputs')
     #print (inp)
     for key, value in request.args.items():
-
-      m = nameObjectIDpair.match (key)
-      mnone = nameObjectIDpairNone.match (key)
-      if (m):
-        name = m.group(1)
-        objid = m.group(2)
-        print(f'Setting {name}({objid}):{value}')
-        inp.set(name, value, obj_id=int(objid))
-      elif (mnone):
-        name = mnone.group(1)
-        print(f'Setting {name}:{value}')
-        inp.set(name, value)
-      else:
-        print(f'Setting {key}:{value}')
-        inp.set(key, value)
+        m = nameObjectIDpair.match (key)
+        mnone = nameObjectIDpairNone.match (key)
+        if (m):
+            name = m.group(1)
+            objid = m.group(2)
+            print(f'Setting {name}({objid}):{value}')
+            inp.set(name, value, obj_id=int(objid))
+        elif (mnone):
+            name = mnone.group(1)
+            print(f'Setting {name}:{value}')
+            inp.set(name, value)
+        else:
+            print(f'Setting {key}:{value}')
+            inp.set(key, value)
     return jsonify({'result': c.executionID })
 
 @app.route('/workflowexecutions/<int:weid>/get')
@@ -282,19 +302,16 @@ def getWorkflowExecutionParameter(weid):
     orec = c.getIODataDoc ('Outputs')
     output = []
     for key, value in request.args.items():
-
-      m = nameObjectIDpair.match (key)
-      if (m):
-        name = m.group(1)
-        objid = m.group(2)
-        print(f'Getting {name}({objid})')
-        output.append(orec.getRec(name, obj_id=int(objid)))
-      else:
-        print(f'Getting {key}:{value}')
-        output.append(orec.getRec(key, obj_id=None))
-
+        m = nameObjectIDpair.match (key)
+        if (m):
+            name = m.group(1)
+            objid = m.group(2)
+            print(f'Getting {name}({objid})')
+            output.append(orec.getRec(name, obj_id=int(objid)))
+        else:
+            print(f'Getting {key}:{value}')
+            output.append(orec.getRec(key, obj_id=None))
     return jsonify({'result' : output})
-
 
 @app.route('/executeworkflow/<int:weid>')
 def executeworkflow (weid):
@@ -314,15 +331,14 @@ def get_upload(filename):
 
 @app.route('/gridfs/<int:wid>')
 def download (wid):
-  fs = gridfs.GridFSBucket(mongo.db)
-  return fs.open_download_stream(wid).read()
+    fs = gridfs.GridFSBucket(mongo.db)
+    return fs.open_download_stream(wid).read()
 
 @app.route("/uploads/<path:filename>", methods=["POST"])
 def save_upload(filename):
     mongo.save_file(filename, request.files["file"])
     #return "Uploaded"
     return redirect(url_for("get_upload", filename=filename))
-
 
 @app.route("/status")
 def status():
@@ -335,10 +351,10 @@ def status():
         schedulerStatus= 'Failed'
     else:
         with open(pidfile, "r") as f:
-          try:
-            pid = int(f.read())
-          except (OSError, ValueError):
-            schedulerStatus = 'Failed'
+            try:
+                pid = int(f.read())
+            except (OSError, ValueError):
+                schedulerStatus = 'Failed'
 
         if not psutil.pid_exists(pid):
           schedulerStatus ='Failed'
@@ -357,11 +373,9 @@ def schedulerStatWeekly():
 def schedulerStatHourly():
     return send_file("static/images/scheduler_hourly_stat.svg", cache_timeout=60)
 
-
 @app.route("/schedulerStats/loadsmall.svg")
 def schedulerStatSmall():
     return send_file('static/images/scheduler_hourly_stat_small.svg', cache_timeout=60)
-
 
 @app.route("/schedulerStats/loadsmall.png")
 def schedulerStatSmallPng():

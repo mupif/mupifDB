@@ -1,3 +1,5 @@
+# todo Is this file used?
+
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
@@ -14,7 +16,7 @@ import zipfile
 #client = MongoClient()
 #db = client.MuPIF
 
-def execWorkflow (id, wed, wd):
+def execWorkflow (wid, wed, wd):
 
     client = MongoClient()
     db = client.MuPIF
@@ -38,12 +40,12 @@ def execWorkflow (id, wed, wd):
         except Exception as e:
             print (e)
             # set execution code to failed
-            #db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Failed'}})
+            #db.WorkflowExecutions.update_one({'_id': wid}, {'$set': {'Status': 'Failed'}})
             return
         #execute
-        db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Running', 'StartDate':str(datetime.now())}})
+        db.WorkflowExecutions.update_one({'_id': wid}, {'$set': {'Status': 'Running', 'StartDate':str(datetime.now())}})
         #wec.set('StartDate', str(datetime.now()))
-        cmd = ['/usr/bin/python3',tempDir+'/w.py', '-eid', str(id) ]
+        cmd = ['/usr/bin/python3',tempDir+'/w.py', '-eid', str(wid) ]
         print (cmd)
         completed = subprocess.call(cmd, cwd=tempDir)
         print (tempDir)
@@ -54,9 +56,9 @@ def execWorkflow (id, wed, wd):
             logID=fs.put(f, filename="mupif.log")
         #set execution code to completed
         if (completed == 0):
-            db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
+            db.WorkflowExecutions.update_one({'_id': wid}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
         else:
-            db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Failed', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
+            db.WorkflowExecutions.update_one({'_id': wid}, {'$set': {'Status': 'Failed', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
         return 0
     else:
         print ("Workflow execution already scheduled for execution")

@@ -146,7 +146,7 @@ def executeWorkflow(weid):
     workflowVersion = wed['WorkflowVersion']
     wid = wed['WorkflowID']
     id = wed['_id']
-    wd = workflowmanager.getWorkflowDoc (db, wid, version=workflowVersion) 
+    wd = workflowmanager.getWorkflowDoc(wid, version=workflowVersion)
     if (wd is None):
         log.error ("Workflow document with wid %s, verison %s not found"%(wid, workflowVersion))
         raise KeyError ("Workflow document wit ID %s, version %s not found"%(wid, workflowVersion))

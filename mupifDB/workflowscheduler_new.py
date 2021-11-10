@@ -6,7 +6,6 @@ import atexit
 import tempfile
 import multiprocessing
 import subprocess
-from datetime import datetime
 from pymongo import MongoClient
 import gridfs
 import enum
@@ -14,10 +13,11 @@ import pidfile
 import workflowmanager
 import zipfile
 import ctypes
-import requests
+
+import restApiControl
 
 import logging
-#logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
+# logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
 log = logging.getLogger()
 
 # WorkflowScheduler is a daemon, which
@@ -26,18 +26,18 @@ log = logging.getLogger()
 #
 
 
-#WEID Status
-#Created -> Pending -> Scheduled -> Running -> Finished | Failed
+# WEID Status
+# Created -> Pending -> Scheduled -> Running -> Finished | Failed
 #
-#Created-> the execution record allocated and initialized
-#Pending -> execution record finalized (inputs sets), ready to be scheduled
-#Scheduled -> execution scheduled by the scheduler
-#Running -> execution processed (it is running)
-#Finished|Failed -> execution finished
+# Created-> the execution record allocated and initialized
+# Pending -> execution record finalized (inputs sets), ready to be scheduled
+# Scheduled -> execution scheduled by the scheduler
+# Running -> execution processed (it is running)
+# Finished|Failed -> execution finished
 #
 
 class ExecutionResult(enum.Enum):
-    Finished = 1  #successfull
+    Finished = 1  # successful
     Failed   = 2
 
 class index(enum.IntEnum):
@@ -57,8 +57,8 @@ buf= None
 def procInit ():
     global fd
     global buf
-    #create new empty file to back memory map on disk
-    #fd = os.open('/tmp/workflowscheduler', os.O_RDWR)
+    # create new empty file to back memory map on disk
+    # fd = os.open('/tmp/workflowscheduler', os.O_RDWR)
 
     # Create the mmap instace with the following params:
     # fd: File descriptor which backs the mapping or -1 for anonymous mapping
@@ -71,30 +71,30 @@ def procInit ():
 
 def procFinish(r):
     print ("procFinish called")
-    #fd.close()
+    # fd.close()
 
 def procError(r):
     print ("procError called")
 
-def updateStatRunning(db):
+def updateStatRunning():
     with (statusLock):
         print ("updateStatRunning called")
         statusArray[index.runningTasks] += 1
         statusArray[index.scheduledTasks] -= 1
         statusArray[index.load] = ctypes.c_int(int(100 *statusArray[index.runningTasks]/poolsize))
-        db.Stat.update_one({}, {'$inc': {'scheduler.runningTasks': 1, 'scheduler.scheduledTasks': -1}, '$set': {'scheduler.load': statusArray[index.load]}})
+        restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load])
 
-def updateStatScheduled(db):
+def updateStatScheduled():
     with statusLock:
         statusArray[index.scheduledTasks] += 1
-        db.Stat.update_one({}, {'$inc': {'scheduler.scheduledTasks': 1}})
+        restApiControl.setStatScheduler(scheduledTasks=statusArray[index.scheduledTasks])
 
-def updateStatFinished(db):
+def updateStatFinished():
     with statusLock:
         statusArray[index.runningTasks] -= 1
         statusArray[index.processedTasks] += 1
         statusArray[index.load] = ctypes.c_int(int(100*statusArray[index.runningTasks]/poolsize))
-        db.Stat.update_one({}, {'$inc': {'scheduler.runningTasks': -1, 'scheduler.processedTasks': 1}, '$set': {'scheduler.load': statusArray[index.load]}})
+        restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
 
 def setupLogger(fileName, level=logging.DEBUG):
     """
@@ -131,18 +131,18 @@ def executeWorkflow(weid):
     fs = gridfs.GridFS(db)
     log.info("db connected")
     #get workflow execution record
-    wed = db.WorkflowExecutions.find_one({'_id': weid})
-    if (wed is None):
+    we_rec = restApiControl.getExecutionRecord(weid)
+    if (we_rec is None):
         log.error("Workflow Execution record %s not found"%(weid))
         raise KeyError ("Workflow Execution record %s not found"%(weid))
     else:
         log.info ("Workflow Execution record %s found"%(weid))
 
     #get workflow record (needed to get workflow source to execute
-    workflowVersion = wed['WorkflowVersion']
-    wid = wed['WorkflowID']
-    id = wed['_id']
-    wd = workflowmanager.getWorkflowDoc (db, wid, version=workflowVersion)
+    workflowVersion = we_rec['WorkflowVersion']
+    wid = we_rec['WorkflowID']
+    id = we_rec['_id']
+    wd = workflowmanager.getWorkflowDoc(wid, version=workflowVersion)
     if (wd is None):
         log.error ("Workflow document with wid %s, verison %s not found"%(wid, workflowVersion))
         raise KeyError ("Workflow document with ID %s, version %s not found"%(wid, workflowVersion))
@@ -150,9 +150,9 @@ def executeWorkflow(weid):
         log.info ("Workflow document with wid %s, id %s, version %s found"%(wid, id, workflowVersion))
 
     #check if status is "Scheduled"
-    if (wed['Status']=='Scheduled'):
+    if (we_rec['Status']=='Scheduled'):
         completed = 1
-        log.info("wed status is Scheduled, processing")
+        log.info("we_rec status is Scheduled, processing")
         # execute the selected workflow
         # take workflow source and run python interpreter on it in a temporary directory
         tempRoot = '/tmp'
@@ -163,12 +163,8 @@ def executeWorkflow(weid):
             log.info("temp dir %s created"%(tempDir,))
             #copy workflow source to tempDir
             try:
-                #wpy = db.gridfs.get(wd['Source']).read()
-                #with open ("tempDir+'/w.py", "w") as f:
-                #    f.write(wpy)
-                #print (wd)
-                print("Opening gridfsID %s"%(wd['GridFSID']))
-                wfile = fs.find_one(filter={'_id': wd['GridFSID']}) #zipfile
+                print("Opening gridfsID %s" % wd['GridFSID'])
+                wfile = fs.find_one(filter={'_id': wd['GridFSID']})  # zipfile
                 with open (tempDir+'/w.zip', "wb") as f:
                     f.write(wfile.read())
                 #print (wfile.read())
@@ -176,16 +172,14 @@ def executeWorkflow(weid):
                 #urllib.request.urlretrieve (wd['Source'], tempDir+'/w.py')
             except Exception as e:
                 log.error (str(e))
-                # set execution code to failed
-                #db.WorkflowExecutions.update_one({'_id': id}, {'$set': {'Status': 'Failed'}})
+                # set execution code to failed ...yes or no?
                 return 1
-            #execute
-            log.info("Executing weid %s, tempdir %s"%(weid, tempDir))
-            #print("Executing weid %s, tempdir %s"%(weid, tempDir))
+            # execute
+            log.info("Executing weid %s, tempdir %s" % (weid, tempDir))
+            # print("Executing weid %s, tempdir %s" % (weid, tempDir))
             # update status
-            updateStatRunning(db)
-            db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Running', 'StartDate':str(datetime.now())}})
-            #wec.set('StartDate', str(datetime.now()))
+            updateStatRunning()
+            restApiControl.setExecutionStatusRunning(weid)
             cmd = ['/usr/bin/python3',tempDir+'/w.py', '-eid', str(weid) ]
             #print (cmd)
             completed = subprocess.call(cmd, cwd=tempDir)
@@ -193,21 +187,21 @@ def executeWorkflow(weid):
             #print ('command:' + str(cmd) + ' Return Code:'+str(completed))
             #store execution log
             logID = None
-            log.info("Copying log files to db")
+            log.info("Copying log files to database")
             with open(tempDir+'/mupif.log', 'rb') as f:
                 logID=fs.put(f, filename="mupif.log")
             log.info("Copying log files done")
             # update status
-            updateStatFinished(db)
+            updateStatFinished()
         log.info ("Updating weid %s status to %s"%(weid, completed))
-        #set execution code to completed
+        # set execution code to completed
         if (completed == 0):
             log.info ("Workflow execution %s Finished"%(weid))
-            db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Finished', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
+            restApiControl.setExecutionStatusFinished(weid, logID)
             return (weid, ExecutionResult.Finished)
         else:
             log.info ("Workflow execution %s Failed"%(weid))
-            db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Failed', 'EndDate':str(datetime.now()), 'ExecutionLog': logID}})
+            restApiControl.setExecutionStatusFailed(weid, logID)
             return (weid, ExecutionResult.Failed)
 
     else:
@@ -217,48 +211,13 @@ def executeWorkflow(weid):
 
 def stop (pool):
     log.info("Stopping the scheduler, waiting for workers to terminate")
-    client = MongoClient()
-    db = client.MuPIF
-    db.Stat.update_one({}, {'$set': {'scheduler.runningTasks': 0, 'scheduler.scheduledTasks': 0, 'scheduler.load': 0, 'scheduler.processedTasks':0}}, upsert=True)
+    restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
     pool.close() # close pool
-    pool.join() # wait for comppletion
+    pool.join() # wait for completion
     log.info ("All tasks finished, exiting")
 
 
-# connection to RestAPI
-
-rest_api_url = 'http://127.0.0.1:5000/'
-
-
-def restApiQuery_getScheduledExecutions():
-    executions = []
-    response = requests.get(rest_api_url + "workflowexecutions?Status=Scheduled")
-    response_json = response.json()
-    for record in response_json['result']:
-        executions.append(record)
-    return executions
-
-
-def restApiQuery_getPendingExecutions():
-    executions = []
-    response = requests.get(rest_api_url + "workflowexecutions?Status=Pending")
-    response_json = response.json()
-    for record in response_json['result']:
-        executions.append(record)
-    return executions
-
-
-def restApiQuery_setExecutionStatusScheduled(execution_id):
-    response = requests.get(rest_api_url + "workflowexecutions/" + execution_id + "/modify?Status=Scheduled&ScheduledDate=" + str(datetime.now()))
-    response_json = response.json()
-    return int(response_json['result'])
-
-
 if __name__ == '__main__':
-    # print(restApiQuery_getScheduledExecutions())
-    # print(restApiQuery_getScheduledExecutions()[0]["id"])
-    # print(restApiQuery_getPendingExecutions())
-    # exit()
 
     client = MongoClient()
     db = client.MuPIF
@@ -274,7 +233,7 @@ if __name__ == '__main__':
         #buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
         #print ("mmmap file initialized")
         #fileStat()
-        db.Stat.update_one({}, {'$set': {'scheduler.runningTasks': 0, 'scheduler.scheduledTasks': 0, 'scheduler.load': 0, 'scheduler.processedTasks':0}}, upsert=True)
+        restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
     atexit.register(stop, pool)
@@ -283,11 +242,10 @@ if __name__ == '__main__':
             log.info ("Starting MupifDB Workflow Scheduler\n")
 
             try:
-            #if (1):
 
                 #import first already scheduled executions
                 log.info("Importing already scheduled executions")
-                for wed in restApiQuery_getScheduledExecutions():  # db.WorkflowExecutions.find({"Status": 'Scheduled'})
+                for wed in restApiControl.getScheduledExecutions():
                     # add the correspoding weid to the pool, change status to scheduled
                     weid = wed['id']
                     req = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
@@ -298,11 +256,11 @@ if __name__ == '__main__':
                 # add new execution (Pending)
                 while (True):
                     # retrieve weids with status "Scheduled" from DB
-                    for wed in restApiQuery_getPendingExecutions():  # db.WorkflowExecutions.find({"Status": 'Pending'})
+                    for wed in restApiControl.getPendingExecutions():
                         # add the correspoding weid to the pool, change status to scheduled
                         weid = wed['id']
-                        restApiQuery_setExecutionStatusScheduled(weid)  # db.WorkflowExecutions.update_one({'_id': weid}, {'$set': {'Status': 'Scheduled','ScheduledDate':str(datetime.now())}})
-                        updateStatScheduled(db) # update status
+                        restApiControl.setExecutionStatusScheduled(weid)
+                        updateStatScheduled() # update status
                         req = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                         log.info("WEID %s added to the execution pool"%(weid))
                     # ok, no more jobs to schedule for now, wait
