@@ -113,8 +113,7 @@ def setupLogger(fileName, level=logging.DEBUG):
     :param object level: logging level. Allowed values are CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
     :rtype: logger instance
     """
-    l = logging.getLogger()
-    # l = logging.getLogger(loggerName)
+    logger = logging.getLogger()
     formatLog = '%(asctime)s %(levelname)s:%(filename)s:%(lineno)d %(message)s \n'
     formatTime = '%Y-%m-%d %H:%M:%S'
     formatter = logging.Formatter(formatLog, formatTime)
@@ -123,11 +122,11 @@ def setupLogger(fileName, level=logging.DEBUG):
     streamHandler = logging.StreamHandler()
     streamHandler.setFormatter(formatter)
 
-    l.setLevel(level)
-    l.addHandler(fileHandler)
-    l.addHandler(streamHandler)
+    logger.setLevel(level)
+    logger.addHandler(fileHandler)
+    logger.addHandler(streamHandler)
 
-    return l
+    return logger
 
 
 def executeWorkflow(weid):
@@ -137,7 +136,7 @@ def executeWorkflow(weid):
     client = MongoClient()
     db = client.MuPIF
     fs = gridfs.GridFS(db)
-    log.info("db connected")
+    log.info("database connected")
     # get workflow execution record
     we_rec = restApiControl.getExecutionRecord(weid)
     if we_rec is None:
@@ -172,7 +171,7 @@ def executeWorkflow(weid):
             # copy workflow source to tempDir
             try:
                 print("Opening gridfsID %s" % wd['GridFSID'])
-                wfile = fs.find_one(filter={'_id': wd['GridFSID']})  # zipfile
+                wfile = fs.find_one(filter={'_id': wd['GridFSID']})  # zipfile todo
                 with open(tempDir+'/w.zip', "wb") as f:
                     f.write(wfile.read())
                 # print(wfile.read())
@@ -197,7 +196,7 @@ def executeWorkflow(weid):
             logID = None
             log.info("Copying log files to database")
             with open(tempDir+'/mupif.log', 'rb') as f:
-                logID = fs.put(f, filename="mupif.log")
+                logID = fs.put(f, filename="mupif.log")  # todo
             log.info("Copying log files done")
             # update status
             updateStatFinished()
@@ -217,30 +216,19 @@ def executeWorkflow(weid):
         raise KeyError("WEID %s not scheduled for execution" % weid)
 
 
-def stop(pool):
+def stop(var_pool):
     log.info("Stopping the scheduler, waiting for workers to terminate")
     restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
-    pool.close()  # close pool
-    pool.join()  # wait for completion
+    var_pool.close()  # close pool
+    var_pool.join()  # wait for completion
     log.info("All tasks finished, exiting")
 
 
 if __name__ == '__main__':
 
-    client = MongoClient()
-    db = client.MuPIF
-    fs = gridfs.GridFS(db)
     setupLogger(fileName="scheduler.log")
     with statusLock:
         statusArray[index.status] = 1
-        # open
-        # create new empty file to back memory map on disk
-        # fd = os.open('/tmp/workflowscheduler', os.O_CREAT|os.O_TRUNC|os.O_RDWR)
-        # zero out the file to ensure it's the right size
-        # assert os.write(fd, b'\x00'*mmap.PAGESIZE) == mmap.PAGESIZE
-        # buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
-        # print("mmmap file initialized")
-        # fileStat()
         restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)

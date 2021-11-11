@@ -36,7 +36,7 @@ emptyWorkflowExecutionRecord = {
 }
 
 
-def insertWorkflowDefinition (db, wid, description, source, useCases, workflowInputs, workflowOutputs):
+def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInputs, workflowOutputs):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -80,20 +80,20 @@ def insertWorkflowDefinition (db, wid, description, source, useCases, workflowIn
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
     
     # first check if workflow with wid already exist in workflows collections
-    wdoc = db.Workflows.find_one({"wid": wid})
-    if wdoc is None:  # can safely create a new doment in workflows collection
+    w_rec = restApiControl.getWorkflowRecord(wid)
+    if w_rec is None:  # can safely create a new record in workflows collection
         version = 1
         rec['Version'] = version 
         result = db.Workflows.insert_one(rec)
         return result.inserted_id 
-    else:
+    else:  # todo
         # the workflow already exists, need to make a new version
         # clone latest version to History
-        # print(wdoc)
-        wdoc.pop('_id')  # remove original document id
-        db.WorkflowsHistory.insert(wdoc)
+        # print(w_rec)
+        w_rec.pop('_id')  # remove original document id
+        db.WorkflowsHistory.insert(w_rec)
         # update the latest document
-        version = (1+int(wdoc.get('Version', 1)))
+        version = (1+int(w_rec.get('Version', 1)))
         rec['Version'] = version
         result = db.Workflows.find_one_and_update({'wid': wid}, {'$set': rec}, return_document=ReturnDocument.AFTER)
         # print(result)
