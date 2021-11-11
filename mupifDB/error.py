@@ -1,6 +1,3 @@
-# mupifDbRestApi.py
-
-from flask import jsonify
 
 class InvalidUsage(Exception):
     status_code = 400
@@ -12,8 +9,5 @@ class InvalidUsage(Exception):
             self.status_code = status_code
 
     def to_dict(self):
-        rv = {"error":{'message':self.message, 'code':self.status_code, 'type':'InvalidUsage'}}
+        rv = {"error": {'message': self.message, 'code': self.status_code, 'type': 'InvalidUsage'}}
         return rv
-
-
-#raise InvalidUsage("huhu")
