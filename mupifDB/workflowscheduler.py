@@ -173,7 +173,7 @@ def executeWorkflow(weid):
             try:
                 print("Opening gridfsID %s" % wd['GridFSID'])
                 wfile = fs.find_one(filter={'_id': wd['GridFSID']})  # zipfile
-                with open (tempDir+'/w.zip', "wb") as f:
+                with open(tempDir+'/w.zip', "wb") as f:
                     f.write(wfile.read())
                 # print(wfile.read())
                 zipfile.ZipFile(tempDir+'/w.zip', mode='r').extractall(path=tempDir)
@@ -188,7 +188,7 @@ def executeWorkflow(weid):
             # update status
             updateStatRunning()
             restApiControl.setExecutionStatusRunning(weid)
-            cmd = ['/usr/bin/python3', tempDir+'/w.py', '-eid', str(weid) ]
+            cmd = ['/usr/bin/python3', tempDir+'/w.py', '-eid', str(weid)]
             # print(cmd)
             completed = subprocess.call(cmd, cwd=tempDir)
             # print(tempDir)
@@ -201,16 +201,16 @@ def executeWorkflow(weid):
             log.info("Copying log files done")
             # update status
             updateStatFinished()
-        log.info("Updating weid %s status to %s"%(weid, completed))
+        log.info("Updating weid %s status to %s" % (weid, completed))
         # set execution code to completed
         if completed == 0:
             log.info("Workflow execution %s Finished" % weid)
             restApiControl.setExecutionStatusFinished(weid, logID)
-            return (weid, ExecutionResult.Finished)
+            return weid, ExecutionResult.Finished
         else:
             log.info("Workflow execution %s Failed" % weid)
             restApiControl.setExecutionStatusFailed(weid, logID)
-            return (weid, ExecutionResult.Failed)
+            return weid, ExecutionResult.Failed
 
     else:
         log.error("WEID %s not scheduled for execution" % weid)
