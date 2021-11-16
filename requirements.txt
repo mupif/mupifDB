@@ -1,5 +1,5 @@
 pygal
-python-pidfile
+pidfile
 mupif
 pymongo
 flask_pymongo

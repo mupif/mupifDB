@@ -1,4 +1,8 @@
-import sys, os, importlib
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
+
+import importlib
 from pymongo import MongoClient
 from pymongo import ReturnDocument
 import gridfs
@@ -20,7 +24,7 @@ fs = gridfs.GridFS(db)
 parser = argparse.ArgumentParser()
 parser.add_argument('-u', '--usercase', required=True, dest="usercase")
 parser.add_argument('-wid', '--workflowid', required=True, dest="wid")
-parser.add_argument('-s', '--source', required=True, dest="source") #url
+parser.add_argument('-s', '--source', required=True, dest="source")  # url
 parser.add_argument('-m', '--module', required=True, dest="module")  
 parser.add_argument('-c', '--classname', required=True, dest="classname")
 parser.add_argument('-d', '--description', required=False, dest="description")
@@ -31,20 +35,23 @@ parser.add_argument('-d', '--description', required=False, dest="description")
 
 args = parser.parse_args()
 moduleurl = args.source
-modulename= args.module
+modulename = args.module
 classname = args.classname
 
 tempRoot = '/tmp'
 tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_tmp')
-print ("Tempdir=%s"%(tempDir))
-#get basename
+print("Tempdir=%s" % tempDir)
+# # get basename
 path = urllib.parse.urlsplit(moduleurl).path
 filename = os.path.basename(path)
-print ("Modulename=%s"%filename)
+print("Modulename=%s" % filename)
 
-urllib.request.urlretrieve(moduleurl, tempDir+'/'+filename)
-if (zipfile.is_zipfile(tempDir+'/'+filename)):
-    zipfile.ZipFile(tempDir+'/'+filename, mode='r').extractall(path=tempDir)
+# urllib.request.urlretrieve(moduleurl, tempDir+'/'+filename)
+# if zipfile.is_zipfile(tempDir+'/'+filename):
+#     zipfile.ZipFile(tempDir+'/'+filename, mode='r').extractall(path=tempDir)
+
+mypath = path.replace(filename, "")
+sys.path.append(mypath)
 
 sys.path.append(tempDir)
 moduleImport = importlib.import_module(modulename)
@@ -52,7 +59,7 @@ print(moduleImport)
 workflowClass = getattr(moduleImport, classname)
 workflow = workflowClass()
 
-id = mupifDB.workflowmanager.insertWorkflowDefinition(db,wid=args.wid,description=args.description,
-    source=tempDir+'/'+filename,useCases=(args.usercase,), workflowInputs=workflow.getMetadata('Inputs'), 
-    workflowOutputs= workflow.getMetadata('Outputs'))
-print("workflow "+str(id)+" registered")
+rid = mupifDB.workflowmanager.insertWorkflowDefinition(  # tempDir+'/'+filename
+    db, wid=args.wid, description=args.description, source=moduleurl, useCases=(args.usercase,),
+    workflowInputs=workflow.getMetadata('Inputs'), workflowOutputs=workflow.getMetadata('Outputs'))
+print("workflow "+str(rid)+" registered")

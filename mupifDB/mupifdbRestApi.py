@@ -1,8 +1,9 @@
-# mupifDbRestApi.py
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
-from flask import Flask, redirect, url_for, send_file
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
+
+from flask import Flask, redirect, url_for, send_file, send_from_directory
 from flask import jsonify
 from flask import request
 from flask_pymongo import PyMongo
@@ -11,6 +12,7 @@ import mupifDB
 import gridfs
 import re
 import psutil
+import tempfile
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 import pygal
@@ -181,7 +183,7 @@ def get_workflows():
     return jsonify({'result': output})
 
 
-@app.route('/workflows/<int:wid>')
+@app.route('/workflows/<wid>')
 def get_workflow(wid):
     table = mongo.db.Workflows
     output = []
@@ -191,11 +193,18 @@ def get_workflow(wid):
     return jsonify({'result': output})
 
 
+@app.route('/workflows/<wid>/modify')
+def modifyWorkflow(wid):
+    for key, value in request.args.items():
+        mongo.db.Workflows.update_one({'_id': wid}, {"$set": {key: value}})
+    return jsonify({'result': True})
+
+
 # --------------------------------------------------
 # Workflows history
 # --------------------------------------------------
 
-@app.route('/workflowshistory/<int:wid>/<int:version>')
+@app.route('/workflowshistory/<wid>/<int:version>')
 def get_workflowFromHistory(wid, version):
     table = mongo.db.WorkflowsHistory
     output = []
@@ -213,11 +222,12 @@ def get_workflowexecutions():
     table = mongo.db.WorkflowExecutions
     output = []
     for s in table.find():
-        output.append({'id': str(s['_id']), 'StartDate': s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
+        output.append(s)
+        # output.append({'id': str(s['_id']), 'StartDate': s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<int:weid>')
+@app.route('/workflowexecutions/<objectid:weid>')
 def get_workflowexecution(weid):
     table = mongo.db.WorkflowExecutions
     output = []
@@ -227,25 +237,52 @@ def get_workflowexecution(weid):
         #  if s['ExecutionLog'] is not None:
         #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
         #    print(log)
-        output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+        output.append(s)
+        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<Status>')
-def get_workflowexecutionWithStatus(Status):
+@app.route('/workflowexecutions/Pending')
+def get_workflowexecutionWithStatusPending():
     table = mongo.db.WorkflowExecutions
     output = []
-    print(str(Status))
-    for s in table.find({"Status": Status}):
-        #  log = None
-        #  if s['ExecutionLog'] is not None:
-        #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-        #    print(log)
-        output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+    for s in table.find({"Status": "Pending"}):
+        output.append(s)
+        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<int:weid>/inputs')
+@app.route('/workflowexecutions/Scheduled')
+def get_workflowexecutionWithStatusScheduled():
+    table = mongo.db.WorkflowExecutions
+    output = []
+    for s in table.find({"Status": "Scheduled"}):
+        output.append(s)
+        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+    return jsonify({'result': output})
+
+
+@app.route('/workflowexecutions/Created')
+def get_workflowexecutionWithStatusCreated():
+    table = mongo.db.WorkflowExecutions
+    output = []
+    for s in table.find({"Status": "Created"}):
+        output.append(s)
+        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+    return jsonify({'result': output})
+
+
+@app.route('/workflowexecutions/Running')
+def get_workflowexecutionWithStatusRunning():
+    table = mongo.db.WorkflowExecutions
+    output = []
+    for s in table.find({"Status": "Running"}):
+        output.append(s)
+        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
+    return jsonify({'result': output})
+
+
+@app.route('/workflowexecutions/<objectid:weid>/inputs')
 def get_workflowexecutioninputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": weid})
@@ -258,7 +295,7 @@ def get_workflowexecutioninputs(weid):
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<int:weid>/outputs')
+@app.route('/workflowexecutions/<objectid:weid>/outputs')
 def get_workflowexecutionoutputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": weid})
@@ -273,22 +310,22 @@ def get_workflowexecutionoutputs(weid):
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/init/<int:weid>')
-def initWorkflowExecution(weid):
+@app.route('/workflowexecutions/init/<wid>')
+def initWorkflowExecution(wid):
     # generate new execution record
     # schedule execution
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, weid, 'sulcstanda@seznam.cz')
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, wid, 'sulcstanda@seznam.cz')
     return jsonify({'result': c.executionID})
 
 
-@app.route('/workflowexecutions/<int:weid>/modify')
+@app.route('/workflowexecutions/<objectid:weid>/modify')
 def modifyWorkflowExecution(weid):
     for key, value in request.args.items():
         mongo.db.WorkflowExecutions.update_one({'_id': weid}, {"$set": {key: value}})
     return jsonify({'result': True})
 
 
-@app.route('/workflowexecutions/<int:weid>/set')
+@app.route('/workflowexecutions/<objectid:weid>/set')
 def setWorkflowExecutionParameter(weid):
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     print(c)
@@ -312,7 +349,7 @@ def setWorkflowExecutionParameter(weid):
     return jsonify({'result': c.executionID})
 
 
-@app.route('/workflowexecutions/<int:weid>/get')
+@app.route('/workflowexecutions/<objectid:weid>/get')
 def getWorkflowExecutionParameter(weid):
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     orec = c.getIODataDoc('Outputs')
@@ -330,7 +367,7 @@ def getWorkflowExecutionParameter(weid):
     return jsonify({'result': output})
 
 
-@app.route('/executeworkflow/<int:weid>')
+@app.route('/executeworkflow/<objectid:weid>')
 def executeworkflow(weid):
     # print(id)
     user = request.headers.get('From')
@@ -347,12 +384,31 @@ def executeworkflow(weid):
 # Files
 # --------------------------------------------------
 
+@app.route('/file/<fid>')
+def getFile(fid):
+    fs = gridfs.GridFS(mongo.db)
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+        import bson
+        import zipfile
+        import io
+        foundfile = fs.get(bson.objectid.ObjectId(fid))
+        wfile = io.BytesIO(foundfile.read())
+        with open(tempDir + '/workflow.zip', "wb") as f:
+            f.write(wfile.read())
+        zf = zipfile.ZipFile(tempDir + '/workflow.zip', mode='r')
+        fn = zipfile.ZipFile.namelist(zf)[0]
+        zf.extractall(path=tempDir)
+        if os.path.exists(tempDir+"/"+fn):
+            return send_from_directory(directory=tempDir, path=fn)
+    return None
+
+
 @app.route("/uploads/<path:filename>")
 def get_upload(filename):
     return mongo.send_file(filename)
 
 
-@app.route('/gridfs/<int:wid>')
+@app.route('/gridfs/<wid>')
 def download(wid):
     fs = gridfs.GridFSBucket(mongo.db)
     return fs.open_download_stream(wid).read()
@@ -413,7 +469,7 @@ def set_statScheduler():
     for key, value in request.args.items():
         print(key, value)
         if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
-            mongo.db.Stat.update({}, {"$set": {key: value}})
+            mongo.db.Stat.update_one({}, {"$set": {key: value}})
     return jsonify({'result': True})
 
 

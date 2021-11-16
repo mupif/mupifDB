@@ -1,6 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 from pymongo import ReturnDocument
 import tempfile
 import collections
@@ -83,18 +84,21 @@ def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInp
     w_rec = restApiControl.getWorkflowRecord(wid)
     if w_rec is None:  # can safely create a new record in workflows collection
         version = 1
-        rec['Version'] = version 
+        rec['Version'] = version
+        # todo
         result = db.Workflows.insert_one(rec)
         return result.inserted_id 
-    else:  # todo
+    else:
         # the workflow already exists, need to make a new version
         # clone latest version to History
         # print(w_rec)
         w_rec.pop('_id')  # remove original document id
+        # todo
         db.WorkflowsHistory.insert(w_rec)
         # update the latest document
         version = (1+int(w_rec.get('Version', 1)))
         rec['Version'] = version
+        # todo
         result = db.Workflows.find_one_and_update({'wid': wid}, {'$set': rec}, return_document=ReturnDocument.AFTER)
         # print(result)
         if result:
@@ -148,6 +152,7 @@ def updateWorkflowDefinition(db, wid, description, version, source, useCases, wo
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
 
+    # todo
     result = db.Workflows.update_one({"_id": wid}, {'$set': rec})
     return result 
 
@@ -285,10 +290,10 @@ class WorkflowExecutionContext:
         """
         Returns workflowExection document corresponding to self.executionID
         """
-        doc = self.db.WorkflowExecutions.find_one({'_id': self.executionID})
-        if doc is None:
+        we_rec = restApiControl.getExecutionRecord(self.executionID)
+        if we_rec is None:
             raise KeyError("Record with id=" + self.executionID + " not found")
-        return doc
+        return we_rec
 
     def _getWorkflowDocument(self, db):
         """
@@ -308,7 +313,7 @@ class WorkflowExecutionContext:
         """
         doc = self._getWorkflowExecutionDocument()
         if name in doc:
-            self.db.WorkflowExecutions.update_one({'_id': self.executionID}, {'$set': {name: value}})
+            restApiControl.setExecutionParameter(self.executionID, name, value)
 
     def get(self, name):
         """
@@ -334,7 +339,7 @@ class WorkflowExecutionContext:
 
         if wed['Status'] == 'Created':
             # freeze the execution record by setting state to "Pending"
-            self.db.WorkflowExecutions.update_one({'_id': self.executionID}, {'$set': {'Status': 'Pending'}})
+            restApiControl.setExecutionParameter(self.executionID, "Status", "Pending")
             print("Execution %s state changed to Pending" % self.executionID)
         else:
             # raise KeyError("Workflow execution already scheduled/executed")
@@ -347,18 +352,18 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
     if value is not None:
         # map value 
         if type == 'mupif.Property':
-            print('Mapping %s, units %s, value:%s' % (mupif.PropertyID[typeID], units, value))
+            print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
             fvalue = literal_eval(value)
             if isinstance(fvalue, tuple):
-                app.setProperty(mupif.property.ConstantProperty(fvalue, mupif.PropertyID[typeID], mupif.ValueType.Vector, units), objectID)
+                app.setProperty(mupif.ConstantProperty(fvalue, mupif.DataID[typeID], mupif.ValueType.Vector, units), objectID)
             else:
-                app.setProperty(mupif.property.ConstantProperty(float(value), mupif.PropertyID[typeID], mupif.ValueType.Scalar, units), objectID)
+                app.setProperty(mupif.ConstantProperty(float(value), mupif.DataID[typeID], mupif.ValueType.Scalar, units), objectID)
         elif type == 'mupif.Field':
             # assume Field == ConstantField
-            print('Mapping %s, units %s, value:%s' % (mupif.FieldID[typeID], units, value))
+            print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
             fvalue = literal_eval(value)
             if isinstance(fvalue, tuple):
-                app.setField(mupif.constantfield.ConstantField(None, mupif.FieldID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
+                app.setField(mupif.constantfield.ConstantField(None, mupif.DataID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
             else:
                 raise TypeError('Tuple expected when handling io param of type %s' % type)
         else:
@@ -369,7 +374,7 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
 
 def mapInputs(app, db, eid):
     # request workflow execution doc
-    print('Map Inputs eid %s'%eid)
+    print('Map Inputs eid %s' % eid)
     wec = WorkflowExecutionContext(db, ObjectId(eid))
     # get worflow doc
     wd = wec._getWorkflowDocument(db)
@@ -389,15 +394,15 @@ def mapInputs(app, db, eid):
         compulsory = irec['Compulsory']
         units = irec['Units']
         if units == 'None':
-            units = mupif.physics.physicalquantities.getDimensionlessUnit()
+            units = mupif.U.none
 
         if isinstance(objID, collections.Iterable):
             for oid in objID:
                 value = inp.get(name, oid)
                 mapInput(app, value, type, typeID, units, compulsory, oid)
         else:
-                value = inp.get(name, objID)
-                mapInput(app, value, type, typeID, units, compulsory, objID)
+            value = inp.get(name, objID)
+            mapInput(app, value, type, typeID, units, compulsory, objID)
 
 
 def generateWEInputCGI(db, eid):
@@ -458,17 +463,17 @@ def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
     # map value 
     print('Mapping %s, name:%s' % (typeID, name), flush=True)
     if type == 'mupif.Property':
-        print("Requesting %s, objID %s, time %s" % (mupif.PropertyID[typeID], objectID, tstep.getTargetTime()), flush=True)
-        prop = app.getProperty(mupif.PropertyID[typeID], tstep.getTargetTime(), objectID)
+        print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, tstep.getTargetTime()), flush=True)
+        prop = app.getProperty(mupif.DataID[typeID], tstep.getTargetTime(), objectID)
         out.setAttributes(name, {"Value": prop.getValue(), "Units": str(prop.getUnits())}, objectID)
     elif type == 'mupif.Field':
         with tempfile.TemporaryDirectory() as tempDir:
             fs = gridfs.GridFS(db)
-            field = app.getField(mupif.FieldID.FID_Temperature, tstep.getTargetTime())  # timestep as None!!
+            field = app.getField(mupif.DataID.FID_Temperature, tstep.getTargetTime())  # timestep as None!!
             field.field2VTKData().tofile(tempDir+'/field')
             with open(tempDir+'/field.vtk', 'rb') as f:
                 logID = fs.put(f, filename="field.vtk")
-                print("Uploaded fiel.vtk as id: %s" % logID)
+                print("Uploaded field.vtk as id: %s" % logID)
                 out.setAttributes(name, {"Value": logID, "Units": str(field.getUnits())}, objectID)
 
     else:

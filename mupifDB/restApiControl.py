@@ -1,6 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 from datetime import datetime
 import requests
@@ -15,10 +16,21 @@ rest_api_url = 'http://127.0.0.1:5000/'
 
 def getWorkflowRecord(wid):
     response = requests.get(rest_api_url + "workflows/" + wid)
+    print()
+    print(response)
     response_json = response.json()
     for record in response_json['result']:
         return record
     return None
+
+
+# def getWorkflowRecordByWorkflowID(wid):
+#     response = requests.get(rest_api_url + "workflows/wid/" + wid)
+#     print(response)
+#     response_json = response.json()
+#     for record in response_json['result']:
+#         return record
+#     return None
 
 
 def getWorkflowRecordFromHistory(wid, version):
@@ -29,12 +41,16 @@ def getWorkflowRecordFromHistory(wid, version):
     return None
 
 
+def setWorkflowParameter(workflow_id, param, value):
+    response = requests.get(rest_api_url + "workflows/" + str(workflow_id) + "/modify?" + param + "=" + value)
+
+
 # --------------------------------------------------
 # Executions
 # --------------------------------------------------
 
 def getExecutionRecord(weid):
-    response = requests.get(rest_api_url + "workflowexecutions/" + weid)
+    response = requests.get(rest_api_url + "workflowexecutions/" + str(weid))
     response_json = response.json()
     for record in response_json['result']:
         return record
@@ -43,7 +59,7 @@ def getExecutionRecord(weid):
 
 def getScheduledExecutions():
     executions = []
-    response = requests.get(rest_api_url + "workflowexecutions?Status=Scheduled")
+    response = requests.get(rest_api_url + "workflowexecutions/Scheduled")
     response_json = response.json()
     for record in response_json['result']:
         executions.append(record)
@@ -52,27 +68,44 @@ def getScheduledExecutions():
 
 def getPendingExecutions():
     executions = []
-    response = requests.get(rest_api_url + "workflowexecutions?Status=Pending")
+    response = requests.get(rest_api_url + "workflowexecutions/Pending")
     response_json = response.json()
     for record in response_json['result']:
         executions.append(record)
     return executions
 
 
+def setExecutionParameter(execution_id, param, value):
+    response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?" + param + "=" + value)
+
+
 def setExecutionStatusScheduled(execution_id):
     response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Scheduled&ScheduledDate=" + str(datetime.now()))
+    return response.status_code == 200
 
 
 def setExecutionStatusRunning(execution_id):
     response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Running&StartDate=" + str(datetime.now()))
+    return response.status_code == 200
 
 
 def setExecutionStatusFinished(execution_id, log_id):
     response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Finished&EndDate=" + str(datetime.now()) + "&ExecutionLog=" + str(log_id))
+    return response.status_code == 200
 
 
 def setExecutionStatusFailed(execution_id, log_id):
     response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Failed&EndDate=" + str(datetime.now()) + "&ExecutionLog=" + str(log_id))
+    return response.status_code == 200
+
+
+# --------------------------------------------------
+# Files
+# --------------------------------------------------
+
+def getBinaryFileContentByID(fid):
+    response = requests.get(rest_api_url + "file/" + str(fid), allow_redirects=True)
+    return response.content
 
 
 # --------------------------------------------------
