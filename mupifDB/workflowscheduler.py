@@ -8,8 +8,6 @@ import atexit
 import tempfile
 import multiprocessing
 import subprocess
-from pymongo import MongoClient
-import gridfs
 import enum
 import pidfile
 import workflowmanager
@@ -17,7 +15,6 @@ import zipfile
 import ctypes
 
 import restApiControl
-import bson
 
 from pathlib import Path
 
@@ -138,9 +135,6 @@ def executeWorkflow(we_id):
     # returns a tuple (we_id, result)
     print("executeWorkflow invoked")
     log.info("executeWorkflow invoked")
-    client = MongoClient()
-    db = client.MuPIF
-    fs = gridfs.GridFS(db)
     print("database connected")
     log.info("database connected")
     # get workflow execution record
@@ -157,8 +151,8 @@ def executeWorkflow(we_id):
     workflowVersion = we_rec['WorkflowVersion']
     wid = we_rec['WorkflowID']
     id = we_rec['_id']
-    wd = workflowmanager.getWorkflowDoc(wid, version=workflowVersion)
-    if wd is None:
+    workflow_record = workflowmanager.getWorkflowDoc(wid, version=workflowVersion)
+    if workflow_record is None:
         print("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
         log.error("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
         raise KeyError("Workflow document with ID %s, version %s not found" % (wid, workflowVersion))
@@ -182,9 +176,36 @@ def executeWorkflow(we_id):
             log.info("temp dir %s created" % (tempDir,))
             # copy workflow source to tempDir
             try:
+                python_script_filename = workflow_record['modulename'] + ".py"
 
-                with open(tempDir+'/w.py', "wb") as f:
-                    f.write(restApiControl.getBinaryFileContentByID(wd['GridFSID']))
+                fn = restApiControl.getFileNameByID(workflow_record['GridFSID'])
+                # fn = 'workflowdemo01.py'
+                with open(tempDir + '/' + fn, "wb") as f:
+                    f.write(restApiControl.getBinaryFileContentByID(workflow_record['GridFSID']))
+                    f.close()
+
+                if fn.split('.')[-1] == 'py':
+                    print("downloaded .py file..")
+                    if fn == python_script_filename:
+                        print("Filename check OK")
+                    else:
+                        print("Filename check FAILED")
+
+                elif fn.split('.')[-1] == 'zip':
+                    print("downloaded .zip file, extracting..")
+                    print(fn)
+                    zf = zipfile.ZipFile(tempDir + '/' + fn, mode='r')
+                    filenames = zipfile.ZipFile.namelist(zf)
+                    print("Zipped files:")
+                    print(filenames)
+                    zf.extractall(path=tempDir)
+                    if python_script_filename in filenames:
+                        print("Filename check OK")
+                    else:
+                        print("Filename check FAILED")
+
+                else:
+                    print("Unsupported file extension")
 
                 p = Path(tempDir)
                 for it in p.iterdir():
@@ -202,7 +223,7 @@ def executeWorkflow(we_id):
             # update status
             updateStatRunning()
             restApiControl.setExecutionStatusRunning(we_id)
-            cmd = ['/usr/bin/python3', tempDir+'/w.py', '-eid', str(we_id)]
+            cmd = ['/usr/bin/python3', tempDir+'/' + python_script_filename, '-eid', str(we_id)]
             print(cmd)
             completed = subprocess.call(cmd, cwd=tempDir)
             # print(tempDir)
@@ -218,7 +239,7 @@ def executeWorkflow(we_id):
                 print("Copying log files to database")
                 log.info("Copying log files to database")
                 with open(tempDir+'/mupif.log', 'rb') as f:
-                    logID = fs.put(f, filename="mupif.log")  # todo
+                    logID = restApiControl.uploadBinaryFileContent(f)
                 log.info("Copying log files done")
                 print("Copying log files done")
             except:

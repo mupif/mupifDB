@@ -61,5 +61,5 @@ workflow = workflowClass()
 
 rid = mupifDB.workflowmanager.insertWorkflowDefinition(  # tempDir+'/'+filename
     db, wid=args.wid, description=args.description, source=moduleurl, useCases=(args.usercase,),
-    workflowInputs=workflow.getMetadata('Inputs'), workflowOutputs=workflow.getMetadata('Outputs'))
+    workflowInputs=workflow.getMetadata('Inputs'), workflowOutputs=workflow.getMetadata('Outputs'), modulename=modulename, classname=classname)
 print("workflow "+str(rid)+" registered")

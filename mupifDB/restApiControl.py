@@ -16,7 +16,6 @@ rest_api_url = 'http://127.0.0.1:5000/'
 
 def getWorkflowRecord(wid):
     response = requests.get(rest_api_url + "workflows/" + wid)
-    print()
     print(response)
     response_json = response.json()
     for record in response_json['result']:
@@ -104,8 +103,28 @@ def setExecutionStatusFailed(execution_id, log_id):
 # --------------------------------------------------
 
 def getBinaryFileContentByID(fid):
-    response = requests.get(rest_api_url + "file/" + str(fid), allow_redirects=True)
+    response = requests.get(rest_api_url + "main?action=get_file&file_id=" + str(fid), allow_redirects=True)
     return response.content
+
+
+def getFileNameByID(fid):
+    response = requests.get(rest_api_url + "main?action=get_filename&file_id=" + str(fid), allow_redirects=True)
+    response_json = response.json()
+    return str(response_json['result'])
+
+
+def uploadBinaryFileContentAndZip(binary_data):
+    response = requests.post(rest_api_url + "upload_and_zip", files={"myfile": binary_data})
+    print(response)
+    response_json = response.json()
+    return response_json['result']
+
+
+def uploadBinaryFileContent(binary_data):
+    response = requests.post(rest_api_url + "upload", files={"myfile": binary_data})
+    print(response)
+    response_json = response.json()
+    return response_json['result']
 
 
 # --------------------------------------------------

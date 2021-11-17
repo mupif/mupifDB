@@ -3,9 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
-from flask import Flask, redirect, url_for, send_file, send_from_directory
-from flask import jsonify
-from flask import request
+from flask import Flask, redirect, url_for, send_file, send_from_directory, flash, request, jsonify
 from flask_pymongo import PyMongo
 from flask_cors import CORS
 import mupifDB
@@ -13,15 +11,14 @@ import gridfs
 import re
 import psutil
 import tempfile
+import io
+import zipfile
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
-import pygal
 
 # for small stat use plain matplotlib
 # import matplotlib.pyplot as plt
 # plt.switch_backend('agg')
-from io import BytesIO
-import base64
 
 app = Flask(__name__)
 CORS(app)
@@ -384,41 +381,92 @@ def executeworkflow(weid):
 # Files
 # --------------------------------------------------
 
-@app.route('/file/<fid>')
 def getFile(fid):
     fs = gridfs.GridFS(mongo.db)
     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
         import bson
-        import zipfile
         import io
         foundfile = fs.get(bson.objectid.ObjectId(fid))
         wfile = io.BytesIO(foundfile.read())
-        with open(tempDir + '/workflow.zip', "wb") as f:
+        fn = foundfile.filename
+        fullpath = tempDir + '/' + fn
+        with open(fullpath, "wb") as f:
             f.write(wfile.read())
-        zf = zipfile.ZipFile(tempDir + '/workflow.zip', mode='r')
-        fn = zipfile.ZipFile.namelist(zf)[0]
-        zf.extractall(path=tempDir)
-        if os.path.exists(tempDir+"/"+fn):
+            f.close()
             return send_from_directory(directory=tempDir, path=fn)
-    return None
 
 
-@app.route("/uploads/<path:filename>")
-def get_upload(filename):
-    return mongo.send_file(filename)
+def getFilename(fid):
+    fs = gridfs.GridFS(mongo.db)
+    import bson
+    foundfile = fs.get(bson.objectid.ObjectId(fid))
+    fn = foundfile.filename
+    return jsonify({'result': fn})
 
 
-@app.route('/gridfs/<wid>')
-def download(wid):
-    fs = gridfs.GridFSBucket(mongo.db)
-    return fs.open_download_stream(wid).read()
+def allowed_file(filename):
+    ALLOWED_EXTENSIONS = {'py', 'zip'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route("/uploads/<path:filename>", methods=["POST"])
-def save_upload(filename):
-    mongo.save_file(filename, request.files["file"])
-    # return "Uploaded"
-    return redirect(url_for("get_upload", filename=filename))
+@app.route("/upload_and_zip", methods=['GET', 'POST'])
+def uploadFileAndZip():
+    if request.method == 'POST':
+        # check if the post request has the file part
+        if 'myfile' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+        file = request.files['myfile']
+        # if user does not select file, browser also
+        # submit an empty part without filename
+        if file.filename == '':
+            flash('No selected file')
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            mf = io.BytesIO()
+
+            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                myfile = open(tempDir + "/" + file.filename, mode="wb")
+                myfile.write(file.read())
+                myfile.close()
+
+                fs = gridfs.GridFS(mongo.db)
+                with zipfile.ZipFile(mf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    zf.write(tempDir + "/" + file.filename, arcname=file.filename)
+                    zf.close()
+
+                    sourceID = fs.put(mf.getvalue(), filename="workflow.zip")
+                    return jsonify({'result': sourceID})
+
+    return jsonify({'result': None})
+
+
+@app.route("/upload", methods=['GET', 'POST'])
+def uploadFile():
+    if request.method == 'POST':
+        # check if the post request has the file part
+        if 'myfile' not in request.files:
+            flash('No file part')
+            return redirect(request.url)
+        file = request.files['myfile']
+        # if user does not select file, browser also
+        # submit an empty part without filename
+        if file.filename == '':
+            flash('No selected file')
+            return redirect(request.url)
+        if file and allowed_file(file.filename):
+            mf = io.BytesIO()
+
+            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                myfile = open(tempDir + "/" + file.filename, mode="wb")
+                myfile.write(file.read())
+                myfile.close()
+
+                fs = gridfs.GridFS(mongo.db)
+                sourceID = fs.put(mf.getvalue(), filename=file.filename)
+                return jsonify({'result': sourceID})
+
+    return jsonify({'result': None})
 
 
 # --------------------------------------------------
@@ -491,6 +539,41 @@ def schedulerStatSmall():
 @app.route("/schedulerStats/loadsmall.png")
 def schedulerStatSmallPng():
     return send_file('static/images/scheduler_hourly_stat_small.png', cache_timeout=60)
+
+
+# --------------------------------------------------
+# Stat
+# --------------------------------------------------
+
+@app.route("/main", methods=['GET', 'POST'])
+def main():
+    args = {}
+    for key, value in request.args.items():
+        args[key] = value
+    print(args)
+
+    if "action" in args:
+        action = str(args["action"])
+        print("Request for action %s" % action)
+
+        if action == "get_file":
+            if "file_id" in args:
+                return getFile(args["file_id"])
+            else:
+                return jsonify({'error': "Param 'file_id' not specified."})
+
+        if action == "get_filename":
+            if "file_id" in args:
+                return getFilename(args["file_id"])
+            else:
+                return jsonify({'error': "Param 'file_id' not specified."})
+
+        print("action:")
+        print(args["action"])
+
+        return jsonify({'error': "Action '%s' not found." % action})
+
+    return jsonify({'error': "Param 'action' not specified."})
 
 
 if __name__ == '__main__':

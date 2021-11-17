@@ -37,7 +37,7 @@ emptyWorkflowExecutionRecord = {
 }
 
 
-def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInputs, workflowOutputs):
+def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInputs, workflowOutputs, modulename, classname):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -49,27 +49,29 @@ def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInp
     @param useCases tuple of useCase IDs the workflow belongs to
     @param workflowInputs workflow input metadata (list of dicts)
     @param workflowOutputs workflow output metadata (list of dicts)
+    @param modulename
+    @param classname
     """
     fs = gridfs.GridFS(db)
     # prepare document to insert
     # save workflow source to gridfs
     # to allow for more general case, workflow should be tar.gz 
-    # archive of all workflow inplamentation files 
+    # archive of all workflow inplamentation files
+    sourceID = None
     if zipfile.is_zipfile(source):
         # zip file provided; requirements: the main python workflow should have 'w.py' name 
         with open(source, 'rb') as f:
             sourceID = fs.put(f, filename="workflow_"+wid+".zip")
     else:
-        # single (python) file given, create a zip achieve of it and store in db
-        mf = io.BytesIO()
 
-        with zipfile.ZipFile(mf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(source, arcname="w.py")
-        # print("huhu %s->"%(source))
-        # print(mf.getvalue())
-        sourceID = fs.put(mf.getvalue(), filename="workflow_"+wid+".zip")
+        with open(source, 'rb') as f:
+            # sourceID = restApiControl.uploadBinaryFileContentAndZip(f)
+            sourceID = restApiControl.uploadBinaryFileContent(f)
+            print(sourceID)
+            if sourceID is not None:
+                sourceID = ObjectId(sourceID)
 
-    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'SourceURL': source, 'UseCases': useCases, 'IOCard': None}
+    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'SourceURL': source, 'UseCases': useCases, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
