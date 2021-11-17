@@ -6,10 +6,7 @@ from pymongo import ReturnDocument
 import tempfile
 import collections
 from bson import ObjectId
-import gridfs
 import re
-import io
-import zipfile
 from ast import literal_eval 
 from mupifDB import error
 
@@ -52,24 +49,19 @@ def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInp
     @param modulename
     @param classname
     """
-    fs = gridfs.GridFS(db)
     # prepare document to insert
     # save workflow source to gridfs
     # to allow for more general case, workflow should be tar.gz 
     # archive of all workflow inplamentation files
     sourceID = None
-    if zipfile.is_zipfile(source):
-        # zip file provided; requirements: the main python workflow should have 'w.py' name 
-        with open(source, 'rb') as f:
-            sourceID = fs.put(f, filename="workflow_"+wid+".zip")
-    else:
 
-        with open(source, 'rb') as f:
-            # sourceID = restApiControl.uploadBinaryFileContentAndZip(f)
-            sourceID = restApiControl.uploadBinaryFileContent(f)
-            print(sourceID)
-            if sourceID is not None:
-                sourceID = ObjectId(sourceID)
+    with open(source, 'rb') as f:
+        # sourceID = restApiControl.uploadBinaryFileContentAndZip(f)
+        sourceID = restApiControl.uploadBinaryFileContent(f)
+        f.close()
+        print(sourceID)
+        if sourceID is not None:
+            sourceID = ObjectId(sourceID)
 
     rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'SourceURL': source, 'UseCases': useCases, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
@@ -470,11 +462,11 @@ def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
         out.setAttributes(name, {"Value": prop.getValue(), "Units": str(prop.getUnits())}, objectID)
     elif type == 'mupif.Field':
         with tempfile.TemporaryDirectory() as tempDir:
-            fs = gridfs.GridFS(db)
             field = app.getField(mupif.DataID.FID_Temperature, tstep.getTargetTime())  # timestep as None!!
             field.field2VTKData().tofile(tempDir+'/field')
             with open(tempDir+'/field.vtk', 'rb') as f:
-                logID = fs.put(f, filename="field.vtk")
+                logID = restApiControl.uploadBinaryFileContent(f)
+                f.close()
                 print("Uploaded field.vtk as id: %s" % logID)
                 out.setAttributes(name, {"Value": logID, "Units": str(field.getUnits())}, objectID)
 
