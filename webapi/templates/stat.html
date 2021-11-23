@@ -100,7 +100,7 @@
     // update
     function fetchData() {
         $.ajax({
-            url: 'http://172.30.0.1:5000/status',
+            url: 'http://127.0.0.1:5000/main?action=get_status',
             type: 'get',
             success: function(newData){
                 //alert(JSON.stringify(newData));

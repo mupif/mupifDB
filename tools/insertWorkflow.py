@@ -7,10 +7,6 @@ from pymongo import MongoClient
 from pymongo import ReturnDocument
 import gridfs
 import mupifDB
-from bson import ObjectId
-from datetime import datetime
-import mupif
-import shutil
 import tempfile
 import zipfile
 import argparse
@@ -29,9 +25,8 @@ parser.add_argument('-m', '--module', required=True, dest="module")
 parser.add_argument('-c', '--classname', required=True, dest="classname")
 parser.add_argument('-d', '--description', required=False, dest="description")
 
-#
-# the workflow executable is w.py !!!! This file should be always present in archive, if single file provided, it is renamed to w.py
-# the workflow class is in module modulename, with classname, for single file modulename
+# The 'module' specifies the python script where the workflow class is defined.
+# The database itself accepts a single script or a zip archive where this script is present with additional files.
 
 args = parser.parse_args()
 moduleurl = args.source

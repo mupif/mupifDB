@@ -16,7 +16,7 @@ http://www.mupif.org
 ## Running
 *export FLASK_APP=mupifdbRestApi.py*
 
-*nohup python3 -m flask run --host 172.30.0.1 &*
+*nohup python3 -m flask run --host 127.0.0.1 &*
 
 To support statistics graphs (using schedulerstat.py), the schedulerstat.py should be run periodically (using cron) to regenerate the charts. Dynamic generation is costly. Suggested crontab entry to update charts every 5 minutes:
 

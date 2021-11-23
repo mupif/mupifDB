@@ -19,8 +19,8 @@ CORS(app, resources={r"/static/*": {"origins": "*"}})
 app.url_map.converters['objectid'] = ObjectIdConverter
 
 
-# unless overridden by the environment, use 172.30.0.1:5000
-RESTserver=os.environ.get('MUPIFDB_REST_SERVER',"http://172.30.0.1:5000/")
+# unless overridden by the environment, use 127.0.0.1:5000
+RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
 
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
@@ -48,8 +48,7 @@ def about():
 
 @app.route('/status')
 def status():
-    r = requests.get(url=RESTserver+"status")
-    data = r.json()['result'][0]
+    data = restApiControl.getStatus()
     stat = data['totalStat']
     msg = "<div><div>"
     msg += "<dl><dt>MupifDBStatus:"+data['mupifDBStatus']+"</dt>"
@@ -80,70 +79,45 @@ def contact():
 
 @app.route('/usecases')
 def usecases():
-    r = requests.get(url=RESTserver+"usecases")
-    # print (type(r.json()))
-    data = r.json()
-    return render_template('usecases.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data["result"])
+    data = restApiControl.getUsecaseRecords()
+    return render_template('usecases.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data)
     # return r.json()
 
 
-@app.route('/usecases/<id>/workflows')
-def usecaseworkflows(id):
-    r = requests.get(url=RESTserver+"usecases/"+id+"/workflows")
-    rdata = r.json()
-    # print (rdata)
-    data = []
-    for wid in rdata["result"]:
-        # print (wid)
-        wr = requests.get(url=RESTserver+"workflows/"+wid["wid"])
-        # print (wr.json())
-        wdata = wr.json()["result"][0]
-        data.append(wdata)
-    # print (data)
+@app.route('/usecases/<ucid>/workflows')
+def usecaseworkflows(ucid):
+    data = restApiControl.getWorkflowRecordsWithUsecase(ucid)
     return render_template('workflows.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data)
 
 
 @app.route('/workflows')
 def worflows():
-    r = requests.get(url=RESTserver+"workflows")
-    rdata = r.json()
-    # print (rdata)
-    data = []
-    for wid in rdata["result"]:
-        # print (wid)
-        wr = requests.get(url=RESTserver+"workflows/"+wid["wid"])
-        # print (wr.json())
-        wdata = wr.json()["result"][0]
-        data.append(wdata)
-    # print (data)
+    data = restApiControl.getWorkflowRecords()
     return render_template('workflows.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data)
 
 
 @app.route('/workflows/<wid>')
-def workflow (wid):
-    wr = requests.get(url=RESTserver+"workflows/"+wid)
-    wdata = wr.json()["result"][0]
+def workflow(wid):
+    wdata = restApiControl.getWorkflowRecord(wid)
     return render_template(
         'workflow.html', title="MuPIFDB web interface", server=request.host_url+'/',
-        wid=wid, id=wdata['_id'], UseCase=wdata["UseCases"], Description=wdata["Description"],
+        wid=wid, id=wdata['_id'], UseCas=wdata["UseCase"], Description=wdata["Description"],
         inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
         version=wdata.get("Version", 1)
     )
 
 
-@app.route('/workflowexecutions/init/<weid>')
-def initexecution(weid):
-    r = requests.get(url=RESTserver+"workflowexecutions/init/"+weid)
-    data = r.json()["result"]
-    return redirect(url_for("executionStatus", id=data))
+@app.route('/workflowexecutions/init/<wid>')
+def initexecution(wid):
+    weid = restApiControl.insertExecutionRecord(wid)
+    return redirect(url_for("executionStatus", weid=weid))
 
 
 @app.route('/workflowexecutions/<weid>')
 def executionStatus(weid):
-    r = requests.get(url=RESTserver+"workflowexecutions/"+str(weid))
-    data = r.json()["result"][0]
+    data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=request.host_url+'/', RESTserver=RESTserver, wid=data['WorkflowID'], id=weid, logID=logID, status=data)
+    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=request.host_url+'/', RESTserver=RESTserver, wid=data['WorkflowID'], id=weid, logID=logID, data=data)
 
 
 @app.route('/executeworkflow/<weid>')
@@ -151,35 +125,26 @@ def executeworkflow(weid):
     restApiControl.scheduleExecution(weid)
     data = restApiControl.getExecutionRecord(weid)
     logID = data['ExecutionLog']
-    return redirect(url_for("executionStatus", id=weid))
+    return redirect(url_for("executionStatus", weid=weid))
 
 
-@app.route('/workflowexecutions/<id>/inputs', methods=('GET', 'POST'))
-def setExecutionInputs(id):
-    # get we record
-    r = requests.get(url=RESTserver+"workflowexecutions/"+str(id))
-    we = r.json()["result"][0]
-    # print(we)
-    wid = we["WorkflowID"]
-    # print(wid)
-    # get execution input record (to access inputs)
-    r = requests.get(url=RESTserver+"workflowexecutions/"+id+'/inputs')
-    inprec = r.json()["result"]
-    print(inprec)
-    # get corresponding workflow record
-    r = requests.get(url=RESTserver+"workflows/"+wid)
-    winprec = r.json()["result"][0]["IOCard"]["Inputs"]
-
+@app.route('/workflowexecutions/<weid>/inputs', methods=('GET', 'POST'))
+def setExecutionInputs(weid):
+    execution_record = restApiControl.getExecutionRecord(weid)
+    wid = execution_record["WorkflowID"]
+    execution_inputs = restApiControl.getExecutionInputRecord(weid)
+    workflow_record = restApiControl.getWorkflowRecord(wid)
+    winprec = workflow_record["IOCard"]["Inputs"]
     if request.form:
         # process submitted data
         msg = ""
         # print (request.form.get('eid'))
         c = 0
         payload = {}
-        for i in inprec:
+        for i in execution_inputs:
             name = i['Name']
             objID = i['ObjID']
-            value = request.form['Value_%d'%c]
+            value = request.form['Value_%d' % c]
             units = i['Units']
             # source = request.form.getvalue('Source_%d'%c)
             # originID  = request.form.getvalue('OriginID_%d'%c)
@@ -193,17 +158,16 @@ def setExecutionInputs(id):
             #    print (e)
             # set source and origin
             c = c+1
-        r = requests.get(url=RESTserver+"workflowexecutions/"+id+'/set', params=payload)
+        r = requests.get(url=RESTserver+"workflowexecutions/"+weid+'/set', params=payload)
         msg += str(r.json())
-        msg += "</br><a href=\""+server+"workflowexecutions/"+id+"\">Continue to Execution record "+id+"</a>"
+        msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Continue to Execution record "+weid+"</a>"
         return render_template("basic.html", body=Markup(msg))
     else:      
         # generate input form
-        form = "<h3>Workflow: %s</h3>Input record for weid %s<table>" % (wid, id)
+        form = "<h3>Workflow: %s</h3>Input record for weid %s<table>" % (wid, weid)
         form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
         c = 0
-        # print("huhuh")
-        for i in inprec:
+        for i in execution_inputs:
             print(i)
             name = i['Name']
             # get description from workflow rec
@@ -213,25 +177,25 @@ def setExecutionInputs(id):
                     description = ii.get("Description")
                     break
 
-            type = i['Type']
-            if i.get('Compulsory', False) == True:
+            input_type = i['Type']
+            if i.get('Compulsory', False):
                 required = "required"
             else:
                 required = ""
-            if type == "mupif.Property":
+            if input_type == "mupif.Property":
                 # float assumed
                 floatPattern = "^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?"
                 tuplePattern = "^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,\s*[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?)*\)"
                 pattern = "(%s|%s)" % (floatPattern, tuplePattern)
                 form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], pattern, c, i['Value'], required, i.get('Units'))
-            elif type == "mupif.Field":
-               form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
+            elif input_type == "mupif.Field":
+                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
             else:
                 # fallback input no check except for required
                 form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
             c += 1
         form += "</table>"
-        form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>"%id
+        form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
         form += "<input type=\"submit\" value=\"Submit\" />"
         # print (form)
         return render_template('form.html', title="MuPIFDB web interface", form=form)
@@ -249,12 +213,12 @@ def getExecutionOutputs(weid):
 
     # generate result table form
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
-    form+="<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
+    form += "<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
     for i in outrec:
         # print(i)
         form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (i['Name'], i['Type'], i['ObjID'], i['Value'], escape(i.get('Units')))
     form += "</table>"
-    form += "</br><a href=\"" + server + "workflowexecutions/" + weid + "\">Continue to Execution record " + weid + "</a>"
+    form += "</br><a href=\"/workflowexecutions/" + weid + "\">Continue to Execution record " + weid + "</a>"
     # print (form)
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(form))
 

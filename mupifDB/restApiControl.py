@@ -11,8 +11,47 @@ rest_api_url = 'http://127.0.0.1:5000/'
 
 
 # --------------------------------------------------
+# Usecases
+# --------------------------------------------------
+
+def getUsecaseRecords():
+    data = []
+    response = requests.get(rest_api_url + "main?action=get_usecases")
+    response_json = response.json()
+    for record in response_json['result']:
+        data.append(record)
+    return data
+
+
+def getUsecaseRecord(ucid):
+    response = requests.get(rest_api_url + "main?action=get_usecase&id=" + ucid)
+    response_json = response.json()
+    for record in response_json['result']:
+        return record
+    return None
+
+
+# --------------------------------------------------
 # Workflows
 # --------------------------------------------------
+
+def getWorkflowRecords():
+    data = []
+    response = requests.get(rest_api_url + "main?action=get_workflows")
+    response_json = response.json()
+    for record in response_json['result']:
+        data.append(record)
+    return data
+
+
+def getWorkflowRecordsWithUsecase(usecase):
+    data = []
+    response = requests.get(rest_api_url + "main?action=get_workflow_with_usecase&usecase=" + str(usecase))
+    response_json = response.json()
+    for record in response_json['result']:
+        data.append(record)
+    return data
+
 
 def getWorkflowRecord(wid):
     response = requests.get(rest_api_url + "main?action=get_workflow&wid=" + wid)
@@ -38,6 +77,15 @@ def setWorkflowParameter(workflow_id, param, value):
 # Executions
 # --------------------------------------------------
 
+def getExecutionRecords():
+    data = []
+    response = requests.get(rest_api_url + "main?action=get_executions")
+    response_json = response.json()
+    for record in response_json['result']:
+        data.append(record)
+    return data
+
+
 def getExecutionRecord(weid):
     response = requests.get(rest_api_url + "main?action=get_execution&id=" + str(weid))
     response_json = response.json()
@@ -47,21 +95,21 @@ def getExecutionRecord(weid):
 
 
 def getScheduledExecutions():
-    executions = []
+    data = []
     response = requests.get(rest_api_url + "main?action=get_executions_with_status&status=Scheduled")
     response_json = response.json()
     for record in response_json['result']:
-        executions.append(record)
-    return executions
+        data.append(record)
+    return data
 
 
 def getPendingExecutions():
-    executions = []
+    data = []
     response = requests.get(rest_api_url + "main?action=get_executions_with_status&status=Pending")
     response_json = response.json()
     for record in response_json['result']:
-        executions.append(record)
-    return executions
+        data.append(record)
+    return data
 
 
 def scheduleExecution(execution_id):
@@ -94,6 +142,24 @@ def setExecutionStatusFailed(execution_id, log_id):
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
+def insertExecutionRecord(workflow_wid):
+    response = requests.get(rest_api_url + "main?action=insert_execution&wid=" + str(workflow_wid))
+    response_json = response.json()
+    return response_json['result']
+
+
+def getExecutionInputRecord(weid):
+    response = requests.get(rest_api_url + "main?action=get_execution_inputs&id=" + str(weid))
+    response_json = response.json()
+    return response_json['result']
+
+
+def getExecutionOutputRecord(weid):
+    response = requests.get(rest_api_url + "main?action=get_execution_outputss&id=" + str(weid))
+    response_json = response.json()
+    return response_json['result']
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
@@ -124,6 +190,12 @@ def uploadBinaryFileContent(binary_data):  # todo
 # --------------------------------------------------
 # Stat
 # --------------------------------------------------
+
+def getStatus():
+    response = requests.get(rest_api_url + "main?action=get_status")
+    response_json = response.json()
+    return response_json['result']
+
 
 def getStatScheduler():
     response = requests.get(rest_api_url + "main?action=get_scheduler_stat")

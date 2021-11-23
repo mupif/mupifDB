@@ -84,10 +84,10 @@ def printHelp():
     <br>Basic MuPIFDB REST API services:</br>
     <table>
     <tr><th>Service</th><th>Description</th></tr>
-    <tr><td><a href="/status">/status</a></td><td>MupifDB status</td></tr>
-    <tr><td><a href="/usecases">/usecases</a></td><td>List of UseCases</td></tr>
-    <tr><td><a href="/workflows">/workflows</a></td><td>List of Workflows</td></tr>
-    <tr><td><a href="/workflowexecutions">/workflowexecutions</a></td><td>List of Workflow Executions</td></tr>
+    <tr><td><a href="/main?action=get_status">/main?action=get_status</a></td><td>MupifDB status</td></tr>
+    <tr><td><a href="/main?action=get_usecases">/main?action=get_usecases</a></td><td>List of UseCases</td></tr>
+    <tr><td><a href="/main?action=get_workflows">/main?action=get_workflows</a></td><td>List of Workflows</td></tr>
+    <tr><td><a href="/main?action=get_executions">/main?action=get_executions</a></td><td>List of Workflow Executions</td></tr>
     <tr><td><a href="/schedulerStats/hourly.svg">/schedulerStats/hourly.svg</a></td><td>Scheduler hourly statistics (svg chart)</td></tr>
     <tr><td><a href="/schedulerStats/weekly.svg">/schedulerStats/weekly.svg</a></td><td>Scheduler weekly statistics (svg chart)</td></tr>
     </table>
@@ -145,23 +145,15 @@ def get_usecases():
     table = mongo.db.UseCases
     output = []
     for s in table.find():
-        output.append({'id': s['_id'], 'Description': s['Description']})
+        output.append(s)
     return jsonify({'result': output})
 
 
-def get_usecase(usecase):
+def get_usecase(ucid):
     table = mongo.db.UseCases
     output = []
-    for s in table.find({"_id": usecase}):
-        output.append({'id': s['_id'], 'Description': s['Description']})
-    return jsonify({'result': output})
-
-
-def get_usecase_workflows(usecase):
-    table = mongo.db.Workflows
-    output = []
-    for s in table.find({"UseCases": usecase}):
-        output.append({'wid': s['wid'], '_id': s['_id']})
+    for s in table.find({"_id": bson.objectid.ObjectId(ucid)}):
+        output.append(s)
     return jsonify({'result': output})
 
 
@@ -173,6 +165,14 @@ def get_workflows():
     table = mongo.db.Workflows
     output = []
     for s in table.find():
+        output.append(s)
+    return jsonify({'result': output})
+
+
+def get_workflows_with_usecase(usecase):
+    table = mongo.db.Workflows
+    output = []
+    for s in table.find({"UseCase": bson.objectid.ObjectId(usecase)}):
         output.append(s)
     return jsonify({'result': output})
 
@@ -235,23 +235,20 @@ def get_workflowexecutionsWithStatus(we_status):
     return jsonify({'error': "Given 'status' value not allowd ('%s')." % str(we_status)})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/inputs')  # todo
-def get_workflowexecutioninputs(weid):
+def get_workflowexecutionInputs(weid):
     table = mongo.db.WorkflowExecutions
-    wi = table.find_one({"_id": weid})
+    wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
     w_id = wi['Inputs']
     output = []
     if w_id is not None:
         inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
-        # print(inp)
         output = inp['DataSet']
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/outputs')  # todo
-def get_workflowexecutionoutputs(weid):
+def get_workflowexecutionOutputs(weid):
     table = mongo.db.WorkflowExecutions
-    wi = table.find_one({"_id": weid})
+    wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
     w_id = wi['Outputs']
     output = []
 
@@ -263,8 +260,7 @@ def get_workflowexecutionoutputs(weid):
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/init/<wid>')  # todo
-def initWorkflowExecution(wid):
+def insertExecution(wid):
     # generate new execution record
     # schedule execution
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, wid, 'sulcstanda@seznam.cz')
@@ -423,9 +419,7 @@ def uploadFile():
 # Stat
 # --------------------------------------------------
 
-@app.route("/status")  # todo
-def status():
-    output = []
+def get_status():
     mupifDBStatus = 'OK'
     schedulerStatus = 'OK'
 
@@ -445,7 +439,7 @@ def status():
     # get some scheduler stats
     stat = mupifDB.schedulerstat.getGlobalStat(mongo.db)
     schedulerstat = mongo.db.Stat.find_one()['scheduler']
-    output.append({'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat})
+    output = {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
     return jsonify({'result': output})
 
 
@@ -507,7 +501,12 @@ def main():
         # Usecases
         # --------------------------------------------------
 
-        #
+        if action == "get_usecases":
+            return get_usecases()
+
+        if action == "get_usecase":
+            if "id" in args:
+                return get_usecase(args["id"])
 
         # --------------------------------------------------
         # Workflows
@@ -519,6 +518,12 @@ def main():
         if action == "get_workflow":
             if "wid" in args:
                 return get_workflow(args["wid"])
+            else:
+                return jsonify({'error': "Param 'wid' not specified."})
+
+        if action == "get_workflow_with_usecase":
+            if "usecase" in args:
+                return get_workflows_with_usecase(args["usecase"])
             else:
                 return jsonify({'error': "Param 'wid' not specified."})
 
@@ -565,6 +570,24 @@ def main():
             else:
                 return jsonify({'error': "Param 'id' not specified."})
 
+        if action == "insert_execution":
+            if "wid" in args:
+                return insertExecution(args["wid"])
+            else:
+                return jsonify({'error': "Param 'wid' not specified."})
+
+        if action == "get_execution_inputs":
+            if "id" in args:
+                return get_workflowexecutionInputs(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
+        if action == "get_execution_outputs":
+            if "id" in args:
+                return get_workflowexecutionOutputs(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
         # --------------------------------------------------
         # Files
         # --------------------------------------------------
@@ -584,6 +607,9 @@ def main():
         # --------------------------------------------------
         # Stat
         # --------------------------------------------------
+
+        if action == "get_status":
+            return get_status()
 
         if action == "get_scheduler_stat":
             return get_statScheduler()
