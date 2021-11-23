@@ -10,6 +10,7 @@ from flask import request
 from flask_cors import CORS
 import requests 
 import json
+import restApiControl
 
 from mongoflask import ObjectIdConverter
 
@@ -147,9 +148,8 @@ def executionStatus(weid):
 
 @app.route('/executeworkflow/<weid>')
 def executeworkflow(weid):
-    r = requests.get(url=RESTserver+'executeworkflow/'+weid)
-    r = requests.get(url=RESTserver+"workflowexecutions/"+str(weid))
-    data = r.json()["result"][0]
+    restApiControl.scheduleExecution(weid)
+    data = restApiControl.getExecutionRecord(weid)
     logID = data['ExecutionLog']
     return redirect(url_for("executionStatus", id=weid))
 

@@ -13,6 +13,7 @@ import psutil
 import tempfile
 import io
 import zipfile
+import bson
 
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 
@@ -139,7 +140,7 @@ def printHelp():
 # Usecases
 # --------------------------------------------------
 
-@app.route('/usecases', methods=['GET'])
+
 def get_usecases():
     table = mongo.db.UseCases
     output = []
@@ -148,7 +149,6 @@ def get_usecases():
     return jsonify({'result': output})
 
 
-@app.route('/usecases/<usecase>', methods=['GET'])
 def get_usecase(usecase):
     table = mongo.db.UseCases
     output = []
@@ -157,7 +157,6 @@ def get_usecase(usecase):
     return jsonify({'result': output})
 
 
-@app.route('/usecases/<usecase>/workflows', methods=['GET'])
 def get_usecase_workflows(usecase):
     table = mongo.db.Workflows
     output = []
@@ -170,30 +169,24 @@ def get_usecase_workflows(usecase):
 # Workflows
 # --------------------------------------------------
 
-@app.route('/workflows')
 def get_workflows():
     table = mongo.db.Workflows
     output = []
     for s in table.find():
         output.append(s)
-        # output.append({'wid': s['wid'], 'Description': s['Description'], '_id': s['_id']})
     return jsonify({'result': output})
 
 
-@app.route('/workflows/<wid>')
 def get_workflow(wid):
     table = mongo.db.Workflows
     output = []
     for s in table.find({"wid": wid}):
         output.append(s)
-        # output.append({'_id': s['_id'], 'wid': s['wid'], 'Description': s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version': s.get('Version', 1)})
     return jsonify({'result': output})
 
 
-@app.route('/workflows/<wid>/modify')
-def modifyWorkflow(wid):
-    for key, value in request.args.items():
-        mongo.db.Workflows.update_one({'_id': wid}, {"$set": {key: value}})
+def modifyWorkflow(wid, key, value):
+    mongo.db.Workflows.update_one({'_id': wid}, {"$set": {key: value}})
     return jsonify({'result': True})
 
 
@@ -201,11 +194,11 @@ def modifyWorkflow(wid):
 # Workflows history
 # --------------------------------------------------
 
-@app.route('/workflowshistory/<wid>/<int:version>')
 def get_workflowFromHistory(wid, version):
     table = mongo.db.WorkflowsHistory
     output = []
-    for s in table.find({"wid": wid, "Version": version}):
+    for s in table.find({"wid": wid, "Version": int(version)}):
+        # output.append(s)
         output.append({'_id': s['_id'], 'wid': s['wid'], 'Description': s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version': s.get('Version', 1)})
     return jsonify({'result': output})
 
@@ -214,72 +207,35 @@ def get_workflowFromHistory(wid, version):
 # Executions
 # --------------------------------------------------
 
-@app.route('/workflowexecutions')
 def get_workflowexecutions():
     table = mongo.db.WorkflowExecutions
     output = []
     for s in table.find():
         output.append(s)
-        # output.append({'id': str(s['_id']), 'StartDate': s['StartDate'], 'EndDate': s['EndDate'], 'WorkflowID': s['WorkflowID'], "Status": s['Status']})
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<objectid:weid>')
 def get_workflowexecution(weid):
     table = mongo.db.WorkflowExecutions
     output = []
     print(str(weid))
-    for s in table.find({"_id": weid}):
-        #  log = None
-        #  if s['ExecutionLog'] is not None:
-        #    log = "http://localhost:5000/gridfs/%s"%s['ExecutionLog']
-        #    print(log)
+    for s in table.find({"_id": bson.objectid.ObjectId(weid)}):
         output.append(s)
-        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/Pending')
-def get_workflowexecutionWithStatusPending():
-    table = mongo.db.WorkflowExecutions
-    output = []
-    for s in table.find({"Status": "Pending"}):
-        output.append(s)
-        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
-    return jsonify({'result': output})
+def get_workflowexecutionsWithStatus(we_status):
+    print(we_status)
+    if we_status in ["Created", "Pending", "Scheduled", "Running", "Finished", "Failed"]:
+        table = mongo.db.WorkflowExecutions
+        output = []
+        for s in table.find({"Status": we_status}):
+            output.append(s)
+        return jsonify({'result': output})
+    return jsonify({'error': "Given 'status' value not allowd ('%s')." % str(we_status)})
 
 
-@app.route('/workflowexecutions/Scheduled')
-def get_workflowexecutionWithStatusScheduled():
-    table = mongo.db.WorkflowExecutions
-    output = []
-    for s in table.find({"Status": "Scheduled"}):
-        output.append(s)
-        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
-    return jsonify({'result': output})
-
-
-@app.route('/workflowexecutions/Created')
-def get_workflowexecutionWithStatusCreated():
-    table = mongo.db.WorkflowExecutions
-    output = []
-    for s in table.find({"Status": "Created"}):
-        output.append(s)
-        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
-    return jsonify({'result': output})
-
-
-@app.route('/workflowexecutions/Running')
-def get_workflowexecutionWithStatusRunning():
-    table = mongo.db.WorkflowExecutions
-    output = []
-    for s in table.find({"Status": "Running"}):
-        output.append(s)
-        # output.append({'Start Date': str(s['StartDate']), 'End Date': str(s['EndDate']), 'WorkflowID': str(s['WorkflowID']), 'Status': s['Status'], 'Inputs': s['Inputs'], 'Outputs': s['Outputs'], 'ExecutionLog': str(s['ExecutionLog'])})
-    return jsonify({'result': output})
-
-
-@app.route('/workflowexecutions/<objectid:weid>/inputs')
+@app.route('/workflowexecutions/<objectid:weid>/inputs')  # todo
 def get_workflowexecutioninputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": weid})
@@ -292,7 +248,7 @@ def get_workflowexecutioninputs(weid):
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/outputs')
+@app.route('/workflowexecutions/<objectid:weid>/outputs')  # todo
 def get_workflowexecutionoutputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": weid})
@@ -307,7 +263,7 @@ def get_workflowexecutionoutputs(weid):
     return jsonify({'result': output})
 
 
-@app.route('/workflowexecutions/init/<wid>')
+@app.route('/workflowexecutions/init/<wid>')  # todo
 def initWorkflowExecution(wid):
     # generate new execution record
     # schedule execution
@@ -315,14 +271,12 @@ def initWorkflowExecution(wid):
     return jsonify({'result': c.executionID})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/modify')
-def modifyWorkflowExecution(weid):
-    for key, value in request.args.items():
-        mongo.db.WorkflowExecutions.update_one({'_id': weid}, {"$set": {key: value}})
+def modifyWorkflowExecution(weid, key, value):
+    mongo.db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(weid)}, {"$set": {key: value}})
     return jsonify({'result': True})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/set')
+@app.route('/workflowexecutions/<objectid:weid>/set')  # todo
 def setWorkflowExecutionParameter(weid):
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     print(c)
@@ -346,7 +300,7 @@ def setWorkflowExecutionParameter(weid):
     return jsonify({'result': c.executionID})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/get')
+@app.route('/workflowexecutions/<objectid:weid>/get')  # todo
 def getWorkflowExecutionParameter(weid):
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
     orec = c.getIODataDoc('Outputs')
@@ -364,8 +318,7 @@ def getWorkflowExecutionParameter(weid):
     return jsonify({'result': output})
 
 
-@app.route('/executeworkflow/<objectid:weid>')
-def executeworkflow(weid):
+def scheduleExecution(weid):
     # print(id)
     user = request.headers.get('From')
     remoteAddr = request.remote_addr
@@ -384,8 +337,6 @@ def executeworkflow(weid):
 def getFile(fid):
     fs = gridfs.GridFS(mongo.db)
     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-        import bson
-        import io
         foundfile = fs.get(bson.objectid.ObjectId(fid))
         wfile = io.BytesIO(foundfile.read())
         fn = foundfile.filename
@@ -398,7 +349,6 @@ def getFile(fid):
 
 def getFilename(fid):
     fs = gridfs.GridFS(mongo.db)
-    import bson
     foundfile = fs.get(bson.objectid.ObjectId(fid))
     fn = foundfile.filename
     return jsonify({'result': fn})
@@ -409,7 +359,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route("/upload_and_zip", methods=['GET', 'POST'])
+@app.route("/upload_and_zip", methods=['GET', 'POST'])  # todo
 def uploadFileAndZip():
     if request.method == 'POST':
         # check if the post request has the file part
@@ -441,7 +391,7 @@ def uploadFileAndZip():
     return jsonify({'result': None})
 
 
-@app.route("/upload", methods=['GET', 'POST'])
+@app.route("/upload", methods=['GET', 'POST'])  # todo
 def uploadFile():
     if request.method == 'POST':
         # check if the post request has the file part
@@ -473,7 +423,7 @@ def uploadFile():
 # Stat
 # --------------------------------------------------
 
-@app.route("/status")
+@app.route("/status")  # todo
 def status():
     output = []
     mupifDBStatus = 'OK'
@@ -499,7 +449,6 @@ def status():
     return jsonify({'result': output})
 
 
-@app.route('/stat')
 def get_statScheduler():
     table = mongo.db.Stat
     output = {}
@@ -512,31 +461,29 @@ def get_statScheduler():
     return jsonify({'result': output})
 
 
-@app.route('/stat/set')
-def set_statScheduler():
-    for key, value in request.args.items():
-        print(key, value)
-        if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
-            mongo.db.Stat.update_one({}, {"$set": {key: value}})
-    return jsonify({'result': True})
+def set_statScheduler(key, value):
+    if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
+        mongo.db.Stat.update_one({}, {"$set": {key: value}})
+        return jsonify({'result': True})
+    return jsonify({'error': "Given value was not saved."})
 
 
-@app.route("/schedulerStats/weekly.svg")
+@app.route("/schedulerStats/weekly.svg")  # todo
 def schedulerStatWeekly():
     return send_file("static/images/scheduler_weekly_stat.svg", cache_timeout=60)
 
 
-@app.route("/schedulerStats/hourly.svg")
+@app.route("/schedulerStats/hourly.svg")  # todo
 def schedulerStatHourly():
     return send_file("static/images/scheduler_hourly_stat.svg", cache_timeout=60)
 
 
-@app.route("/schedulerStats/loadsmall.svg")
+@app.route("/schedulerStats/loadsmall.svg")  # todo
 def schedulerStatSmall():
     return send_file('static/images/scheduler_hourly_stat_small.svg', cache_timeout=60)
 
 
-@app.route("/schedulerStats/loadsmall.png")
+@app.route("/schedulerStats/loadsmall.png")  # todo
 def schedulerStatSmallPng():
     return send_file('static/images/scheduler_hourly_stat_small.png', cache_timeout=60)
 
@@ -556,20 +503,100 @@ def main():
         action = str(args["action"])
         print("Request for action %s" % action)
 
-        if action == "get_file":
-            if "file_id" in args:
-                return getFile(args["file_id"])
+        # --------------------------------------------------
+        # Usecases
+        # --------------------------------------------------
+
+        #
+
+        # --------------------------------------------------
+        # Workflows
+        # --------------------------------------------------
+
+        if action == "get_workflows":
+            return get_workflows()
+
+        if action == "get_workflow":
+            if "wid" in args:
+                return get_workflow(args["wid"])
             else:
-                return jsonify({'error': "Param 'file_id' not specified."})
+                return jsonify({'error': "Param 'wid' not specified."})
+
+        if action == "get_workflow_from_history":
+            if "wid" in args and "version" in args:
+                return get_workflowFromHistory(args["wid"], args["version"])
+            else:
+                return jsonify({'error': "Param 'wid' or 'version' not specified."})
+
+        if action == "modify_workflow":
+            if "wid" in args and "key" in args and "value" in args:
+                return modifyWorkflow(args["wid"], args["key"], args["value"])
+            else:
+                return jsonify({'error': "Param 'wid' or 'key' or 'value' not specified."})
+
+        # --------------------------------------------------
+        # Executions
+        # --------------------------------------------------
+
+        if action == "get_executions":
+            return get_workflowexecutions()
+
+        if action == "get_executions_with_status":
+            if "status" in args:
+                return get_workflowexecutionsWithStatus(args["status"])
+            else:
+                return jsonify({'error': "Param 'status' not specified."})
+
+        if action == "get_execution":
+            if "id" in args:
+                return get_workflowexecution(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
+        if action == "modify_execution":
+            if "id" in args and "key" in args and "value" in args:
+                return modifyWorkflowExecution(args["id"], args["key"], args["value"])
+            else:
+                return jsonify({'error': "Param 'id' or 'key' or 'value' not specified."})
+
+        if action == "schedule_execution":
+            if "id" in args:
+                return scheduleExecution(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
+        # --------------------------------------------------
+        # Files
+        # --------------------------------------------------
+
+        if action == "get_file":
+            if "id" in args:
+                return getFile(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
 
         if action == "get_filename":
-            if "file_id" in args:
-                return getFilename(args["file_id"])
+            if "id" in args:
+                return getFilename(args["id"])
             else:
-                return jsonify({'error': "Param 'file_id' not specified."})
+                return jsonify({'error': "Param 'id' not specified."})
 
-        print("action:")
-        print(args["action"])
+        # --------------------------------------------------
+        # Stat
+        # --------------------------------------------------
+
+        if action == "get_scheduler_stat":
+            return get_statScheduler()
+
+        if action == "set_scheduler_stat":
+            if "key" in args and "value" in args:
+                return set_statScheduler(args["key"], args["value"])
+            else:
+                return jsonify({'error': "Param 'key' or 'value' not specified."})
+
+        # --------------------------------------------------
+        # No action
+        # --------------------------------------------------
 
         return jsonify({'error': "Action '%s' not found." % action})
 

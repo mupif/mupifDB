@@ -15,25 +15,15 @@ rest_api_url = 'http://127.0.0.1:5000/'
 # --------------------------------------------------
 
 def getWorkflowRecord(wid):
-    response = requests.get(rest_api_url + "workflows/" + wid)
-    print(response)
+    response = requests.get(rest_api_url + "main?action=get_workflow&wid=" + wid)
     response_json = response.json()
     for record in response_json['result']:
         return record
     return None
 
 
-# def getWorkflowRecordByWorkflowID(wid):
-#     response = requests.get(rest_api_url + "workflows/wid/" + wid)
-#     print(response)
-#     response_json = response.json()
-#     for record in response_json['result']:
-#         return record
-#     return None
-
-
 def getWorkflowRecordFromHistory(wid, version):
-    response = requests.get(rest_api_url + "workflowshistory/" + wid + "/" + version)
+    response = requests.get(rest_api_url + "main?action=get_workflow_from_history&wid=" + wid + "&version=" + version)
     response_json = response.json()
     for record in response_json['result']:
         return record
@@ -41,7 +31,7 @@ def getWorkflowRecordFromHistory(wid, version):
 
 
 def setWorkflowParameter(workflow_id, param, value):
-    response = requests.get(rest_api_url + "workflows/" + str(workflow_id) + "/modify?" + param + "=" + value)
+    response = requests.get(rest_api_url + "main?action=modify_workflow&wid=" + str(workflow_id) + "&key=" + str(param) + "&value=" + str(value))
 
 
 # --------------------------------------------------
@@ -49,7 +39,7 @@ def setWorkflowParameter(workflow_id, param, value):
 # --------------------------------------------------
 
 def getExecutionRecord(weid):
-    response = requests.get(rest_api_url + "workflowexecutions/" + str(weid))
+    response = requests.get(rest_api_url + "main?action=get_execution&id=" + str(weid))
     response_json = response.json()
     for record in response_json['result']:
         return record
@@ -58,7 +48,7 @@ def getExecutionRecord(weid):
 
 def getScheduledExecutions():
     executions = []
-    response = requests.get(rest_api_url + "workflowexecutions/Scheduled")
+    response = requests.get(rest_api_url + "main?action=get_executions_with_status&status=Scheduled")
     response_json = response.json()
     for record in response_json['result']:
         executions.append(record)
@@ -67,35 +57,41 @@ def getScheduledExecutions():
 
 def getPendingExecutions():
     executions = []
-    response = requests.get(rest_api_url + "workflowexecutions/Pending")
+    response = requests.get(rest_api_url + "main?action=get_executions_with_status&status=Pending")
     response_json = response.json()
     for record in response_json['result']:
         executions.append(record)
     return executions
 
 
+def scheduleExecution(execution_id):
+    response = requests.get(rest_api_url + "main?action=schedule_execution&id=" + str(execution_id))
+    return response.status_code == 200
+
+
 def setExecutionParameter(execution_id, param, value):
-    response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?" + param + "=" + value)
+    response = requests.get(rest_api_url + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value))
+    return response.status_code == 200
 
 
 def setExecutionStatusScheduled(execution_id):
-    response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Scheduled&ScheduledDate=" + str(datetime.now()))
-    return response.status_code == 200
+    return setExecutionParameter(execution_id, "Status", "Scheduled")
+
+
+def setExecutionStatusPending(execution_id):
+    return setExecutionParameter(execution_id, "Status", "Pending")
 
 
 def setExecutionStatusRunning(execution_id):
-    response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Running&StartDate=" + str(datetime.now()))
-    return response.status_code == 200
+    return setExecutionParameter(execution_id, "Status", "Running")
 
 
 def setExecutionStatusFinished(execution_id, log_id):
-    response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Finished&EndDate=" + str(datetime.now()) + "&ExecutionLog=" + str(log_id))
-    return response.status_code == 200
+    return setExecutionParameter(execution_id, "Status", "Finished")
 
 
 def setExecutionStatusFailed(execution_id, log_id):
-    response = requests.get(rest_api_url + "workflowexecutions/" + str(execution_id) + "/modify?Status=Failed&EndDate=" + str(datetime.now()) + "&ExecutionLog=" + str(log_id))
-    return response.status_code == 200
+    return setExecutionParameter(execution_id, "Status", "Failed")
 
 
 # --------------------------------------------------
@@ -103,26 +99,24 @@ def setExecutionStatusFailed(execution_id, log_id):
 # --------------------------------------------------
 
 def getBinaryFileContentByID(fid):
-    response = requests.get(rest_api_url + "main?action=get_file&file_id=" + str(fid), allow_redirects=True)
+    response = requests.get(rest_api_url + "main?action=get_file&id=" + str(fid), allow_redirects=True)
     return response.content
 
 
 def getFileNameByID(fid):
-    response = requests.get(rest_api_url + "main?action=get_filename&file_id=" + str(fid), allow_redirects=True)
+    response = requests.get(rest_api_url + "main?action=get_filename&id=" + str(fid), allow_redirects=True)
     response_json = response.json()
     return str(response_json['result'])
 
 
-def uploadBinaryFileContentAndZip(binary_data):
+def uploadBinaryFileContentAndZip(binary_data):  # todo
     response = requests.post(rest_api_url + "upload_and_zip", files={"myfile": binary_data})
-    print(response)
     response_json = response.json()
     return response_json['result']
 
 
-def uploadBinaryFileContent(binary_data):
+def uploadBinaryFileContent(binary_data):  # todo
     response = requests.post(rest_api_url + "upload", files={"myfile": binary_data})
-    print(response)
     response_json = response.json()
     return response_json['result']
 
@@ -132,7 +126,7 @@ def uploadBinaryFileContent(binary_data):
 # --------------------------------------------------
 
 def getStatScheduler():
-    response = requests.get(rest_api_url + "stat")
+    response = requests.get(rest_api_url + "main?action=get_scheduler_stat")
     response_json = response.json()
     keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
     for k in keys:
@@ -143,10 +137,10 @@ def getStatScheduler():
 
 def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
     if runningTasks is not None:
-        response = requests.get(rest_api_url + "stat/set?scheduler.runningTasks=" + str(runningTasks))
+        response = requests.get(rest_api_url + "main?action=set_scheduler_stat&key=scheduler.runningTasks&value=" + str(runningTasks))
     if scheduledTasks is not None:
-        response = requests.get(rest_api_url + "stat/set?scheduler.scheduledTasks=" + str(scheduledTasks))
+        response = requests.get(rest_api_url + "main?action=set_scheduler_stat&key=scheduler.scheduledTasks&value=" + str(scheduledTasks))
     if load is not None:
-        response = requests.get(rest_api_url + "stat/set?scheduler.load=" + str(load))
+        response = requests.get(rest_api_url + "main?action=set_scheduler_stat&key=scheduler.load&value=" + str(load))
     if processedTasks is not None:
-        response = requests.get(rest_api_url + "stat/set?scheduler.processedTasks=" + str(processedTasks))
+        response = requests.get(rest_api_url + "main?action=set_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
