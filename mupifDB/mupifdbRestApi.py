@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
@@ -238,9 +239,8 @@ def get_workflowexecutionsWithStatus(we_status):
 def get_workflowexecutionInputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
-    w_id = wi['Inputs']
     output = []
-    if w_id is not None:
+    if wi['Inputs'] is not None:
         inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
         output = inp['DataSet']
     return jsonify({'result': output})
@@ -249,22 +249,23 @@ def get_workflowexecutionInputs(weid):
 def get_workflowexecutionOutputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
-    w_id = wi['Outputs']
     output = []
-
-    if w_id is not None:
+    if wi['Outputs'] is not None:
         inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
         # print(inp)
         output = inp['DataSet']
-
     return jsonify({'result': output})
 
 
-def insertExecution(wid):
-    # generate new execution record
-    # schedule execution
+def insert_execution(wid):  # todo delete this when ready
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, wid, 'sulcstanda@seznam.cz')
     return jsonify({'result': c.executionID})
+
+
+def insert_executionRecord(data):
+    table = mongo.db.WorkflowExecutions
+    res = table.insert_one(data)
+    return jsonify({'result': res.inserted_id})
 
 
 def modifyWorkflowExecution(weid, key, value):
@@ -321,9 +322,36 @@ def scheduleExecution(weid):
     print("Execution request by %s from %s" % (user, remoteAddr))
 
     c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
-    c.execute(mongo.db)
+    c.execute()
     return redirect(url_for("get_workflowexecution", id=weid))
     # return (id)
+
+
+# --------------------------------------------------
+# IO Data
+# --------------------------------------------------
+
+def get_IOData(iod_id):
+    table = mongo.db.IOData
+    output = []
+    for s in table.find({"_id": bson.objectid.ObjectId(iod_id)}):
+        output.append(s)
+    return jsonify({'result': output})
+
+    # table = mongo.db.WorkflowExecutions
+    # wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
+    # output = []
+    # if wi['Outputs'] is not None:
+    #     inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
+    #     # print(inp)
+    #     output = inp['DataSet']
+    # return jsonify({'result': output})
+
+
+def insert_IODataRecord(data):
+    table = mongo.db.IOData
+    res = table.insert_one(data)
+    return jsonify({'result': res.inserted_id})
 
 
 # --------------------------------------------------
@@ -570,11 +598,16 @@ def main():
             else:
                 return jsonify({'error': "Param 'id' not specified."})
 
-        if action == "insert_execution":
+        if action == "insert_execution_all":
             if "wid" in args:
-                return insertExecution(args["wid"])
+                return insert_execution(args["wid"])
             else:
                 return jsonify({'error': "Param 'wid' not specified."})
+
+        if action == "insert_execution":
+            data = request.get_data()
+            data = json.loads(data)
+            return insert_executionRecord(data)
 
         if action == "get_execution_inputs":
             if "id" in args:
@@ -587,6 +620,21 @@ def main():
                 return get_workflowexecutionOutputs(args["id"])
             else:
                 return jsonify({'error': "Param 'id' not specified."})
+
+        # --------------------------------------------------
+        # IO Data
+        # --------------------------------------------------
+
+        if action == "get_iodata":
+            if "id" in args:
+                return get_IOData(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
+        if action == "insert_iodata":
+            data = request.get_data()
+            data = json.loads(data)
+            return insert_IODataRecord(data)
 
         # --------------------------------------------------
         # Files

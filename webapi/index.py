@@ -11,6 +11,7 @@ from flask_cors import CORS
 import requests 
 import json
 import restApiControl
+import mupifDB
 
 from mongoflask import ObjectIdConverter
 
@@ -109,7 +110,9 @@ def workflow(wid):
 
 @app.route('/workflowexecutions/init/<wid>')
 def initexecution(wid):
-    weid = restApiControl.insertExecutionRecord(wid)
+    # c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, 'sulcstanda@seznam.cz')
+    # weid = c.executionID
+    weid = restApiControl.insertExecution(wid)  # TODO uncomment commented and delete this
     return redirect(url_for("executionStatus", weid=weid))
 
 

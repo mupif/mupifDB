@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
@@ -142,8 +143,14 @@ def setExecutionStatusFailed(execution_id, log_id):
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
-def insertExecutionRecord(workflow_wid):
-    response = requests.get(rest_api_url + "main?action=insert_execution&wid=" + str(workflow_wid))
+def insertExecution(workflow_wid):
+    response = requests.get(rest_api_url + "main?action=insert_execution_all&wid=" + str(workflow_wid))
+    response_json = response.json()
+    return response_json['result']
+
+
+def insertExecutionRecord(data):
+    response = requests.get(rest_api_url + "main?action=insert_execution", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
 
@@ -156,6 +163,24 @@ def getExecutionInputRecord(weid):
 
 def getExecutionOutputRecord(weid):
     response = requests.get(rest_api_url + "main?action=get_execution_outputss&id=" + str(weid))
+    response_json = response.json()
+    return response_json['result']
+
+
+# --------------------------------------------------
+# IO Data
+# --------------------------------------------------
+
+def getIODataRecord(iod_id):
+    response = requests.get(rest_api_url + "main?action=get_iodata&id=" + str(iod_id))
+    response_json = response.json()
+    for record in response_json['result']:
+        return record
+    return None
+
+
+def insertIODataRecord(data):
+    response = requests.post(rest_api_url + "main?action=insert_iodata", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
 

@@ -158,7 +158,7 @@ class WorkflowExecutionIODataSet:
         self.IOid = IOid
     
     @staticmethod
-    def create(db, workflowID, type='Input', workflowVer=-1):    
+    def create(workflowID, type='Input', workflowVer=-1):
         rec = {'Type': type, 'DataSet': []}
 
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
@@ -177,17 +177,17 @@ class WorkflowExecutionIODataSet:
                 data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': io.get('ObjID', None), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None})
         rec['Type'] = type
         rec['DataSet'] = data
-        result = db.IOData.insert_one(rec)
-        return result.inserted_id
+        rec_id = restApiControl.insertIODataRecord(rec)
+        return rec_id
 
     def _getDocument(self):
         """
         Returns workflowExection document corresponding to self.executionID
         """
-        doc = self.db.IOData.find_one({'_id': self.IOid})
-        if doc is None:
+        iod_record = restApiControl.getIODataRecord(self.IOid)
+        if iod_record is None:
             raise KeyError("Document with ID" + self.IOid + " not found")
-        return doc
+        return iod_record
 
     def getRec(self, name, obj_id=None):
         """
@@ -271,11 +271,10 @@ class WorkflowExecutionContext:
             #     inputs.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'Source':None, 'OriginId':None })
             # rec['InputDataOData'] = {'Inputs': inputs, 'Outputs': None}
 
-            rec['Inputs'] = WorkflowExecutionIODataSet.create(db, workflowID, 'Inputs')
-            rec['Outputs'] = WorkflowExecutionIODataSet.create(db, workflowID, 'Outputs')
-            result = db.WorkflowExecutions.insert_one(rec)
-
-            return WorkflowExecutionContext(db, result.inserted_id)
+            rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
+            rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
+            new_id = restApiControl.insertExecutionRecord(rec)
+            return WorkflowExecutionContext(db, new_id)
 
         else:
             raise KeyError("Workflow record " + workflowID + ", Version " + str(workflowVer) + " not found")
@@ -289,7 +288,7 @@ class WorkflowExecutionContext:
             raise KeyError("Record with id=" + self.executionID + " not found")
         return we_rec
 
-    def _getWorkflowDocument(self, db):
+    def _getWorkflowDocument(self):
         """
         Returns workflow document corresponding to self.executionID
         """
@@ -324,9 +323,9 @@ class WorkflowExecutionContext:
         wed = self._getWorkflowExecutionDocument()
         return wed['Status']
             
-    def execute(self, db):
+    def execute(self):
         wed = self._getWorkflowExecutionDocument()
-        wd = self._getWorkflowDocument(db)
+        wd = self._getWorkflowDocument()
         print('Scheduling the new execution:%s' % self.executionID)
         # return pool.apply_async(self.__executeWorkflow, (wed, wd)).wait()
         # print(wd)
@@ -371,7 +370,7 @@ def mapInputs(app, db, eid):
     print('Map Inputs eid %s' % eid)
     wec = WorkflowExecutionContext(db, ObjectId(eid))
     # get worflow doc
-    wd = wec._getWorkflowDocument(db)
+    wd = wec._getWorkflowDocument()
     # execution input doc
     inp = wec.getIODataDoc('Inputs')
     # loop over workflow inputs
@@ -479,7 +478,7 @@ def mapOutputs(app, db, eid, tstep):
     print('Maping Outputs for eid %s' % eid, flush=True)
     wec = WorkflowExecutionContext(db, ObjectId(eid))
     # get worflow doc
-    wd = wec._getWorkflowDocument(db)
+    wd = wec._getWorkflowDocument()
     # execution out doc
     inp = wec.getIODataDoc('Outputs')
     # loop over workflow inputs

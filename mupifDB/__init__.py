@@ -23,13 +23,14 @@
 """
 This is a MuPIFDB module (Multi-Physics Integration Framework)
 """
-#Major.Minor.Patch
+# Major.Minor.Patch
 __version__ = '0.0.1'
-__author__  = 'Borek Patzak'
+__author__ = 'Borek Patzak'
 
-#List all submodules, so they can all be imported: from mupif import *
-__all__ = ['workflowmanager','error']
+# List all submodules, so they can all be imported: from mupif import *
+__all__ = ['workflowmanager', 'schedulerstat', 'error', 'restApiControl']
 
 from . import workflowmanager
 from . import schedulerstat
 from . import error
+from . import restApiControl
