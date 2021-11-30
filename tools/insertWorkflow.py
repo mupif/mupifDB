@@ -4,13 +4,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 
 import importlib
 from pymongo import MongoClient
-from pymongo import ReturnDocument
 import gridfs
 import mupifDB
 import tempfile
-import zipfile
 import argparse
-import urllib.request
 import urllib.parse
 
 client = MongoClient()
@@ -54,7 +51,7 @@ print(moduleImport)
 workflowClass = getattr(moduleImport, classname)
 workflow = workflowClass()
 
-rid = mupifDB.workflowmanager.insertWorkflowDefinition(  # tempDir+'/'+filename
+rid = mupifDB.workflowmanager.insertWorkflowDefinition(
     wid=args.wid,
     description=args.description,
     source=moduleurl,
