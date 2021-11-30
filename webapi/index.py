@@ -139,32 +139,24 @@ def setExecutionInputs(weid):
     workflow_record = restApiControl.getWorkflowRecord(wid)
     winprec = workflow_record["IOCard"]["Inputs"]
     if request.form:
-        # process submitted data
-        msg = ""
-        # print (request.form.get('eid'))
-        c = 0
-        payload = {}
-        for i in execution_inputs:
-            name = i['Name']
-            objID = i['ObjID']
-            value = request.form['Value_%d' % c]
-            units = i['Units']
-            # source = request.form.getvalue('Source_%d'%c)
-            # originID  = request.form.getvalue('OriginID_%d'%c)
-            msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
-            payload[name+'{'+str(objID)+'}'] = value
-            # try:
-            #    inp.set(name, value, objID)
-            #    print (' OK<br>')
-            # except Exception as e:
-            #    print(' Failed<br>')
-            #    print (e)
-            # set source and origin
-            c = c+1
-        r = requests.get(url=RESTserver+"workflowexecutions/"+weid+'/set', params=payload)
-        msg += str(r.json())
-        msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Continue to Execution record "+weid+"</a>"
-        return render_template("basic.html", body=Markup(msg))
+        if execution_record["Status"] == "Created":
+            # process submitted data
+            msg = ""
+            c = 0
+            payload = {}
+            for i in execution_inputs:
+                name = i['Name']
+                objID = i['ObjID']
+                value = request.form['Value_%d' % c]
+                units = i['Units']
+                # source = request.form.getvalue('Source_%d'%c)
+                # originID  = request.form.getvalue('OriginID_%d'%c)
+                msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
+                payload[name+'{'+str(objID)+'}'] = value
+                restApiControl.setIOProperty(execution_record['Inputs'], name, 'Value', value, objID)
+                c = c+1
+            msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
+            return render_template("basic.html", body=Markup(msg))
     else:      
         # generate input form
         form = "<h3>Workflow: %s</h3>Input record for weid %s<table>" % (wid, weid)
@@ -206,22 +198,20 @@ def setExecutionInputs(weid):
 
 @app.route("/workflowexecutions/<weid>/outputs")
 def getExecutionOutputs(weid):
-    # get we record
-    r = requests.get(url=RESTserver+"workflowexecutions/"+str(weid))
-    we = r.json()["result"][0]
-    wid = we["WorkflowID"]
-    # get execution input record (to access inputs)
-    r = requests.get(url=RESTserver+"workflowexecutions/"+weid+'/outputs')
-    outrec = r.json()["result"]
+    execution_record = restApiControl.getExecutionRecord(weid)
+    wid = execution_record["WorkflowID"]
+    execution_outputs = restApiControl.getExecutionOutputRecord(weid)
+    workflow_record = restApiControl.getWorkflowRecord(wid)
+    # winprec = workflow_record["IOCard"]["Outputs"]
 
     # generate result table form
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
     form += "<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
-    for i in outrec:
+    for i in execution_outputs:
         # print(i)
         form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (i['Name'], i['Type'], i['ObjID'], i['Value'], escape(i.get('Units')))
     form += "</table>"
-    form += "</br><a href=\"/workflowexecutions/" + weid + "\">Continue to Execution record " + weid + "</a>"
+    form += "</br><a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
     # print (form)
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup(form))
 

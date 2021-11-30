@@ -207,9 +207,19 @@ def executeWorkflow(we_id):
                 else:
                     print("Unsupported file extension")
 
-                p = Path(tempDir)
-                for it in p.iterdir():
-                    print(it)
+                print("Copying template executor script.")
+                f_in = open(os.path.dirname(os.path.abspath(__file__)) + "/workflow_execution_script.py", 'rt')
+                f_out = open(tempDir + '/workflow_execution_script.py', "wt")
+                for line in f_in:
+                    data = line.replace("modulename_to_be_replaced", workflow_record['modulename'])
+                    data = data.replace("classname_to_be_replaced", workflow_record['classname'])
+                    f_out.write(data)
+                f_in.close()
+                f_out.close()
+
+                # p = Path(tempDir)
+                # for it in p.iterdir():
+                #     print(it)
 
             except Exception as e:
                 log.error(str(e))
@@ -223,8 +233,9 @@ def executeWorkflow(we_id):
             # update status
             updateStatRunning()
             restApiControl.setExecutionStatusRunning(we_id)
-            cmd = ['/usr/bin/python3', tempDir+'/' + python_script_filename, '-eid', str(we_id)]
-            print(cmd)
+            python_executor_script_filename = 'workflow_execution_script.py'
+            cmd = ['/usr/bin/python3', tempDir+'/' + python_executor_script_filename, '-eid', str(we_id)]
+            # print(cmd)
             completed = subprocess.call(cmd, cwd=tempDir)
             # print(tempDir)
             print('command:' + str(cmd) + ' Return Code:'+str(completed))
@@ -276,8 +287,7 @@ def stop(var_pool):
 
 
 if __name__ == '__main__':
-
-    restApiControl.setExecutionStatusPending('6192db6aa76a4dd9e08a90de')
+    restApiControl.setExecutionStatusPending('61a5854c97ac8ebf9887bbc1')
 
     setupLogger(fileName="scheduler.log")
     with statusLock:

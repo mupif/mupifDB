@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 from flask import Flask, redirect, url_for, send_file, send_from_directory, flash, request, jsonify
 from flask_pymongo import PyMongo
 from flask_cors import CORS
+from pymongo import ReturnDocument
 import mupifDB
 import gridfs
 import re
@@ -187,8 +188,20 @@ def get_workflow(wid):
 
 
 def modifyWorkflow(wid, key, value):
-    mongo.db.Workflows.update_one({'_id': wid}, {"$set": {key: value}})
+    mongo.db.Workflows.update_one({'wid': wid}, {"$set": {key: value}})
     return jsonify({'result': True})
+
+
+def insert_workflow(data):
+    table = mongo.db.Workflows
+    res = table.insert_one(data)
+    return jsonify({'result': res.inserted_id})
+
+
+def update_workflow(data):
+    table = mongo.db.Workflows
+    res = table.find_one_and_update({'wid': data['wid']}, {'$set': data}, return_document=ReturnDocument.AFTER)
+    return jsonify({'result': res['_id']})
 
 
 # --------------------------------------------------
@@ -200,8 +213,14 @@ def get_workflowFromHistory(wid, version):
     output = []
     for s in table.find({"wid": wid, "Version": int(version)}):
         # output.append(s)
-        output.append({'_id': s['_id'], 'wid': s['wid'], 'Description': s['Description'], 'UseCases': s['UseCases'], 'IOCard': s['IOCard'], 'Version': s.get('Version', 1)})
+        output.append({'_id': s['_id'], 'wid': s['wid'], 'Description': s['Description'], 'UseCase': s['UseCase'], 'IOCard': s['IOCard'], 'Version': s.get('Version', 1)})
     return jsonify({'result': output})
+
+
+def insert_workflow_history(data):
+    table = mongo.db.WorkflowsHistory
+    res = table.insert_one(data)
+    return jsonify({'result': res.inserted_id})
 
 
 # --------------------------------------------------
@@ -241,7 +260,7 @@ def get_workflowexecutionInputs(weid):
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
     output = []
     if wi['Inputs'] is not None:
-        inp = mongo.db.IOData.find_one({'_id': wi['Inputs']})
+        inp = mongo.db.IOData.find_one({'_id': bson.objectid.ObjectId(wi['Inputs'])})
         output = inp['DataSet']
     return jsonify({'result': output})
 
@@ -251,14 +270,14 @@ def get_workflowexecutionOutputs(weid):
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
     output = []
     if wi['Outputs'] is not None:
-        inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
+        inp = mongo.db.IOData.find_one({'_id': bson.objectid.ObjectId(wi['Outputs'])})
         # print(inp)
         output = inp['DataSet']
     return jsonify({'result': output})
 
 
 def insert_execution(wid):  # todo delete this when ready
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(mongo.db, wid, 'sulcstanda@seznam.cz')
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, 'sulcstanda@seznam.cz')
     return jsonify({'result': c.executionID})
 
 
@@ -275,7 +294,7 @@ def modifyWorkflowExecution(weid, key, value):
 
 @app.route('/workflowexecutions/<objectid:weid>/set')  # todo
 def setWorkflowExecutionParameter(weid):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
     print(c)
     inp = c.getIODataDoc('Inputs')
     # print(inp)
@@ -299,7 +318,7 @@ def setWorkflowExecutionParameter(weid):
 
 @app.route('/workflowexecutions/<objectid:weid>/get')  # todo
 def getWorkflowExecutionParameter(weid):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
     orec = c.getIODataDoc('Outputs')
     output = []
     for key, value in request.args.items():
@@ -321,7 +340,7 @@ def scheduleExecution(weid):
     remoteAddr = request.remote_addr
     print("Execution request by %s from %s" % (user, remoteAddr))
 
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(mongo.db, weid)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
     c.execute()
     return redirect(url_for("get_workflowexecution", id=weid))
     # return (id)
@@ -352,6 +371,21 @@ def insert_IODataRecord(data):
     table = mongo.db.IOData
     res = table.insert_one(data)
     return jsonify({'result': res.inserted_id})
+
+
+def modify_IOData(iod_id, name, attribute, value, obj_id):
+    table = mongo.db.IOData
+    # Try objID as both str and int
+    if str(obj_id) == 'None':
+        res = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
+        if res.matched_count == 1:
+            return jsonify({'result': "OK"})
+    else:
+        res1 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        res2 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
+        if res1.matched_count == 1 or res1.matched_count == 1:
+            return jsonify({'result': "OK"})
+    return jsonify({'error': "Value was not updated."})
 
 
 # --------------------------------------------------
@@ -437,7 +471,7 @@ def uploadFile():
                 myfile.close()
 
                 fs = gridfs.GridFS(mongo.db)
-                sourceID = fs.put(mf.getvalue(), filename=file.filename)
+                sourceID = fs.put(open(r'%s' % tempDir + "/" + file.filename, 'rb'), filename=file.filename)
                 return jsonify({'result': sourceID})
 
     return jsonify({'result': None})
@@ -555,17 +589,30 @@ def main():
             else:
                 return jsonify({'error': "Param 'wid' not specified."})
 
+        if action == "modify_workflow":
+            if "wid" in args and "key" in args and "value" in args:
+                return modifyWorkflow(args["wid"], args["key"], args["value"])
+            else:
+                return jsonify({'error': "Param 'wid' or 'key' or 'value' not specified."})
+
+        if action == "insert_workflow":
+            return insert_workflow(json.loads(request.get_data()))
+
+        if action == "update_workflow":
+            return update_workflow(json.loads(request.get_data()))
+
+        # --------------------------------------------------
+        # Workflows history
+        # --------------------------------------------------
+
         if action == "get_workflow_from_history":
             if "wid" in args and "version" in args:
                 return get_workflowFromHistory(args["wid"], args["version"])
             else:
                 return jsonify({'error': "Param 'wid' or 'version' not specified."})
 
-        if action == "modify_workflow":
-            if "wid" in args and "key" in args and "value" in args:
-                return modifyWorkflow(args["wid"], args["key"], args["value"])
-            else:
-                return jsonify({'error': "Param 'wid' or 'key' or 'value' not specified."})
+        if action == "insert_workflow_history":
+            return insert_workflow_history(json.loads(request.get_data()))
 
         # --------------------------------------------------
         # Executions
@@ -605,9 +652,7 @@ def main():
                 return jsonify({'error': "Param 'wid' not specified."})
 
         if action == "insert_execution":
-            data = request.get_data()
-            data = json.loads(data)
-            return insert_executionRecord(data)
+            return insert_executionRecord(json.loads(request.get_data()))
 
         if action == "get_execution_inputs":
             if "id" in args:
@@ -635,6 +680,12 @@ def main():
             data = request.get_data()
             data = json.loads(data)
             return insert_IODataRecord(data)
+
+        if action == "modify_iodata":
+            if "id" in args and "name" in args and "attribute" in args and "value" in args and "obj_id" in args:
+                return modify_IOData(args["id"], args["name"], args["attribute"], args["value"], args["obj_id"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'attribute' or 'value' or 'obj_id' not specified."})
 
         # --------------------------------------------------
         # Files

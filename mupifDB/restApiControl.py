@@ -62,16 +62,39 @@ def getWorkflowRecord(wid):
     return None
 
 
-def getWorkflowRecordFromHistory(wid, version):
-    response = requests.get(rest_api_url + "main?action=get_workflow_from_history&wid=" + wid + "&version=" + version)
+def setWorkflowParameter(workflow_id, param, value):
+    response = requests.get(rest_api_url + "main?action=modify_workflow&wid=" + str(workflow_id) + "&key=" + str(param) + "&value=" + str(value))
+
+
+def insertWorkflow(data):
+    response = requests.post(rest_api_url + "main?action=insert_workflow", data=json.dumps(data))
     response_json = response.json()
+    return response_json['result']
+
+
+def updateWorkflow(data):
+    response = requests.post(rest_api_url + "main?action=update_workflow", data=json.dumps(data))
+    response_json = response.json()
+    return response_json['result']
+
+
+# --------------------------------------------------
+# Workflows history
+# --------------------------------------------------
+
+def getWorkflowRecordFromHistory(wid, version):
+    response = requests.get(rest_api_url + "main?action=get_workflow_from_history&wid=" + str(wid) + "&version=" + str(version))
+    response_json = response.json()
+    print(response_json)
     for record in response_json['result']:
         return record
     return None
 
 
-def setWorkflowParameter(workflow_id, param, value):
-    response = requests.get(rest_api_url + "main?action=modify_workflow&wid=" + str(workflow_id) + "&key=" + str(param) + "&value=" + str(value))
+def insertWorkflowHistory(data):
+    response = requests.post(rest_api_url + "main?action=insert_workflow_history", data=json.dumps(data))
+    response_json = response.json()
+    return response_json['result']
 
 
 # --------------------------------------------------
@@ -162,7 +185,7 @@ def getExecutionInputRecord(weid):
 
 
 def getExecutionOutputRecord(weid):
-    response = requests.get(rest_api_url + "main?action=get_execution_outputss&id=" + str(weid))
+    response = requests.get(rest_api_url + "main?action=get_execution_outputs&id=" + str(weid))
     response_json = response.json()
     return response_json['result']
 
@@ -183,6 +206,11 @@ def insertIODataRecord(data):
     response = requests.post(rest_api_url + "main?action=insert_iodata", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
+
+
+def setIOProperty(iod_id, name, attribute, value, obj_id):
+    response = requests.get(rest_api_url + "main?action=modify_iodata&id=" + str(iod_id) + "&name=" + str(name) + "&attribute=" + str(attribute) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
+    return response.status_code == 200
 
 
 # --------------------------------------------------

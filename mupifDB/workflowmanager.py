@@ -2,7 +2,6 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
-from pymongo import ReturnDocument
 import tempfile
 import collections
 from bson import ObjectId
@@ -10,10 +9,9 @@ import re
 from ast import literal_eval 
 from mupifDB import error
 
-import restApiControl
+from mupifDB import restApiControl
 
 import mupif
-
 
 # pool to handle workflow execution requests
 # ctx = multiprocessing.get_context('spawn')
@@ -34,16 +32,15 @@ emptyWorkflowExecutionRecord = {
 }
 
 
-def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInputs, workflowOutputs, modulename, classname):
+def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
     The old versions (with the same wid but different version) are stored in workflowsHistory.
-    @param db database
     @param wid unique workflow id
     @param description Description
     @param source source URL
-    @param useCases tuple of useCase IDs the workflow belongs to
+    @param useCase useCase ID the workflow belongs to
     @param workflowInputs workflow input metadata (list of dicts)
     @param workflowOutputs workflow output metadata (list of dicts)
     @param modulename
@@ -61,9 +58,9 @@ def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInp
         f.close()
         print(sourceID)
         if sourceID is not None:
-            sourceID = ObjectId(sourceID)
+            sourceID = sourceID
 
-    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'SourceURL': source, 'UseCases': useCases, 'IOCard': None, 'modulename': modulename, 'classname': classname}
+    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'SourceURL': source, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
@@ -74,29 +71,26 @@ def insertWorkflowDefinition(db, wid, description, source, useCases, workflowInp
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
     
-    # first check if workflow with wid already exist in workflows collections
+    # first check if workflow with wid already exist in workflows
     w_rec = restApiControl.getWorkflowRecord(wid)
     if w_rec is None:  # can safely create a new record in workflows collection
         version = 1
         rec['Version'] = version
-        # todo
-        result = db.Workflows.insert_one(rec)
-        return result.inserted_id 
+        new_id = restApiControl.insertWorkflow(rec)
+        return new_id
+
     else:
         # the workflow already exists, need to make a new version
         # clone latest version to History
         # print(w_rec)
         w_rec.pop('_id')  # remove original document id
-        # todo
-        db.WorkflowsHistory.insert(w_rec)
+        restApiControl.insertWorkflowHistory(w_rec)
         # update the latest document
         version = (1+int(w_rec.get('Version', 1)))
         rec['Version'] = version
-        # todo
-        result = db.Workflows.find_one_and_update({'wid': wid}, {'$set': rec}, return_document=ReturnDocument.AFTER)
-        # print(result)
-        if result:
-            return result['_id']
+        res_id = restApiControl.updateWorkflow(rec)
+        if res_id:
+            return res_id
         else:
             print("Update failed")
 
@@ -121,39 +115,8 @@ def getWorkflowDoc(wid, version=-1):
         raise KeyError("Workflow document with WID" + wid + "Version" + str(version) + ": bad version")
 
 
-def updateWorkflowDefinition(db, wid, description, version, source, useCases, workflowInputs, workflowOutputs):
-    """
-    Updates the workflow definition into DB. 
-    Note this affects the exiting workflow executions as they refer to the old version! 
-    This to be solved by workflow versiong.
-    @param db database
-    @param wid unique workflow id
-    @param description Description
-    @param version Version
-    @param source source URL
-    @param useCases tuple of useCase IDs the workflow belongs to
-    @param workflowInputs workflow input metadata (list of dicts)
-    @param workflowOutputs workflow output metadata (list of dicts)
-    """
-    rec = {'Description': description, 'Version': version, 'Source': source, 'UseCases': useCases, 'IOCard': None}
-    Inputs = []
-    for i in workflowInputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
-        Inputs.append(irec)
-    Outputs = []
-    for i in workflowOutputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
-        Outputs.append(irec)
-    rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
-
-    # todo
-    result = db.Workflows.update_one({"_id": wid}, {'$set': rec})
-    return result 
-
-
 class WorkflowExecutionIODataSet:
-    def __init__(self, db, wec, IOid):
-        self.db = db
+    def __init__(self, wec, IOid):
         self.wec = wec
         self.IOid = IOid
     
@@ -221,11 +184,7 @@ class WorkflowExecutionIODataSet:
         """
         # print(f'WorkflowExecutionIODataSet:set self={self.IOid}: {name}={value}, objid={obj_id}')
         if self.wec.getStatus() == 'Created':
-            res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': {"DataSet.$[r].Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": obj_id}])
-            if res.matched_count == 1:
-                return
-            else:
-                raise KeyError("Input parameter " + name + " Obj_id " + str(obj_id) + " not found")
+            restApiControl.setIOProperty(self.IOid, name, "Value", value, obj_id)
         else:
             raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
  
@@ -237,25 +196,17 @@ class WorkflowExecutionIODataSet:
         @param: value associated value
         @throws: KeyError if input parameter name not found
         """
-        ddict = {}
         for key, val in attributes.items():
-            ddict["DataSet.$[r].%s" % key] = val
-
-        res = self.db.IOData.update_one({'_id': self.IOid}, {'$set': ddict}, array_filters=[{"r.Name": name, "r.ObjID": obj_id}])
-        if res.matched_count == 1:
-            return
-        else:
-            raise KeyError("Input parameter " + name + " Obj_id " + str(obj_id) + " not found")
+            restApiControl.setIOProperty(self.IOid, name, key, val, obj_id)
 
 
 class WorkflowExecutionContext:
 
-    def __init__(self, db, executionID, **kwargs):
-        self.db = db
+    def __init__(self, executionID, **kwargs):
         self.executionID = executionID
 
     @staticmethod
-    def create(db, workflowID, requestedBy, workflowVer=-1):
+    def create(workflowID, requestedBy, workflowVer=-1):
         """
         """
         # first query for workflow document
@@ -266,15 +217,10 @@ class WorkflowExecutionContext:
             rec['WorkflowID'] = workflowID
             rec['WorkflowVersion'] = wdoc.get('Version', 1)
             rec['RequestedBy'] = requestedBy
-            # inputs = []
-            # for io in IOCard['Inputs']: #loop over workflow inputs
-            #     inputs.append({'Name':io['Name'], 'Type':io['Type'], 'Value': None, 'Source':None, 'OriginId':None })
-            # rec['InputDataOData'] = {'Inputs': inputs, 'Outputs': None}
-
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
             new_id = restApiControl.insertExecutionRecord(rec)
-            return WorkflowExecutionContext(db, new_id)
+            return WorkflowExecutionContext(new_id)
 
         else:
             raise KeyError("Workflow record " + workflowID + ", Version " + str(workflowVer) + " not found")
@@ -297,7 +243,7 @@ class WorkflowExecutionContext:
         version = doc['WorkflowVersion']
         wdoc = getWorkflowDoc(wid, version=version)
         if wdoc is None:
-            raise KeyError("Workflow document with ID" + wid + " not found")
+            raise KeyError("Workflow document with ID" + str(wid) + " not found")
         return wdoc
 
     def set(self, name, value):
@@ -317,7 +263,7 @@ class WorkflowExecutionContext:
 
     def getIODataDoc(self, type='Inputs'):
         doc = self._getWorkflowExecutionDocument()    
-        return WorkflowExecutionIODataSet(self.db, self, self.get(type))
+        return WorkflowExecutionIODataSet(self, self.get(type))
 
     def getStatus(self):
         wed = self._getWorkflowExecutionDocument()
@@ -348,15 +294,15 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
             print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
             fvalue = literal_eval(value)
             if isinstance(fvalue, tuple):
-                app.setProperty(mupif.ConstantProperty(fvalue, mupif.DataID[typeID], mupif.ValueType.Vector, units), objectID)
+                app.set(mupif.ConstantProperty(value=fvalue, propID=mupif.DataID[typeID], valueType=mupif.ValueType.Vector, unit=units), objectID)
             else:
-                app.setProperty(mupif.ConstantProperty(float(value), mupif.DataID[typeID], mupif.ValueType.Scalar, units), objectID)
+                app.set(mupif.ConstantProperty(value=float(value), propID=mupif.DataID[typeID], valueType=mupif.ValueType.Scalar, unit=units), objectID)
         elif type == 'mupif.Field':
             # assume Field == ConstantField
             print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
             fvalue = literal_eval(value)
             if isinstance(fvalue, tuple):
-                app.setField(mupif.constantfield.ConstantField(None, mupif.DataID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
+                app.set(mupif.constantfield.ConstantField(None, mupif.DataID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
             else:
                 raise TypeError('Tuple expected when handling io param of type %s' % type)
         else:
@@ -365,10 +311,10 @@ def mapInput(app, value, type, typeID, units, compulsory, objectID):
         raise KeyError('Compulsory parameter %s not defined in workflow execution dataset' % typeID)
 
 
-def mapInputs(app, db, eid):
+def mapInputs(app, eid):
     # request workflow execution doc
     print('Map Inputs eid %s' % eid)
-    wec = WorkflowExecutionContext(db, ObjectId(eid))
+    wec = WorkflowExecutionContext(ObjectId(eid))
     # get worflow doc
     wd = wec._getWorkflowDocument()
     # execution input doc
@@ -398,9 +344,9 @@ def mapInputs(app, db, eid):
             mapInput(app, value, type, typeID, units, compulsory, objID)
 
 
-def generateWEInputCGI(db, eid):
+def generateWEInputCGI(eid):
     # request workflow execution doc
-    wec = WorkflowExecutionContext(db, ObjectId(eid))
+    wec = WorkflowExecutionContext(ObjectId(eid))
     # execution input doc
     inp = wec.getIODataDoc('Inputs')
     print("<h1>Edit input record for executionID: %s</h1><br />"%eid)
@@ -426,8 +372,8 @@ def generateWEInputCGI(db, eid):
     print("<input type=\"submit\" value=\"Submit\" /></form>")
 
 
-def setWEInputCGI(db, eid, form):
-    wec = WorkflowExecutionContext(db, ObjectId(eid))
+def setWEInputCGI(eid, form):
+    wec = WorkflowExecutionContext(ObjectId(eid))
     # execution input doc
     inp = wec.getIODataDoc('Inputs')
     print('Input rec id: %s<br>' % inp.IOid)
@@ -449,34 +395,35 @@ def setWEInputCGI(db, eid, form):
         c = c+1
 
 
-def mapOutput(app, db, name, type, typeID, objectID, eid, tstep):
-    wec = WorkflowExecutionContext(db, ObjectId(eid))
+# TODO solve the issue with units
+def mapOutput(app, name, type, typeID, objectID, eid, tstep, units):
+    wec = WorkflowExecutionContext(ObjectId(eid))
     # execution input doc
     out = wec.getIODataDoc('Outputs')
     # map value 
     print('Mapping %s, name:%s' % (typeID, name), flush=True)
     if type == 'mupif.Property':
         print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, tstep.getTargetTime()), flush=True)
-        prop = app.getProperty(mupif.DataID[typeID], tstep.getTargetTime(), objectID)
-        out.setAttributes(name, {"Value": prop.getValue(), "Units": str(prop.getUnits())}, objectID)
+        prop = app.get(mupif.DataID[typeID], tstep.getTargetTime(), objectID)
+        out.setAttributes(name, {"Value": prop.getValue(), "Units": units}, objectID)
     elif type == 'mupif.Field':
         with tempfile.TemporaryDirectory() as tempDir:
-            field = app.getField(mupif.DataID.FID_Temperature, tstep.getTargetTime())  # timestep as None!!
+            field = app.get(mupif.DataID.FID_Temperature, tstep.getTargetTime())  # timestep as None!!
             field.field2VTKData().tofile(tempDir+'/field')
             with open(tempDir+'/field.vtk', 'rb') as f:
                 logID = restApiControl.uploadBinaryFileContent(f)
                 f.close()
                 print("Uploaded field.vtk as id: %s" % logID)
-                out.setAttributes(name, {"Value": logID, "Units": str(field.getUnits())}, objectID)
+                out.setAttributes(name, {"Value": logID, "Units": units}, objectID)
 
     else:
         raise KeyError('Handling of io param of type %s not implemented' % type)
 
 
-def mapOutputs(app, db, eid, tstep):
+def mapOutputs(app, eid, tstep):
     # request workflow execution doc
     print('Maping Outputs for eid %s' % eid, flush=True)
-    wec = WorkflowExecutionContext(db, ObjectId(eid))
+    wec = WorkflowExecutionContext(ObjectId(eid))
     # get worflow doc
     wd = wec._getWorkflowDocument()
     # execution out doc
@@ -485,6 +432,7 @@ def mapOutputs(app, db, eid, tstep):
     for irec in wd['IOCard']['Outputs']:
         name = irec['Name']
         type = irec['Type']
+        units = irec['Units']
         typeID = irec['TypeID']
         # try to get raw PID from typeID
         match = re.search('\w+\Z', typeID)
@@ -493,12 +441,11 @@ def mapOutputs(app, db, eid, tstep):
         
         objID = irec.get('ObjID', None)
         # compulsory = irec['Compulsory']
-        units = irec['Units']
 
         if isinstance(objID, collections.Iterable):
             for oid in objID:
                 value = inp.get(name, oid)
-                mapOutput(app, db, name, type, typeID, oid, eid, tstep)
+                mapOutput(app, name, type, typeID, oid, eid, tstep, units)
         else:
             value = inp.get(name, objID)
-            mapOutput(app, db, name, type, typeID, objID, eid, tstep)
+            mapOutput(app, name, type, typeID, objID, eid, tstep, units)
