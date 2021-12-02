@@ -60,7 +60,7 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
         if sourceID is not None:
             sourceID = sourceID
 
-    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'SourceURL': source, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
+    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
@@ -132,10 +132,11 @@ class WorkflowExecutionIODataSet:
         rec = {}
         data = []
         for io in IOCard[type]:  # loop over workflow inputs
-            if isinstance(io.get('ObjID', None), collections.Iterable):
-                for id in io['ObjID']:
+            # if isinstance(io.get('ObjID', None), collections.Iterable):
+            if isinstance(io.get('ObjID', None), list) or isinstance(io.get('ObjID', None), tuple):
+                for objid in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': id, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None})
+                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None})
             else:  # single obj_id provided
                 data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': io.get('ObjID', None), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None})
         rec['Type'] = type
@@ -398,19 +399,19 @@ def setWEInputCGI(eid, form):
 
 
 # TODO solve the issue with units
-def mapOutput(app, name, type, typeID, objectID, eid, tstep, units):
+def mapOutput(app, name, type, typeID, objectID, eid, time, units):
     wec = WorkflowExecutionContext(ObjectId(eid))
     # execution input doc
     out = wec.getIODataDoc('Outputs')
     # map value 
     print('Mapping %s, name:%s' % (typeID, name), flush=True)
     if type == 'mupif.Property':
-        print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, tstep.getTargetTime()), flush=True)
-        prop = app.get(mupif.DataID[typeID], tstep.getTargetTime(), objectID)
+        print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, time), flush=True)
+        prop = app.get(mupif.DataID[typeID], time, objectID)
         out.setAttributes(name, {"Value": prop.getValue(), "Units": units}, objectID)
     elif type == 'mupif.Field':
         with tempfile.TemporaryDirectory() as tempDir:
-            field = app.get(mupif.DataID.FID_Temperature, tstep.getTargetTime())  # timestep as None!!
+            field = app.get(mupif.DataID.FID_Temperature, time)
             field.field2VTKData().tofile(tempDir+'/field')
             with open(tempDir+'/field.vtk', 'rb') as f:
                 logID = restApiControl.uploadBinaryFileContent(f)
@@ -422,7 +423,7 @@ def mapOutput(app, name, type, typeID, objectID, eid, tstep, units):
         raise KeyError('Handling of io param of type %s not implemented' % type)
 
 
-def mapOutputs(app, eid, tstep):
+def mapOutputs(app, eid, time):
     # request workflow execution doc
     print('Maping Outputs for eid %s' % eid, flush=True)
     wec = WorkflowExecutionContext(ObjectId(eid))
@@ -447,7 +448,7 @@ def mapOutputs(app, eid, tstep):
         if isinstance(objID, collections.Iterable):
             for oid in objID:
                 value = inp.get(name, oid)
-                mapOutput(app, name, type, typeID, oid, eid, tstep, units)
+                mapOutput(app, name, type, typeID, oid, eid, time, units)
         else:
             value = inp.get(name, objID)
-            mapOutput(app, name, type, typeID, objID, eid, tstep, units)
+            mapOutput(app, name, type, typeID, objID, eid, time, units)

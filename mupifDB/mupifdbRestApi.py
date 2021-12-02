@@ -1,14 +1,3 @@
-import json
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
-
-from flask import Flask, redirect, url_for, send_file, send_from_directory, flash, request, jsonify
-from flask_pymongo import PyMongo
-from flask_cors import CORS
-from pymongo import ReturnDocument
-import mupifDB
 import gridfs
 import re
 import psutil
@@ -16,8 +5,18 @@ import tempfile
 import io
 import zipfile
 import bson
-
+import json
+from flask import Flask, redirect, url_for, send_file, send_from_directory, flash, request, jsonify
+from flask_pymongo import PyMongo
+from flask_cors import CORS
+from pymongo import ReturnDocument
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
+import mupifDB
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
+
 
 # for small stat use plain matplotlib
 # import matplotlib.pyplot as plt

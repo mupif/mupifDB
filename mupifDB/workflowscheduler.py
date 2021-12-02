@@ -287,6 +287,7 @@ def stop(var_pool):
 
 
 if __name__ == '__main__':
+    # for testing
     # restApiControl.setExecutionStatusPending('61a5854c97ac8ebf9887bbc1')
 
     setupLogger(fileName="scheduler.log")

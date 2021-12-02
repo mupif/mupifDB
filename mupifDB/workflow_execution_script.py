@@ -1,3 +1,4 @@
+import importlib
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -9,13 +10,13 @@ import mupifDB
 from bson import ObjectId
 import sys
 
-from modulename_to_be_replaced import classname_to_be_replaced as workflow_classname
+# from modulename_to_be_replaced import classname_to_be_replaced as workflow_class
 
 log = logging.getLogger()
 
 
 if __name__ == "__main__":
-    app = None
+    workflow = None
 
     try:
         parser = argparse.ArgumentParser()
@@ -33,31 +34,34 @@ if __name__ == "__main__":
             print("Workflow not found")
             exit(1)
 
-        targetTime = float(execution_record['targetTime'])*mp.U.s
-        dt = float(execution_record['dt'])*mp.U.s
+        #
+        moduleImport = importlib.import_module(workflow_record["modulename"])
+        print(moduleImport)
+        workflow_class = getattr(moduleImport, workflow_record["classname"])
+        #
 
         wec = mupifDB.workflowmanager.WorkflowExecutionContext(ObjectId(args.id))
         inp = wec.getIODataDoc('Inputs')
 
-        app = workflow_classname()
-        app.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': '1'}}, targetTime=targetTime, dt=dt)
-        mupifDB.workflowmanager.mapInputs(app, args.id)
-        app.solve()
-        mupifDB.workflowmanager.mapOutputs(app, args.id, app.getLastTimestep())
-        app.terminate()
+        workflow = workflow_class()
+        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': '1'}})
+        mupifDB.workflowmanager.mapInputs(workflow, args.id)
+        workflow.solve()
+        mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())
+        workflow.terminate()
 
     except Exception as err:
         print("Error:" + repr(err))
         log.info("Error:" + repr(err))
-        if app is not None:
-            app.terminate()
+        if workflow is not None:
+            workflow.terminate()
         sys.exit(1)
 
     except:
         print("Unknown error")
         log.info("Unknown error")
-        if app is not None:
-            app.terminate()
+        if workflow is not None:
+            workflow.terminate()
         sys.exit(1)
 
     sys.exit(0)

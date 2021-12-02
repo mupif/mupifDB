@@ -1,11 +1,9 @@
+import requests
 import json
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
-
-from datetime import datetime
-import requests
 
 
 rest_api_url = 'http://127.0.0.1:5000/'

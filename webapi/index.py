@@ -4,20 +4,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/../mupifDB")
 from flask import Flask, render_template, Markup, escape, redirect, url_for
-# from flask_wtf import FlaskForm
-# from wtforms import StringField
 from flask import request
 from flask_cors import CORS
-import requests 
-import json
-import restApiControl
+from mupifDB import restApiControl
 import mupifDB
 
-from mongoflask import ObjectIdConverter
 
 app = Flask(__name__)
 CORS(app, resources={r"/static/*": {"origins": "*"}})
-app.url_map.converters['objectid'] = ObjectIdConverter
 
 
 # unless overridden by the environment, use 127.0.0.1:5000
