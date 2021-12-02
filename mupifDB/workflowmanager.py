@@ -56,9 +56,6 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
         # sourceID = restApiControl.uploadBinaryFileContentAndZip(f)
         sourceID = restApiControl.uploadBinaryFileContent(f)
         f.close()
-        print(sourceID)
-        if sourceID is not None:
-            sourceID = sourceID
 
     rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
@@ -93,6 +90,7 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
             return res_id
         else:
             print("Update failed")
+    return None
 
 
 def getWorkflowDoc(wid, version=-1):

@@ -411,11 +411,6 @@ def getFilename(fid):
     return jsonify({'result': fn})
 
 
-def allowed_file(filename):
-    ALLOWED_EXTENSIONS = {'py', 'zip'}
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
 @app.route("/upload_and_zip", methods=['GET', 'POST'])  # todo
 def uploadFileAndZip():
     if request.method == 'POST':
@@ -429,7 +424,7 @@ def uploadFileAndZip():
         if file.filename == '':
             flash('No selected file')
             return redirect(request.url)
-        if file and allowed_file(file.filename):
+        if file:
             mf = io.BytesIO()
 
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -461,7 +456,7 @@ def uploadFile():
         if file.filename == '':
             flash('No selected file')
             return redirect(request.url)
-        if file and allowed_file(file.filename):
+        if file:
             mf = io.BytesIO()
 
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:

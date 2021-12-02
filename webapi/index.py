@@ -1,11 +1,16 @@
+import importlib
+import zipfile
+import tempfile
+from flask import Flask, render_template, Markup, escape, redirect, url_for
+from flask import request
+from flask_cors import CORS
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/../mupifDB")
-from flask import Flask, render_template, Markup, escape, redirect, url_for
-from flask import request
-from flask_cors import CORS
+
+
 from mupifDB import restApiControl
 import mupifDB
 
@@ -100,6 +105,98 @@ def workflow(wid):
         inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
         version=wdata.get("Version", 1)
     )
+
+
+def allowed_file(filename):
+    ALLOWED_EXTENSIONS = {'py'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/workflow_add', methods=('GET', 'POST'))
+def addWorkflow():
+    # execution_record = restApiControl.getExecutionRecord(weid)
+    # wid = execution_record["WorkflowID"]
+    # execution_inputs = restApiControl.getExecutionInputRecord(weid)
+    # workflow_record = restApiControl.getWorkflowRecord(wid)
+    # winprec = workflow_record["IOCard"]["Inputs"]
+    message = ''
+    success = False
+    new_workflow_id = None
+    fileID = None
+    classname = ""
+    useCase = ""
+    if request.form:
+        print(request.files)
+        workflowInputs = None
+        workflowOutputs = None
+        description = None
+        wid = None
+        classname = request.form['classname']
+        useCase = request.form['usecase']
+        zip_filename = "files.zip"
+        modulename = ""
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            zip_full_path = tempDir + "/" + zip_filename
+            zf = zipfile.ZipFile(zip_full_path, mode="w", compression=zipfile.ZIP_DEFLATED)
+            filenames = ['file_workflow', 'file_add_1', 'file_add_2', 'file_add_3', 'file_add_4', 'file_add_5']
+            for filename in filenames:
+                print("checking file " + filename)
+                if filename in request.files:
+                    file = request.files[filename]
+                    if file.filename != '':
+                        print(filename + " file given")
+                        if file and (allowed_file(file.filename) or filename != 'file_workflow'):
+                            if filename == 'file_workflow':
+                                print("analyzing workflow file")
+                                modulename = file.filename.replace(".py", "")
+                                sys.path.append(tempDir)
+                                moduleImport = importlib.import_module(modulename)
+                                workflowClass = getattr(moduleImport, classname)
+                                workflow_instance = workflowClass()
+                                wid = workflow_instance.getMetadata('ID')
+                                workflowInputs = workflow_instance.getMetadata('Inputs')
+                                workflowOutputs = workflow_instance.getMetadata('Outputs')
+                                description = workflow_instance.getMetadata('Description')
+
+                            myfile = open(tempDir + "/" + file.filename, mode="wb")
+                            myfile.write(file.read())
+                            myfile.close()
+                            zf.write(tempDir + "/" + file.filename, arcname=file.filename)
+                    else:
+                        print(filename + " file NOT provided")
+            zf.close()
+            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None:
+                new_workflow_id = mupifDB.workflowmanager.insertWorkflowDefinition(
+                    wid=wid,
+                    description=description,
+                    source=zip_full_path,
+                    useCase=useCase,
+                    workflowInputs=workflowInputs,
+                    workflowOutputs=workflowOutputs,
+                    modulename=modulename,
+                    classname=classname
+                )
+
+    if new_workflow_id is not None:
+        html = '<h3>Workflow has been registered</h3>'
+        html += '<a href="/workflows/'+str(wid)+'">Go to workflow detail</a>'
+        return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+    else:
+        # generate input form
+        html = message
+        html += "<h3>Add new workflow:</h3>"
+        html += "<table>"
+
+        html += '<tr><td>UseCase ID</td><td><input type="text" name="usecase" value="'+str(useCase)+'"></td></tr>'
+        html += '<tr><td>Workflow class name</td><td><input type="text" name="classname" value="'+str(classname)+'"></td></tr>'
+
+        html += '<tr><td>Workflow module file</td><td><input type="file" name="file_workflow"></td></tr>'
+        for add_file in range(1, 6):
+            html += '<tr><td>Additional file #%d</td><td><input type="file" name="file_add_%d"></td></tr>' % (add_file, add_file)
+
+        html += "</table>"
+        html += "<input type=\"submit\" value=\"Submit\" />"
+        return render_template('form.html', title="MuPIFDB web interface", form=html)
 
 
 @app.route('/workflowexecutions/init/<wid>')
