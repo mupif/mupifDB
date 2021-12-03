@@ -173,7 +173,10 @@ def get_workflows():
 def get_workflows_with_usecase(usecase):
     table = mongo.db.Workflows
     output = []
+    # support both string and ObjectID
     for s in table.find({"UseCase": bson.objectid.ObjectId(usecase)}):
+        output.append(s)
+    for s in table.find({"UseCase": usecase}):
         output.append(s)
     return jsonify({'result': output})
 

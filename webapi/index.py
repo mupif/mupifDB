@@ -112,19 +112,14 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-@app.route('/workflow_add', methods=('GET', 'POST'))
-def addWorkflow():
-    # execution_record = restApiControl.getExecutionRecord(weid)
-    # wid = execution_record["WorkflowID"]
-    # execution_inputs = restApiControl.getExecutionInputRecord(weid)
-    # workflow_record = restApiControl.getWorkflowRecord(wid)
-    # winprec = workflow_record["IOCard"]["Inputs"]
+@app.route('/workflow_add/<usecaseid>', methods=('GET', 'POST'))
+def addWorkflow(usecaseid):
     message = ''
     success = False
     new_workflow_id = None
     fileID = None
     classname = ""
-    useCase = ""
+    useCase = str(usecaseid)
     if request.form:
         print(request.files)
         workflowInputs = None
@@ -132,7 +127,6 @@ def addWorkflow():
         description = None
         wid = None
         classname = request.form['classname']
-        useCase = request.form['usecase']
         zip_filename = "files.zip"
         modulename = ""
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -187,7 +181,6 @@ def addWorkflow():
         html += "<h3>Add new workflow:</h3>"
         html += "<table>"
 
-        html += '<tr><td>UseCase ID</td><td><input type="text" name="usecase" value="'+str(useCase)+'"></td></tr>'
         html += '<tr><td>Workflow class name</td><td><input type="text" name="classname" value="'+str(classname)+'"></td></tr>'
 
         html += '<tr><td>Workflow module file</td><td><input type="file" name="file_workflow"></td></tr>'
