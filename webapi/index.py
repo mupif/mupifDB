@@ -117,13 +117,13 @@ def addWorkflow(usecaseid):
     new_workflow_id = None
     fileID = None
     classname = ""
+    wid = None
     useCase = str(usecaseid)
     if request.form:
         print(request.files)
         workflowInputs = None
         workflowOutputs = None
         description = None
-        wid = None
         classname = request.form['classname']
         zip_filename = "files.zip"
         modulename = ""
@@ -222,6 +222,8 @@ def setExecutionInputs(weid):
     winprec = workflow_record["IOCard"]["Inputs"]
     if request.form:
         if execution_record["Status"] == "Created":
+            restApiControl.setExecutionParameter(execution_record['_id'], 'Task_ID', request.form['Task_ID'])
+
             # process submitted data
             msg = ""
             c = 0
@@ -241,7 +243,14 @@ def setExecutionInputs(weid):
             return render_template("basic.html", body=Markup(msg))
     else:      
         # generate input form
-        form = "<h3>Workflow: %s</h3>Input record for weid %s<table>" % (wid, weid)
+        form = ""
+
+        form += "<h3>Workflow: %s</h3><br>" % wid
+
+        form += "Task_ID: "
+        form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
+
+        form += "<br>Input record for weid %s<table>" % weid
         form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
         c = 0
         for i in execution_inputs:
@@ -272,6 +281,7 @@ def setExecutionInputs(weid):
                 form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
             c += 1
         form += "</table>"
+        form += "<br>"
         form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
         form += "<input type=\"submit\" value=\"Submit\" />"
         # print (form)

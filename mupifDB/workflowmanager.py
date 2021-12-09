@@ -216,10 +216,9 @@ class WorkflowExecutionContext:
             rec['WorkflowID'] = workflowID
             rec['WorkflowVersion'] = wdoc.get('Version', 1)
             rec['RequestedBy'] = requestedBy
+            rec['Task_ID'] = ''
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
-            rec['dt'] = '1.'
-            rec['targetTime'] = '1.'
             new_id = restApiControl.insertExecutionRecord(rec)
             return WorkflowExecutionContext(new_id)
 

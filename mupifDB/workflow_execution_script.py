@@ -44,7 +44,7 @@ if __name__ == "__main__":
         inp = wec.getIODataDoc('Inputs')
 
         workflow = workflow_class()
-        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': '1'}})
+        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
         mupifDB.workflowmanager.mapInputs(workflow, args.id)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())

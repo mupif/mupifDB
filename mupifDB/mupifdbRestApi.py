@@ -39,7 +39,7 @@ mongo = PyMongo(app)
 # initialize the database, this is done only once
 if 'UseCases' not in mongo.db.list_collection_names():
     usecases = mongo.db["UseCases"]
-    usecases.insert_one({"_id": "DemoUseCase", "Description": "Demo UseCase"})
+    usecases.insert_one({"ucid": "DemoUseCase", "Description": "Demo UseCase"})
     Stat = mongo.db["Stat"]
     Stat.insert_one({"scheduler": {"load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0}})
     # force creation of empty collections
@@ -153,7 +153,7 @@ def get_usecases():
 def get_usecase(ucid):
     table = mongo.db.UseCases
     output = []
-    for s in table.find({"_id": bson.objectid.ObjectId(ucid)}):
+    for s in table.find({"ucid": ucid}):
         output.append(s)
     return jsonify({'result': output})
 
@@ -173,9 +173,6 @@ def get_workflows():
 def get_workflows_with_usecase(usecase):
     table = mongo.db.Workflows
     output = []
-    # support both string and ObjectID
-    for s in table.find({"UseCase": bson.objectid.ObjectId(usecase)}):
-        output.append(s)
     for s in table.find({"UseCase": usecase}):
         output.append(s)
     return jsonify({'result': output})
@@ -375,6 +372,14 @@ def insert_IODataRecord(data):
     return jsonify({'result': res.inserted_id})
 
 
+def isIntable(val):
+    try:
+        val_int = int(val)
+    except ValueError:
+        return False
+    return True
+
+
 def modify_IOData(iod_id, name, attribute, value, obj_id):
     table = mongo.db.IOData
     # Try objID as both str and int
@@ -384,8 +389,11 @@ def modify_IOData(iod_id, name, attribute, value, obj_id):
             return jsonify({'result': "OK"})
     else:
         res1 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        res2 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
-        if res1.matched_count == 1 or res1.matched_count == 1:
+        if isIntable(obj_id):
+            res2 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
+        else:
+            res2 = res1
+        if res1.matched_count == 1 or res2.matched_count == 1:
             return jsonify({'result': "OK"})
     return jsonify({'error': "Value was not updated."})
 
