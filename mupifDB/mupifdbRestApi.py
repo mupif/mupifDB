@@ -158,6 +158,12 @@ def get_usecase(ucid):
     return jsonify({'result': output})
 
 
+def insert_usecaseRecord(ucid, description):
+    table = mongo.db.UseCases
+    res = table.insert_one({"ucid": ucid, "Description": description})
+    return jsonify({'result': res.inserted_id})
+
+
 # --------------------------------------------------
 # Workflows
 # --------------------------------------------------
@@ -574,6 +580,14 @@ def main():
         if action == "get_usecase":
             if "id" in args:
                 return get_usecase(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
+        if action == "insert_usecase":
+            if "ucid" in args and "description" in args:
+                return insert_usecaseRecord(args["ucid"], args["description"])
+            else:
+                return jsonify({'error': "Param 'ucid' or 'description' not specified."})
 
         # --------------------------------------------------
         # Workflows

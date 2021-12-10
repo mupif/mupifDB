@@ -34,6 +34,15 @@ def getUsecaseRecord(ucid):
     return None
 
 
+def insertUsecaseRecord(ucid, description):
+    response = requests.get(RESTserver + "main?action=insert_usecase&ucid=" + ucid + "&description=" + description)
+    response_json = response.json()
+    print(response_json)
+    if 'result' in response_json:
+        return response_json['result']
+    return None
+
+
 # --------------------------------------------------
 # Workflows
 # --------------------------------------------------

@@ -78,8 +78,40 @@ def contact():
 @app.route('/usecases')
 def usecases():
     data = restApiControl.getUsecaseRecords()
-    return render_template('usecases.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data)
-    # return r.json()
+    return render_template('usecases.html', title="MuPIFDB web interface", server=request.host_url, items=data)
+
+
+@app.route('/usecase_add', methods=('GET', 'POST'))
+def addUseCase():
+    message = ''
+    usecase_id = ''
+    usecase_description = ''
+    new_usecase_id = None
+    if request.form:
+        usecase_id = request.form['usecase_id']
+        usecase_description = request.form['usecase_description']
+        if usecase_id is not None and usecase_description is not None:
+            found_usecase = restApiControl.getUsecaseRecord(usecase_id)
+            if found_usecase is None:
+                new_usecase_id = restApiControl.insertUsecaseRecord(ucid=usecase_id, description=usecase_description)
+            else:
+                message += '<h5 style="color:red;">This UseCase ID already exists</h5>'
+
+        if new_usecase_id is not None:
+            html = '<h5 style="color:green;">UseCase has been registered</h5>'
+            html += '<a href="/usecases">Go back to UseCases</a>'
+            return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+        else:
+            message += '<h5 style="color:red;">UseCase was not registered</h5>'
+    if new_usecase_id is None:
+        html = message
+        html += "<h3>Add new UseCase:</h3>"
+        html += "<table>"
+        html += '<tr><td>UseCase ID (string)</td><td><input type="text" name="usecase_id" value="'+str(usecase_id)+'"></td></tr>'
+        html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
+        html += "</table>"
+        html += "<input type=\"submit\" value=\"Submit\" />"
+        return render_template('form.html', title="MuPIFDB web interface", form=html)
 
 
 @app.route('/usecases/<ucid>/workflows')
