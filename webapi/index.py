@@ -51,9 +51,9 @@ def status():
     msg = "<div><div>"
     msg += "<dl><dt>MupifDBStatus:"+data['mupifDBStatus']+"</dt>"
     msg += "<dt>SchedulerStatus:"+data['schedulerStatus']+"</dt>"
-    msg += "    <dd>Total    executions:"+str(stat['totalExecutions'])+"</dd>"
+    msg += "    <dd>Total executions:"+str(stat['totalExecutions'])+"</dd>"
     msg += "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
-    msg += "    <dd>Failed   executions:"+str(stat['failedExecutions'])+"</dd>"
+    msg += "    <dd>Failed executions:"+str(stat['failedExecutions'])+"</dd>"
     msg += "</dl></div>"
     # msg+= "<div class=\"chart-container\" width=\"500\" height=\"200\">"
     # msg+= "<canvas id=\"updating-chart\" width=\"500\" height=\"200\" ></canvas>"
@@ -63,7 +63,7 @@ def status():
     # msg+= "<a href=\""+RESTserver+"schedulerStats/weekly.svg\">52 week statistics</a></div>"
     # msg+= "<div><img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\"></div>"
     msg += ""
-    return render_template('stat.html', title="MuPIFDB web interface", server=request.host_url+'/', body=Markup(msg))
+    return render_template('stat.html', title="MuPIFDB web interface", restserver=RESTserver, body=Markup(msg))
 
 
 @app.route('/contact')

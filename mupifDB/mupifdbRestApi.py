@@ -18,9 +18,7 @@ import mupifDB
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 
 
-# for small stat use plain matplotlib
-# import matplotlib.pyplot as plt
-# plt.switch_backend('agg')
+path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
 CORS(app)
@@ -38,11 +36,10 @@ mongo = PyMongo(app)
 
 # initialize the database, this is done only once
 if 'UseCases' not in mongo.db.list_collection_names():
-    usecases = mongo.db["UseCases"]
-    usecases.insert_one({"ucid": "DemoUseCase", "Description": "Demo UseCase"})
     Stat = mongo.db["Stat"]
     Stat.insert_one({"scheduler": {"load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0}})
     # force creation of empty collections
+    mongo.db.create_collection("UseCases")
     mongo.db.create_collection("Workflows")
     mongo.db.create_collection("WorkflowsHistory")
     mongo.db.create_collection("WorkflowExecutions")
@@ -510,7 +507,7 @@ def get_status():
             schedulerStatus = 'Failed'
 
     # get some scheduler stats
-    stat = mupifDB.schedulerstat.getGlobalStat(mongo.db)
+    stat = mupifDB.schedulerstat.getGlobalStat()
     schedulerstat = mongo.db.Stat.find_one()['scheduler']
     output = {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
     return jsonify({'result': output})
@@ -535,24 +532,31 @@ def set_statScheduler(key, value):
     return jsonify({'error': "Given value was not saved."})
 
 
+def update_statScheduler(key, value):
+    if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
+        mongo.db.Stat.update_one({}, {"$inc": {key: value}})
+        return jsonify({'result': True})
+    return jsonify({'error': "Given value was not saved."})
+
+
 @app.route("/schedulerStats/weekly.svg")  # todo
 def schedulerStatWeekly():
-    return send_file("static/images/scheduler_weekly_stat.svg", cache_timeout=60)
+    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_weekly_stat.svg")
 
 
 @app.route("/schedulerStats/hourly.svg")  # todo
 def schedulerStatHourly():
-    return send_file("static/images/scheduler_hourly_stat.svg", cache_timeout=60)
+    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_hourly_stat.svg")
 
 
 @app.route("/schedulerStats/loadsmall.svg")  # todo
 def schedulerStatSmall():
-    return send_file('static/images/scheduler_hourly_stat_small.svg', cache_timeout=60)
+    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_hourly_stat_small.svg")
 
 
 @app.route("/schedulerStats/loadsmall.png")  # todo
 def schedulerStatSmallPng():
-    return send_file('static/images/scheduler_hourly_stat_small.png', cache_timeout=60)
+    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_hourly_stat_small.png")
 
 
 # --------------------------------------------------
@@ -735,6 +739,12 @@ def main():
         if action == "set_scheduler_stat":
             if "key" in args and "value" in args:
                 return set_statScheduler(args["key"], args["value"])
+            else:
+                return jsonify({'error': "Param 'key' or 'value' not specified."})
+
+        if action == "update_scheduler_stat":
+            if "key" in args and "value" in args:
+                return update_statScheduler(args["key"], args["value"])
             else:
                 return jsonify({'error': "Param 'key' or 'value' not specified."})
 

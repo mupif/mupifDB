@@ -53,7 +53,6 @@ class index(enum.IntEnum):
 
 poolsize = 3
 statusLock = multiprocessing.Lock()
-statusArray = multiprocessing.Array(ctypes.c_int, [1, 0, 0, 0, 0], lock=False)
 
 fd = None
 buf = None
@@ -86,24 +85,23 @@ def procError(r):
 def updateStatRunning():
     with statusLock:
         print("updateStatRunning called")
-        statusArray[index.runningTasks] += 1
-        statusArray[index.scheduledTasks] -= 1
-        statusArray[index.load] = ctypes.c_int(int(100 * statusArray[index.runningTasks]/poolsize))
-        restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load])
+        restApiControl.updateStatScheduler(scheduledTasks=-1, runningTasks=+1)
+        stats_temp = restApiControl.getStatScheduler()
+        restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
 
 
 def updateStatScheduled():
     with statusLock:
-        statusArray[index.scheduledTasks] += 1
-        restApiControl.setStatScheduler(scheduledTasks=statusArray[index.scheduledTasks])
+        print("updateStatScheduled called")
+        restApiControl.updateStatScheduler(scheduledTasks=+1)
 
 
 def updateStatFinished():
     with statusLock:
-        statusArray[index.runningTasks] -= 1
-        statusArray[index.processedTasks] += 1
-        statusArray[index.load] = ctypes.c_int(int(100*statusArray[index.runningTasks]/poolsize))
-        restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
+        print("updateStatFinished called")
+        restApiControl.updateStatScheduler(runningTasks=-1, processedTasks=+1)
+        stats_temp = restApiControl.getStatScheduler()
+        restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
 
 
 def setupLogger(fileName, level=logging.DEBUG):
@@ -280,7 +278,7 @@ def executeWorkflow(we_id):
 
 def stop(var_pool):
     log.info("Stopping the scheduler, waiting for workers to terminate")
-    restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
+    restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0)
     var_pool.close()  # close pool
     var_pool.join()  # wait for completion
     log.info("All tasks finished, exiting")
@@ -292,8 +290,7 @@ if __name__ == '__main__':
 
     setupLogger(fileName="scheduler.log")
     with statusLock:
-        statusArray[index.status] = 1
-        restApiControl.setStatScheduler(runningTasks=statusArray[index.runningTasks], scheduledTasks=statusArray[index.scheduledTasks], load=statusArray[index.load], processedTasks=statusArray[index.processedTasks])
+        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0)
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
     atexit.register(stop, pool)
@@ -337,9 +334,10 @@ if __name__ == '__main__':
 
                     # display progress (consider use of tqdm)
                     lt = time.localtime(time.time())
+                    stats = restApiControl.getStatScheduler()
                     print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                          str(statusArray[index.scheduledTasks])+"/"+str(statusArray[index.runningTasks])+"/"+str(statusArray[index.load]))
-                    time.sleep(60)
+                          str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
+                    time.sleep(10)
             except Exception as err:
                 log.info("Error: " + repr(err))
                 stop(pool)

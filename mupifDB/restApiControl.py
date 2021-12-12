@@ -280,3 +280,14 @@ def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processe
         response = requests.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.load&value=" + str(load))
     if processedTasks is not None:
         response = requests.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
+
+
+def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
+    if runningTasks is not None:
+        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.runningTasks&value=" + str(runningTasks))
+    if scheduledTasks is not None:
+        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.scheduledTasks&value=" + str(scheduledTasks))
+    if load is not None:
+        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.load&value=" + str(load))
+    if processedTasks is not None:
+        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
