@@ -337,7 +337,7 @@ if __name__ == '__main__':
                     stats = restApiControl.getStatScheduler()
                     print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
                           str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
-                    time.sleep(10)
+                    time.sleep(60)
             except Exception as err:
                 log.info("Error: " + repr(err))
                 stop(pool)
