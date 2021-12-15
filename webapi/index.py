@@ -170,6 +170,11 @@ def addWorkflow(usecaseid):
                     if file.filename != '':
                         print(filename + " file given")
                         if file and (allowed_file(file.filename) or filename != 'file_workflow'):
+                            myfile = open(tempDir + "/" + file.filename, mode="wb")
+                            myfile.write(file.read())
+                            myfile.close()
+                            zf.write(tempDir + "/" + file.filename, arcname=file.filename)
+
                             if filename == 'file_workflow':
                                 print("analyzing workflow file")
                                 modulename = file.filename.replace(".py", "")
@@ -181,11 +186,6 @@ def addWorkflow(usecaseid):
                                 workflowInputs = workflow_instance.getMetadata('Inputs')
                                 workflowOutputs = workflow_instance.getMetadata('Outputs')
                                 description = workflow_instance.getMetadata('Description')
-
-                            myfile = open(tempDir + "/" + file.filename, mode="wb")
-                            myfile.write(file.read())
-                            myfile.close()
-                            zf.write(tempDir + "/" + file.filename, arcname=file.filename)
                     else:
                         print(filename + " file NOT provided")
             zf.close()
