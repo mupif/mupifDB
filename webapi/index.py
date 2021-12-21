@@ -1,14 +1,17 @@
 import importlib
 import zipfile
 import tempfile
-from flask import Flask, render_template, Markup, escape, redirect, url_for
+from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory
 from flask import request
 from flask_cors import CORS
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/../mupifDB")
+
+path_of_this_file = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.append(path_of_this_file+"/..")
+sys.path.append(path_of_this_file+"/.")
+sys.path.append(path_of_this_file+"/../mupifDB")
 
 
 from mupifDB import restApiControl
@@ -55,15 +58,20 @@ def status():
     msg += "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
     msg += "    <dd>Failed executions:"+str(stat['failedExecutions'])+"</dd>"
     msg += "</dl></div>"
-    # msg+= "<div class=\"chart-container\" width=\"500\" height=\"200\">"
-    # msg+= "<canvas id=\"updating-chart\" width=\"500\" height=\"200\" ></canvas>"
-    # msg+= "</div></div>"
-    # msg+= "<div style=\"clear: both\">"
-    # msg+= "<a href=\""+RESTserver+"schedulerStats/hourly.svg\">48 hour statistics</a></br>"
-    # msg+= "<a href=\""+RESTserver+"schedulerStats/weekly.svg\">52 week statistics</a></div>"
-    # msg+= "<div><img src=\""+RESTserver+"schedulerStats/hourly.svg"+"\"></div>"
     msg += ""
-    return render_template('stat.html', title="MuPIFDB web interface", restserver=RESTserver, body=Markup(msg))
+    return render_template('stat.html', title="MuPIFDB web interface", server=request.host_url, body=Markup(msg))
+
+
+@app.route("/schedulerStats/weekly.svg")
+def schedulerStatWeekly():
+    print("ggg")
+    return send_from_directory(directory=path_of_this_file + "/static/images", path="scheduler_weekly_stat.svg")
+
+
+@app.route("/schedulerStats/hourly.svg")
+def schedulerStatHourly():
+    print("ggg")
+    return send_from_directory(directory=path_of_this_file + "/static/images", path="scheduler_hourly_stat.svg")
 
 
 @app.route('/contact')

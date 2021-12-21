@@ -130,7 +130,6 @@ class WorkflowExecutionIODataSet:
         rec = {}
         data = []
         for io in IOCard[type]:  # loop over workflow inputs
-            # if isinstance(io.get('ObjID', None), collections.Iterable):
             if isinstance(io.get('ObjID', None), list) or isinstance(io.get('ObjID', None), tuple):
                 for objid in io['ObjID']:
                     # make separate input entry for each obj_id
