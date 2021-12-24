@@ -139,7 +139,7 @@ def workflow(wid):
     wdata = restApiControl.getWorkflowRecord(wid)
     return render_template(
         'workflow.html', title="MuPIFDB web interface", server=request.host_url+'/',
-        wid=wid, id=wdata['_id'], UseCas=wdata["UseCase"], Description=wdata["Description"],
+        wid=wid, id=wdata['_id'], UseCase=wdata["UseCase"], Description=wdata["Description"],
         inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
         version=wdata.get("Version", 1)
     )
