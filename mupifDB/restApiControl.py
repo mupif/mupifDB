@@ -163,22 +163,22 @@ def setExecutionStatusScheduled(execution_id):
 
 
 def setExecutionStatusPending(execution_id):
-    setExecutionParameter(execution_id, "SubmittedDate", datetime.datetime.now())
+    setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Pending")
 
 
 def setExecutionStatusRunning(execution_id):
-    setExecutionParameter(execution_id, "StartDate", datetime.datetime.now())
+    setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Running")
 
 
 def setExecutionStatusFinished(execution_id):
-    setExecutionParameter(execution_id, "EndDate", datetime.datetime.now())
+    setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Finished")
 
 
 def setExecutionStatusFailed(execution_id):
-    setExecutionParameter(execution_id, "EndDate", datetime.datetime.now())
+    setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
