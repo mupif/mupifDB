@@ -280,7 +280,7 @@ def get_workflowexecutionOutputs(weid):
 
 
 def insert_execution(wid):  # todo delete this when ready
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, 'sulcstanda@seznam.cz')
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, '')
     return jsonify({'result': c.executionID})
 
 

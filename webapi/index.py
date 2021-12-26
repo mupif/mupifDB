@@ -261,7 +261,7 @@ def executions():
 
 @app.route('/workflowexecutions/init/<wid>')
 def initexecution(wid):
-    # c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, 'sulcstanda@seznam.cz')
+    # c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, '')
     # weid = c.executionID
     weid = restApiControl.insertExecution(wid)  # TODO uncomment commented and delete this
     return redirect(url_for("executionStatus", weid=weid))
@@ -271,7 +271,7 @@ def initexecution(wid):
 def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=request.host_url+'/', RESTserver=RESTserver, wid=data['WorkflowID'], id=weid, logID=logID, data=data)
+    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=request.host_url+'/', RESTserver=RESTserver, wid=data['WorkflowID'], id=weid, logID=logID, data=data, label=data['label'], email=data['RequestedBy'], taskid=data['Task_ID'])
 
 
 @app.route('/executeworkflow/<weid>')
@@ -292,6 +292,8 @@ def setExecutionInputs(weid):
     if request.form:
         if execution_record["Status"] == "Created":
             restApiControl.setExecutionParameter(execution_record['_id'], 'Task_ID', request.form['Task_ID'])
+            restApiControl.setExecutionParameter(execution_record['_id'], 'label', request.form['label'])
+            restApiControl.setExecutionParameter(execution_record['_id'], 'RequestedBy', request.form['RequestedBy'])
 
             # process submitted data
             msg = ""
@@ -318,6 +320,12 @@ def setExecutionInputs(weid):
 
         form += "Task_ID: "
         form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
+
+        form += "Label: "
+        form += "<input type=\"text\" name=\"label\" value=\"%s\" /><br>" % execution_record["label"]
+
+        form += "E-mail address: "
+        form += "<input type=\"text\" name=\"RequestedBy\" value=\"%s\" /><br>" % execution_record["RequestedBy"]
 
         form += "<br>Input record for weid %s<table>" % weid
         form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
