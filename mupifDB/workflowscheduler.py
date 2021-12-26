@@ -75,7 +75,6 @@ def procInit():
 
 def procFinish(r):
     print("procFinish called")
-    # fd.close()
 
 
 def procError(r):
@@ -262,12 +261,12 @@ def executeWorkflow(we_id):
         if completed == 0:
             print("Workflow execution %s Finished" % we_id)
             log.info("Workflow execution %s Finished" % we_id)
-            restApiControl.setExecutionStatusFinished(we_id, logID)
+            restApiControl.setExecutionStatusFinished(we_id)
             return we_id, ExecutionResult.Finished
         else:
             print("Workflow execution %s Failed" % we_id)
             log.info("Workflow execution %s Failed" % we_id)
-            restApiControl.setExecutionStatusFailed(we_id, logID)
+            restApiControl.setExecutionStatusFailed(we_id)
             return we_id, ExecutionResult.Failed
 
     else:

@@ -1,3 +1,4 @@
+import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
@@ -13,23 +14,7 @@ from mupifDB import restApiControl
 
 import mupif
 
-# pool to handle workflow execution requests
-# ctx = multiprocessing.get_context('spawn')
-# pool = ctx.Pool()
-# pool = multiprocessing.Pool()
-
-
-emptyWorkflowExecutionRecord = {
-    'WorkflowID': None,
-    'WorkflowVersion:': None,
-    'Status': "Created",
-    'StartDate': None,
-    'EndDate': None,
-    'ExecutionLog': None,
-    'RequestedBy': None,
-    'Inputs': None,
-    'Outputs': None
-}
+import table_structures
 
 
 def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname):
@@ -211,11 +196,11 @@ class WorkflowExecutionContext:
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if wdoc is not None:
             # IOCard = wdoc['IOCard']
-            rec = emptyWorkflowExecutionRecord.copy()
+            rec = table_structures.tableExecution.copy()
             rec['WorkflowID'] = workflowID
             rec['WorkflowVersion'] = wdoc.get('Version', 1)
             rec['RequestedBy'] = requestedBy
-            rec['Task_ID'] = ''
+            rec['CreatedDate'] = datetime.datetime.now()
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
             new_id = restApiControl.insertExecutionRecord(rec)

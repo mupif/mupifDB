@@ -1,5 +1,6 @@
 import requests
 import json
+import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
@@ -162,18 +163,22 @@ def setExecutionStatusScheduled(execution_id):
 
 
 def setExecutionStatusPending(execution_id):
+    setExecutionParameter(execution_id, "SubmittedDate", datetime.datetime.now())
     return setExecutionParameter(execution_id, "Status", "Pending")
 
 
 def setExecutionStatusRunning(execution_id):
+    setExecutionParameter(execution_id, "StartDate", datetime.datetime.now())
     return setExecutionParameter(execution_id, "Status", "Running")
 
 
-def setExecutionStatusFinished(execution_id, log_id):
+def setExecutionStatusFinished(execution_id):
+    setExecutionParameter(execution_id, "EndDate", datetime.datetime.now())
     return setExecutionParameter(execution_id, "Status", "Finished")
 
 
-def setExecutionStatusFailed(execution_id, log_id):
+def setExecutionStatusFailed(execution_id):
+    setExecutionParameter(execution_id, "EndDate", datetime.datetime.now())
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 

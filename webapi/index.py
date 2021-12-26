@@ -230,6 +230,26 @@ def addWorkflow(usecaseid):
         return render_template('form.html', title="MuPIFDB web interface", form=html)
 
 
+@app.route('/workflowexecutions')
+def executions():
+    html = '<h3>List of workflow executions:</h3>'
+    html += '<table><tr><td>Status</td><td>WorkflowID</td><td></td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
+    data = restApiControl.getExecutionRecords()
+    for execution in data:
+        html += '<tr>'
+        html += '<td>'+execution['Status']+'</td>'
+        html += '<td>'+execution['WorkflowID']+'</td>'
+        html += '<td><a href="'+request.host_url+'/workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
+        html += '<td>'+str(execution['CreatedDate']).replace('None', '')+'</td>'
+        html += '<td>'+str(execution['SubmittedDate']).replace('None', '')+'</td>'
+        html += '<td>'+str(execution['StartDate']).replace('None', '')+'</td>'
+        html += '<td>'+str(execution['EndDate']).replace('None', '')+'</td>'
+        html += '</tr>'
+
+    html += '</table>'
+    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+
+
 @app.route('/workflowexecutions/init/<wid>')
 def initexecution(wid):
     # c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, 'sulcstanda@seznam.cz')

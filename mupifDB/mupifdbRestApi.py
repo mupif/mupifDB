@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import mupifDB
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
+import table_structures
 
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
@@ -233,7 +234,7 @@ def get_workflowexecutions():
     table = mongo.db.WorkflowExecutions
     output = []
     for s in table.find():
-        output.append(s)
+        output.append(table_structures.extendRecord(s, table_structures.tableExecution))
     return jsonify({'result': output})
 
 
@@ -242,7 +243,7 @@ def get_workflowexecution(weid):
     output = []
     print(str(weid))
     for s in table.find({"_id": bson.objectid.ObjectId(weid)}):
-        output.append(s)
+        output.append(table_structures.extendRecord(s, table_structures.tableExecution))
     return jsonify({'result': output})
 
 
@@ -252,7 +253,7 @@ def get_workflowexecutionsWithStatus(we_status):
         table = mongo.db.WorkflowExecutions
         output = []
         for s in table.find({"Status": we_status}):
-            output.append(s)
+            output.append(table_structures.extendRecord(s, table_structures.tableExecution))
         return jsonify({'result': output})
     return jsonify({'error': "Given 'status' value not allowd ('%s')." % str(we_status)})
 
