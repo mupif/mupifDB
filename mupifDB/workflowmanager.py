@@ -257,12 +257,10 @@ class WorkflowExecutionContext:
         wed = self._getWorkflowExecutionDocument()
         wd = self._getWorkflowDocument()
         print('Scheduling the new execution:%s' % self.executionID)
-        # return pool.apply_async(self.__executeWorkflow, (wed, wd)).wait()
-        # print(wd)
 
         if wed['Status'] == 'Created':
             # freeze the execution record by setting state to "Pending"
-            restApiControl.setExecutionParameter(self.executionID, "Status", "Pending")
+            restApiControl.setExecutionStatusPending(self.executionID)
             print("Execution %s state changed to Pending" % self.executionID)
         else:
             # raise KeyError("Workflow execution already scheduled/executed")
