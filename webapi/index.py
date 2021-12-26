@@ -232,18 +232,27 @@ def addWorkflow(usecaseid):
 
 @app.route('/workflowexecutions')
 def executions():
+    def statusColor(val):
+        if val == 'Finished':
+            return 'color:green;'
+        if val == 'Failed':
+            return 'color:red;'
+        if val == 'Running':
+            return 'color:blue;'
+        return 'color:gray;'
+
     html = '<h3>List of workflow executions:</h3>'
     html += '<table><tr><td>Status</td><td>WorkflowID</td><td></td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
     data = restApiControl.getExecutionRecords()
     for execution in data:
         html += '<tr>'
-        html += '<td>'+execution['Status']+'</td>'
+        html += '<td style="'+statusColor(execution['Status'])+'">'+execution['Status']+'</td>'
         html += '<td>'+execution['WorkflowID']+'</td>'
         html += '<td><a href="'+request.host_url+'/workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
-        html += '<td style="font-size:8px;">'+str(execution['CreatedDate']).replace('None', '')+'</td>'
-        html += '<td style="font-size:8px;">'+str(execution['SubmittedDate']).replace('None', '')+'</td>'
-        html += '<td style="font-size:8px;">'+str(execution['StartDate']).replace('None', '')+'</td>'
-        html += '<td style="font-size:8px;">'+str(execution['EndDate']).replace('None', '')+'</td>'
+        html += '<td style="font-size:12px;">'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
+        html += '<td style="font-size:12px;">'+str(execution['SubmittedDate']).replace('None', '')[:19]+'</td>'
+        html += '<td style="font-size:12px;">'+str(execution['StartDate']).replace('None', '')[:19]+'</td>'
+        html += '<td style="font-size:12px;">'+str(execution['EndDate']).replace('None', '')[:19]+'</td>'
         html += '</tr>'
 
     html += '</table>'
