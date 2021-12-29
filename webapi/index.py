@@ -248,7 +248,7 @@ def executions():
         html += '<tr>'
         html += '<td style="'+statusColor(execution['Status'])+'">'+execution['Status']+'</td>'
         html += '<td>'+execution['WorkflowID']+'</td>'
-        html += '<td><a href="'+request.host_url+'/workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
+        html += '<td><a href="'+request.host_url+'workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
         html += '<td style="font-size:12px;">'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
         html += '<td style="font-size:12px;">'+str(execution['SubmittedDate']).replace('None', '')[:19]+'</td>'
         html += '<td style="font-size:12px;">'+str(execution['StartDate']).replace('None', '')[:19]+'</td>'
@@ -271,7 +271,31 @@ def initexecution(wid):
 def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
-    return render_template('workflowexecution.html', title="MuPIFDB web interface", server=request.host_url+'/', RESTserver=RESTserver, wid=data['WorkflowID'], id=weid, logID=logID, data=data, label=data['label'], email=data['RequestedBy'], taskid=data['Task_ID'])
+    html = ''
+    html += 'Execution record ID: ' + weid + '<br>'
+    html += 'WorkflowID: ' + data['WorkflowID'] + '<br>'
+    html += 'Task ID: ' + data['Task_ID'] + '<br>'
+    html += 'Label: ' + data['label'] + '<br>'
+    html += 'E-mail address: ' + data['RequestedBy'] + '<br>'
+
+    html += '<dl>'
+    html += '<dt>Status:' + str(data['Status']) + '</dt>'
+    html += '<dt>Start Date:' + str(data['StartDate']) + '</dt>'
+    html += '<dt>End Date:' + str(data['EndDate']) + '</dt>'
+    html += '</dl>'
+    html += '<br>'
+    html += 'Actions:<br>'
+    html += '<ul>'
+    html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
+    if data['Status'] == 'Created':
+        html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
+    if data['Status'] == 'Finished':
+        html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
+    if data['Status'] == 'Finished' or data['Status'] == 'Failed':
+        html += '<li> <a href="{' + RESTserver + 'gridfs/' + str(logID) + '"> Execution log</a></li>'
+    html += '</ul>'
+
+    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
 
 
 @app.route('/executeworkflow/<weid>')

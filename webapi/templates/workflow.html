@@ -1,12 +1,11 @@
 {% extends "layout.html" %}
 {% block title %} {{ title }} {% endblock %}
 {% block content %} 
-WorkflowID: {{wid}}</br>
-Version: {{version}}</br>
-id:{{id}}</br>
-UseCase: {{UseCase}}</br>
-Description: {{Description}}</br>
-</br>
+WorkflowID: {{wid}}<br>
+Version: {{version}}<br>
+UseCase: {{UseCase}}<br>
+Description: {{Description}}<br>
+<br>
 Inputs:
 <table>
     <tr><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th></tr>
@@ -22,7 +21,7 @@ Inputs:
     </TR>
     {% endfor %}
 </table>
-</br>
+<br>
 Outputs:
 <table>
     <tr><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th></tr>
@@ -38,6 +37,6 @@ Outputs:
     </TR>
     {% endfor %}
     </table>
-</br>
-<a href={{ [server, "workflowexecutions/init/", wid] | join }}>Initialize new execution record</a>
+<br>
+<a href="{{ [server,'workflowexecutions/init/', wid] | join }}">Initialize new execution record</a>
 {% endblock %}
