@@ -343,13 +343,22 @@ def setExecutionInputs(weid):
         form += "<h3>Workflow: %s</h3><br>" % wid
 
         form += "Task_ID: "
-        form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
+        if execution_record["Status"] == "Created":
+            form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
+        else:
+            form += "%s<br>" % execution_record["Task_ID"]
 
         form += "Label: "
-        form += "<input type=\"text\" name=\"label\" value=\"%s\" /><br>" % execution_record["label"]
+        if execution_record["Status"] == "Created":
+            form += "<input type=\"text\" name=\"label\" value=\"%s\" /><br>" % execution_record["label"]
+        else:
+            form += "%s<br>" % execution_record["label"]
 
         form += "E-mail address: "
-        form += "<input type=\"text\" name=\"RequestedBy\" value=\"%s\" /><br>" % execution_record["RequestedBy"]
+        if execution_record["Status"] == "Created":
+            form += "<input type=\"text\" name=\"RequestedBy\" value=\"%s\" /><br>" % execution_record["RequestedBy"]
+        else:
+            form += "%s<br>" % execution_record["RequestedBy"]
 
         form += "<br>Input record for weid %s<table>" % weid
         form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
@@ -374,7 +383,12 @@ def setExecutionInputs(weid):
                 floatPattern = "^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?"
                 tuplePattern = "^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,\s*[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?)*\)"
                 pattern = "(%s|%s)" % (floatPattern, tuplePattern)
-                form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], pattern, c, i['Value'], required, i.get('Units'))
+                form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td>" % (i['Name'], description, i['Type'], i['ObjID'])
+                if execution_record["Status"] == "Created":
+                    form += "<input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/>" % (pattern, c, i['Value'], required)
+                else:
+                    form += str(i['Value'])
+                form += "</td><td>%s</td></tr>" % i.get('Units')
             elif input_type == "mupif.Field":
                 form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
             else:
@@ -384,7 +398,8 @@ def setExecutionInputs(weid):
         form += "</table>"
         form += "<br>"
         form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
-        form += "<input type=\"submit\" value=\"Submit\" />"
+        if execution_record["Status"] == "Created":
+            form += "<input type=\"submit\" value=\"Submit\" />"
         # print (form)
         return render_template('form.html', title="MuPIFDB web interface", form=form)
 
