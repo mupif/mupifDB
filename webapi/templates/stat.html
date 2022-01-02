@@ -100,8 +100,9 @@
     // update
     function fetchData() {
         $.ajax({
-            url: 'http://127.0.0.1:5000/main?action=get_status',
+            url: '{{RESTserver}}/main?action=get_status',
             type: 'get',
+            timeout: 2000,
             success: function(newData){
                 //alert(JSON.stringify(newData));
                 var json = $.parseJSON(JSON.stringify(newData));
@@ -114,6 +115,9 @@
                 data2 = [].concat(oldData);
                 myChart.data.datasets[1].data = data2;
                 myChart.update(0);
+            },
+            error: function(xhr, textStatus, errorThrown) {
+                console.error('REST call:',textStatus,xhr.status,errorThrown);
             },
             complete: function(data){
                 setTimeout(fetchData, timeout);

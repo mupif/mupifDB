@@ -32,6 +32,11 @@ if not RESTserver[-1] == '/':
 # server (that is, our URL) is obtained within request handlers as flask.request.host_url+'/'
 
 
+def my_render_template(*args,**kw):
+    'Wraps render_template and ads a few common keywords'
+    return render_template(*args,title='MuPIFDB web interface',server=request.host_url,RESTserver=RESTserver,**kw)
+
+
 @app.route('/')
 def homepage():
     return render_template('basic.html', title="MuPIFDB web interface", body=Markup("<h3>Welcome to MuPIFDB web interface</h3>"))
@@ -44,7 +49,7 @@ def about():
         <p><a href=\"http://www.mupif.org\">MuPIF</a> is open-source, modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. <a href=\"https://github.com/mupif/mupifDB\">MuPIFDB</a> is database layer (based on MongoDB) and workflow manager/scheduler for MuPIF with REST API.</p>
         <p>The MuPIFDB web interface allows to use MupifDB REST API from web browser in a user friendly way, allowing to inspect all the stored data and to intialize, schedule and monitor individual workflow executions.</p> 
     """
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
+    return my_render_template('basic.html',body=Markup(msg))
 
 
 @app.route('/status')
@@ -59,7 +64,7 @@ def status():
     msg += "    <dd>Failed executions:"+str(stat['failedExecutions'])+"</dd>"
     msg += "</dl></div>"
     msg += ""
-    return render_template('stat.html', title="MuPIFDB web interface", server=request.host_url, body=Markup(msg))
+    return my_render_template('stat.html', body=Markup(msg))
 
 
 @app.route("/schedulerStats/weekly.svg")
@@ -80,13 +85,13 @@ def contact():
         <p>MuPIF and MuPIFDB have been developped at <a href=\"https://www.cvut.cz/en\">Czech Technical University in Prague</a> by a research team at the Department of Mechanics of the <a href=\"https://web.fsv.cvut.cz/en/\">Faculty of Civil Engineering</a>.</p>
         <p>For more information and help please contact Borek Patzak (borek.patzak@fsv.cvut.cz)</p>  
     """
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(msg))
+    return my_render_template('basic.html', body=Markup(msg))
 
 
 @app.route('/usecases')
 def usecases():
     data = restApiControl.getUsecaseRecords()
-    return render_template('usecases.html', title="MuPIFDB web interface", server=request.host_url, items=data)
+    return my_render_template('usecases.html', items=data)
 
 
 @app.route('/usecase_add', methods=('GET', 'POST'))
@@ -108,7 +113,7 @@ def addUseCase():
         if new_usecase_id is not None:
             html = '<h5 style="color:green;">UseCase has been registered</h5>'
             html += '<a href="/usecases">Go back to UseCases</a>'
-            return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+            return my_render_template('basic.html', body=Markup(html))
         else:
             message += '<h5 style="color:red;">UseCase was not registered</h5>'
     if new_usecase_id is None:
@@ -119,26 +124,26 @@ def addUseCase():
         html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
         html += "</table>"
         html += "<input type=\"submit\" value=\"Submit\" />"
-        return render_template('form.html', title="MuPIFDB web interface", form=html)
+        return my_render_template('form.html', form=html)
 
 
 @app.route('/usecases/<ucid>/workflows')
 def usecaseworkflows(ucid):
     data = restApiControl.getWorkflowRecordsWithUsecase(ucid)
-    return render_template('workflows.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data)
+    return my_render_template('workflows.html', items=data)
 
 
 @app.route('/workflows')
 def worflows():
     data = restApiControl.getWorkflowRecords()
-    return render_template('workflows.html', title="MuPIFDB web interface", server=request.host_url+'/', items=data)
+    return my_render_template('workflows.html', items=data)
 
 
 @app.route('/workflows/<wid>')
 def workflow(wid):
     wdata = restApiControl.getWorkflowRecord(wid)
-    return render_template(
-        'workflow.html', title="MuPIFDB web interface", server=request.host_url+'/',
+    return my_render_template(
+        'workflow.html',
         wid=wid, id=wdata['_id'], UseCase=wdata["UseCase"], Description=wdata["Description"],
         inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
         version=wdata.get("Version", 1)
@@ -212,7 +217,7 @@ def addWorkflow(usecaseid):
     if new_workflow_id is not None:
         html = '<h3>Workflow has been registered</h3>'
         html += '<a href="/workflows/'+str(wid)+'">Go to workflow detail</a>'
-        return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+        return my_render_template('basic.html', body=Markup(html))
     else:
         # generate input form
         html = message
@@ -227,7 +232,7 @@ def addWorkflow(usecaseid):
 
         html += "</table>"
         html += "<input type=\"submit\" value=\"Submit\" />"
-        return render_template('form.html', title="MuPIFDB web interface", form=html)
+        return my_render_template('form.html', form=html)
 
 
 @app.route('/workflowexecutions')
@@ -256,7 +261,7 @@ def executions():
         html += '</tr>'
 
     html += '</table>'
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html))
 
 
 @app.route('/workflowexecutions/init/<wid>')
@@ -295,7 +300,7 @@ def executionStatus(weid):
         html += '<li> <a href="{' + RESTserver + 'gridfs/' + str(logID) + '"> Execution log</a></li>'
     html += '</ul>'
 
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html))
 
 
 @app.route('/executeworkflow/<weid>')
@@ -335,7 +340,7 @@ def setExecutionInputs(weid):
                 restApiControl.setIOProperty(execution_record['Inputs'], name, 'Value', value, objID)
                 c = c+1
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
-            return render_template("basic.html", body=Markup(msg))
+            return my_render_template("basic.html", body=Markup(msg))
     else:      
         # generate input form
         form = ""
@@ -401,7 +406,7 @@ def setExecutionInputs(weid):
         if execution_record["Status"] == "Created":
             form += "<input type=\"submit\" value=\"Submit\" />"
         # print (form)
-        return render_template('form.html', title="MuPIFDB web interface", form=form)
+        return my_render_template('form.html', form=form)
 
 
 @app.route("/workflowexecutions/<weid>/outputs")
@@ -421,12 +426,12 @@ def getExecutionOutputs(weid):
     form += "</table>"
     form += "</br><a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
     # print (form)
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(form))
+    return my_render_template('basic.html', body=Markup(form))
 
 
 @app.route('/hello/<name>')
 def hello(name=None):
-    return render_template('hello.html', name=name, content="Welcome to MuPIFDB web interface")
+    return my_render_template('hello.html', name=name, content="Welcome to MuPIFDB web interface")
 
 
 if __name__ == '__main__':
