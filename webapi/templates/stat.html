@@ -107,11 +107,11 @@
                 //alert(JSON.stringify(newData));
                 var json = $.parseJSON(JSON.stringify(newData));
                 oldData = data.slice(1);
-                oldData.push(json.result[0].schedulerStat.load)
+                oldData.push(json.result.schedulerStat.load)
                 data = [].concat(oldData);
                 myChart.data.datasets[0].data = data;
                 oldData = data2.slice(1);
-                oldData.push(json.result[0].schedulerStat.scheduledTasks)
+                oldData.push(json.result.schedulerStat.scheduledTasks)
                 data2 = [].concat(oldData);
                 myChart.data.datasets[1].data = data2;
                 myChart.update(0);
