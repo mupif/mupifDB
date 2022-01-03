@@ -249,6 +249,7 @@ def executions():
     filter_workflow_id = ''
     filter_label = ''
     filter_num_lim = '100'
+    filter_status = ''
 
     args = {}
     for key, value in request.args.items():
@@ -260,11 +261,20 @@ def executions():
         filter_label = str(args['filter_label'])
     if 'filter_num_lim' in args:
         filter_num_lim = str(args['filter_num_lim'])
+    if 'filter_status' in args:
+        filter_status = str(args['filter_status'])
 
     html = '<h3>List of workflow executions:</h3>'
-    html += '<form id="filtering_form" action="" style="font-size:12px;">'
+    html += '<form id="filtering_form" action="" style="font-size:12px;" method="get">'
     html += 'WorkflowID: <input type="text" name="filter_workflow_id" value="' + filter_workflow_id + '" style="width:100px;"> '
     html += 'label: <input type="text" name="filter_label" value="' + filter_label + '" style="width:100px;"> '
+    html += 'status: <select name="filter_status">'
+    html += '<option value="">Any</option>'
+    status_list = ['Created', 'Pending', 'Running', 'Finished', 'Failed']
+    for st in status_list:
+        selected = ' selected' if filter_status == st else ''
+        html += '<option value="' + st + '"' + selected + '>' + st + '</option>'
+    html += '</select> '
     html += 'number of records: <input type="text" name="filter_num_lim" value="' + filter_num_lim + '" style="width:40px;"> '
     html += '<input type="submit" value="filter">'
     html += '</form><br>'
@@ -272,7 +282,7 @@ def executions():
     html += '<table><tr><td>Status</td><td>WorkflowID</td><td></td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
     param_filter_workflow_id = filter_workflow_id if filter_workflow_id != '' else None
     param_filter_label = filter_label if filter_label != '' else None
-    data = restApiControl.getExecutionRecords(workflow_id=param_filter_workflow_id, label=param_filter_label, num_limit=filter_num_lim)
+    data = restApiControl.getExecutionRecords(workflow_id=param_filter_workflow_id, label=param_filter_label, num_limit=filter_num_lim, status=filter_status)
     for execution in data:
         html += '<tr>'
         html += '<td style="'+statusColor(execution['Status'])+'">'+execution['Status']+'</td>'
