@@ -1,41 +1,35 @@
 {% extends "layout.html" %}
 {% block head %}
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.bundle.min.js " integrity="sha256-XF29CBwU1MWLaGEnsELogU6Y6rcc5nCkhhx89nFMIDQ=" crossorigin=" anonymous "></script>
-  
-    <img src="/static/images/project-logo.png" height="60px" align="left" hspace="20">
-    <img src="/static/images/ctu-logo.png" height="60px" align="right" hspace="20">
-    <img src="/static/images/mupif-logo.png" height="60px" align="right" hspace="20">
-
-    <p>MuPIFDB web interface</p>
-    <title>{% block title %}{{ title }}{% endblock %}</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.bundle.min.js " integrity="sha256-XF29CBwU1MWLaGEnsELogU6Y6rcc5nCkhhx89nFMIDQ=" crossorigin=" anonymous "></script>
+<title>{% block title %}{{ title }}{% endblock %}</title>
 {% endblock %}
 
-    {% block content %}
-    <div>
-      {{ body }}
-    </div>
-    <div class="chart-container">
-      <canvas id="updating-chart" width="500" height="200" ></canvas>
+{% block content %}
+<div>
+    {{ body }}
+</div>
+<div class="chart-container">
+    <canvas id="updating-chart" width="500" height="200"></canvas>
 
-      <div> Update interval:
-	<select name="updateInterval">
-	  <option value="1000">1[s]</option>
-	  <option value="10000" selected="selected">10[s]</option>
-	  <option value="600000" >1[min]</option>
-	  <option value="3000000">5[min]</option>
-	</select>
-      </div>
+    <div> Update interval:
+        <select name="updateInterval">
+            <option value="1000">1[s]</option>
+            <option value="10000" selected="selected">10[s]</option>
+            <option value="600000">1[min]</option>
+            <option value="3000000">5[min]</option>
+        </select>
     </div>
-    <div style="clear: both">
-      <a href={{[server,"schedulerStats/hourly.svg"]|join}} target="_blank">48 hour statistics</a><br>
-      <a href={{[server,"schedulerStats/weekly.svg"]|join}} target="_blank">52 week statistics</a>
-    </div>  
+</div>
+<div style="clear: both">
+    <a href={{[server,"schedulerStats/hourly.svg"]|join}} target="_blank">48 hour statistics</a><br>
+    <a href={{[server,"schedulerStats/weekly.svg"]|join}} target="_blank">52 week statistics</a>
+</div>
 
 
 {% endblock %}
 
-{% block scripts %}    
+{% block scripts %}
 <script>
     let data = new Array (30);
     let data2= new Array (30);
@@ -132,5 +126,6 @@
         timeout = $(this).val();
         setTimeout(fetchData, timeout);
     });
+
 </script>
 {% endblock %}

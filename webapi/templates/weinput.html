@@ -9,12 +9,12 @@ Inputs:
     <tr><th>Name</th><th>Type</th><th>TypeID</th><th>Units</th><th>ObjID</th><th>Compulsory</th></tr>
     {% for item in inputs %}
     <TR>
-       <TD class="c1">{{item.Name}}</TD>
-       <TD class="c2">{{item.Type}}</TD>
-       <TD class="c3">{{item.TypeID}}</TD>
-       <TD class="c4">{{item.Units}}</TD>
-       <TD class="c5">{{item.ObjID}}</TD>
-       <TD class="c6">{{item.Compulsory}}</TD>
+        <TD class="c1">{{item.Name}}</TD>
+        <TD class="c2">{{item.Type}}</TD>
+        <TD class="c3">{{item.TypeID}}</TD>
+        <TD class="c4">{{item.Units}}</TD>
+        <TD class="c5">{{item.ObjID}}</TD>
+        <TD class="c6">{{item.Compulsory}}</TD>
     </TR>
     {% endfor %}
 </table>
@@ -23,14 +23,14 @@ Outputs:
     <tr><th>Name</th><th>Type</th><th>TypeID</th><th>Units</th><th>ObjID</th><th>Compulsory</th></tr>
     {% for item in outputs %}
     <TR>
-       <TD class="c1">{{item.Name}}</TD>
-       <TD class="c2">{{item.Type}}</TD>
-       <TD class="c3">{{item.TypeID}}</TD>
-       <TD class="c4">{{item.Units}}</TD>
-       <TD class="c5">{{item.ObjID}}</TD>
-       <TD class="c6">{{item.Compulsory}}</TD>
+        <TD class="c1">{{item.Name}}</TD>
+        <TD class="c2">{{item.Type}}</TD>
+        <TD class="c3">{{item.TypeID}}</TD>
+        <TD class="c4">{{item.Units}}</TD>
+        <TD class="c5">{{item.ObjID}}</TD>
+        <TD class="c6">{{item.Compulsory}}</TD>
     </TR>
     {% endfor %}
     </table>
-<a href={{ [server, "workflowexecutions/init/", id] | join }}>Initialize new execution record</a>
+<a href="{{ [server, 'workflowexecutions/init/', id] | join }}">Initialize new execution record</a>
 {% endblock %}
