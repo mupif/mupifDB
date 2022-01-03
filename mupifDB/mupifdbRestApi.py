@@ -230,10 +230,24 @@ def insert_workflow_history(data):
 # Executions
 # --------------------------------------------------
 
-def get_workflowexecutions():
+def get_workflowexecutions(we_status=None, workflow_id=None, workflow_version=None, label=None, num_limit=None):
+    filter_dict = {}
+    if we_status in ["Created", "Pending", "Scheduled", "Running", "Finished", "Failed"]:
+        filter_dict["Status"] = we_status
+    if workflow_id is not None and workflow_id != '':
+        filter_dict["WorkflowID"] = workflow_id
+    if workflow_version is not None:
+        filter_dict["WorkflowVersion"] = workflow_version
+    if label is not None and label != '':
+        filter_dict["label"] = label
+    if num_limit is not None:
+        num_limit = int(num_limit)
+    else:
+        num_limit = 999999
+
     table = mongo.db.WorkflowExecutions
     output = []
-    for s in table.find():
+    for s in table.find(filter_dict).limit(num_limit):
         output.append(table_structures.extendRecord(s, table_structures.tableExecution))
     return jsonify({'result': output})
 
@@ -561,8 +575,15 @@ def schedulerStatSmallPng():
 
 
 # --------------------------------------------------
-# Stat
+# MAIN
 # --------------------------------------------------
+
+
+def getNoneIfParamNotDefined(args, param):
+    if param in args:
+        return args[param]
+    return None
+
 
 @app.route("/main", methods=['GET', 'POST'])
 def main():
@@ -643,7 +664,18 @@ def main():
         # --------------------------------------------------
 
         if action == "get_executions":
-            return get_workflowexecutions()
+            workflow_id = getNoneIfParamNotDefined(args, 'workflow_id')
+            workflow_version = getNoneIfParamNotDefined(args, 'workflow_version')
+            label = getNoneIfParamNotDefined(args, 'label')
+            num_limit = getNoneIfParamNotDefined(args, 'num_limit')
+            status = getNoneIfParamNotDefined(args, 'status')
+            return get_workflowexecutions(
+                we_status=status,
+                workflow_id=workflow_id,
+                workflow_version=workflow_version,
+                label=label,
+                num_limit=num_limit
+            )
 
         if action == "get_executions_with_status":
             if "status" in args:

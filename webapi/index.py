@@ -246,9 +246,33 @@ def executions():
             return 'color:blue;'
         return 'color:gray;'
 
+    filter_workflow_id = ''
+    filter_label = ''
+    filter_num_lim = '100'
+
+    args = {}
+    for key, value in request.args.items():
+        args[key] = value
+
+    if 'filter_workflow_id' in args:
+        filter_workflow_id = str(args['filter_workflow_id'])
+    if 'filter_label' in args:
+        filter_label = str(args['filter_label'])
+    if 'filter_num_lim' in args:
+        filter_num_lim = str(args['filter_num_lim'])
+
     html = '<h3>List of workflow executions:</h3>'
+    html += '<form id="filtering_form" action="" style="font-size:12px;">'
+    html += 'WorkflowID: <input type="text" name="filter_workflow_id" value="' + filter_workflow_id + '" style="width:100px;"> '
+    html += 'label: <input type="text" name="filter_label" value="' + filter_label + '" style="width:100px;"> '
+    html += 'number of records: <input type="text" name="filter_num_lim" value="' + filter_num_lim + '" style="width:40px;"> '
+    html += '<input type="submit" value="filter">'
+    html += '</form><br>'
+
     html += '<table><tr><td>Status</td><td>WorkflowID</td><td></td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
-    data = restApiControl.getExecutionRecords()
+    param_filter_workflow_id = filter_workflow_id if filter_workflow_id != '' else None
+    param_filter_label = filter_label if filter_label != '' else None
+    data = restApiControl.getExecutionRecords(workflow_id=param_filter_workflow_id, label=param_filter_label, num_limit=filter_num_lim)
     for execution in data:
         html += '<tr>'
         html += '<td style="'+statusColor(execution['Status'])+'">'+execution['Status']+'</td>'

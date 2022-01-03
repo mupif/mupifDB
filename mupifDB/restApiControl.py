@@ -113,9 +113,19 @@ def insertWorkflowHistory(data):
 # Executions
 # --------------------------------------------------
 
-def getExecutionRecords():
+def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None):
     data = []
-    response = requests.get(RESTserver + "main?action=get_executions")
+    endpoint_address = RESTserver + "main?action=get_executions"
+    if num_limit is not None:
+        endpoint_address += "&num_limit=" + str(num_limit)
+    if label is not None:
+        endpoint_address += "&label=" + str(label)
+    if workflow_id is not None:
+        endpoint_address += "&workflow_id=" + str(workflow_id)
+    if workflow_version is not None:
+        endpoint_address += "&workflow_version=" + str(workflow_version)
+
+    response = requests.get(endpoint_address)
     response_json = response.json()
     for record in response_json['result']:
         data.append(record)
