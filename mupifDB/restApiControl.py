@@ -143,21 +143,11 @@ def getExecutionRecord(weid):
 
 
 def getScheduledExecutions():
-    data = []
-    response = requests.get(RESTserver + "main?action=get_executions_with_status&status=Scheduled")
-    response_json = response.json()
-    for record in response_json['result']:
-        data.append(record)
-    return data
+    return getExecutionRecords(status="Scheduled")
 
 
 def getPendingExecutions():
-    data = []
-    response = requests.get(RESTserver + "main?action=get_executions_with_status&status=Pending")
-    response_json = response.json()
-    for record in response_json['result']:
-        data.append(record)
-    return data
+    return getExecutionRecords(status="Pending")
 
 
 def scheduleExecution(execution_id):

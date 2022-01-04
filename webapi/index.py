@@ -270,7 +270,7 @@ def executions():
     html += 'label: <input type="text" name="filter_label" value="' + filter_label + '" style="width:100px;"> '
     html += 'status: <select name="filter_status">'
     html += '<option value="">Any</option>'
-    status_list = ['Created', 'Pending', 'Running', 'Finished', 'Failed']
+    status_list = ['Created', 'Pending', 'Scheduled', 'Running', 'Finished', 'Failed']
     for st in status_list:
         selected = ' selected' if filter_status == st else ''
         html += '<option value="' + st + '"' + selected + '>' + st + '</option>'

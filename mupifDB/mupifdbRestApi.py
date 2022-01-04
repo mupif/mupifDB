@@ -261,17 +261,6 @@ def get_workflowexecution(weid):
     return jsonify({'result': output})
 
 
-def get_workflowexecutionsWithStatus(we_status):
-    print(we_status)
-    if we_status in ["Created", "Pending", "Scheduled", "Running", "Finished", "Failed"]:
-        table = mongo.db.WorkflowExecutions
-        output = []
-        for s in table.find({"Status": we_status}):
-            output.append(table_structures.extendRecord(s, table_structures.tableExecution))
-        return jsonify({'result': output})
-    return jsonify({'error': "Given 'status' value not allowd ('%s')." % str(we_status)})
-
-
 def get_workflowexecutionInputs(weid):
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
@@ -676,12 +665,6 @@ def main():
                 label=label,
                 num_limit=num_limit
             )
-
-        if action == "get_executions_with_status":
-            if "status" in args:
-                return get_workflowexecutionsWithStatus(args["status"])
-            else:
-                return jsonify({'error': "Param 'status' not specified."})
 
         if action == "get_execution":
             if "id" in args:

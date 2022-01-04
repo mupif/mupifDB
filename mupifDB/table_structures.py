@@ -8,7 +8,7 @@ def extendRecord(record, structure):
 
 tableExecution = {
     'WorkflowID': None,
-    'WorkflowVersion:': None,
+    'WorkflowVersion': None,
     'Status': "Created",
     'CreatedDate': None,
     'SubmittedDate': None,
