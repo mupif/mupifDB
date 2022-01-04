@@ -330,7 +330,7 @@ def executionStatus(weid):
         html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
     if data['Status'] == 'Finished':
         html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
-    if data['Status'] == 'Finished' or data['Status'] == 'Failed':
+    if (data['Status'] == 'Finished' or data['Status'] == 'Failed') and logID is not None:
         html += '<li> <a href="{' + RESTserver + 'gridfs/' + str(logID) + '"> Execution log</a></li>'
     html += '</ul>'
 
