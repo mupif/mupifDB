@@ -86,7 +86,7 @@ def getWorkflowDoc(wid, version=-1):
     wdoclatest = restApiControl.getWorkflowRecord(wid)
     if wdoclatest is None:
         raise KeyError("Workflow document with WID" + wid + " not found")
-    lastversion = wdoclatest.get('Version', 1)
+    lastversion = int(wdoclatest['Version'])
     if version == -1 or version == lastversion:  # get the latest one
         return wdoclatest
     elif version < lastversion:
@@ -189,7 +189,7 @@ class WorkflowExecutionContext:
         self.executionID = executionID
 
     @staticmethod
-    def create(workflowID, requestedBy, workflowVer=-1):
+    def create(workflowID, requestedBy='', workflowVer=-1):
         """
         """
         # first query for workflow document

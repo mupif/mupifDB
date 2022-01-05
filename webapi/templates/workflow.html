@@ -38,5 +38,5 @@ Outputs:
     {% endfor %}
     </table>
 <br>
-<a href="{{ [server,'workflowexecutions/init/', wid] | join }}">Initialize new execution record</a>
+<a href="{{ [server,'workflowexecutions/init/', wid, '/', version] | join }}">Initialize new execution record</a>
 {% endblock %}

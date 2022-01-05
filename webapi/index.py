@@ -146,7 +146,7 @@ def workflow(wid):
         'workflow.html',
         wid=wid, id=wdata['_id'], UseCase=wdata["UseCase"], Description=wdata["Description"],
         inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
-        version=wdata.get("Version", 1)
+        version=wdata["Version"]
     )
 
 
@@ -298,12 +298,16 @@ def executions():
     return my_render_template('basic.html', body=Markup(html))
 
 
-@app.route('/workflowexecutions/init/<wid>')
-def initexecution(wid):
+@app.route('/workflowexecutions/init/<wid>/<int:version>')
+def initexecution(wid, version):
     # c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, '')
     # weid = c.executionID
-    weid = restApiControl.insertExecution(wid)  # TODO uncomment commented and delete this
-    return redirect(url_for("executionStatus", weid=weid))
+    we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
+    if we_record is not None:
+        weid = restApiControl.insertExecution(wid, int(version))  # TODO uncomment commented and delete this
+        return redirect(url_for("executionStatus", weid=weid))
+    else:
+        return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'))
 
 
 @app.route('/workflowexecutions/<weid>')

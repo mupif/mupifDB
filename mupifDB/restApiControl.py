@@ -90,6 +90,14 @@ def updateWorkflow(data):
     return response_json['result']
 
 
+def getWorkflowRecordGeneral(wid, version):
+    workflow_newest = getWorkflowRecord(wid)
+    if workflow_newest is not None:
+        if workflow_newest['Version'] == version:
+            return workflow_newest
+    return getWorkflowRecordFromHistory(wid, version)
+
+
 # --------------------------------------------------
 # Workflows history
 # --------------------------------------------------
@@ -184,8 +192,8 @@ def setExecutionStatusFailed(execution_id):
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
-def insertExecution(workflow_wid):
-    response = requests.get(RESTserver + "main?action=insert_execution_all&wid=" + str(workflow_wid))
+def insertExecution(workflow_wid, version):
+    response = requests.get(RESTserver + "main?action=insert_execution_all&wid=" + str(workflow_wid) + "&version=" + str(version))
     response_json = response.json()
     return response_json['result']
 

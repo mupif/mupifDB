@@ -100,7 +100,7 @@ def printHelp():
     <tr><td>/usecases/ID/workflows</td><td> Workflows available for Usecase ID</td></tr>
     <tr><td>/workflows/ID</td><td> Details of workflow ID</td></tr>
 
-    <tr><td>/workflowexecutions/init/ID</td><td>Initialize (schedules) execution of workflow with Id, returns workflowexecutionID</td></tr>
+    <tr><td>/workflowexecutions/init/ID/version</td><td>Initialize (schedules) execution of workflow with ID and version, returns workflowexecutionID</td></tr>
     
 
     <tr><td>/workflowexecutions/ID</td><td>Show execution ID status</td></tr>
@@ -282,8 +282,8 @@ def get_workflowexecutionOutputs(weid):
     return jsonify({'result': output})
 
 
-def insert_execution(wid):  # todo delete this when ready
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, '')
+def insert_execution(wid, version):  # todo delete this when ready
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wid, workflowVer=int(version), requestedBy='')
     return jsonify({'result': c.executionID})
 
 
@@ -685,10 +685,10 @@ def main():
                 return jsonify({'error': "Param 'id' not specified."})
 
         if action == "insert_execution_all":
-            if "wid" in args:
-                return insert_execution(args["wid"])
+            if "wid" in args and "version" in args:
+                return insert_execution(args["wid"], args["version"])
             else:
-                return jsonify({'error': "Param 'wid' not specified."})
+                return jsonify({'error': "Param 'wid' or 'version' not specified."})
 
         if action == "insert_execution":
             return insert_executionRecord(json.loads(request.get_data()))

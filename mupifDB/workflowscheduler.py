@@ -145,7 +145,7 @@ def executeWorkflow(we_id):
         log.info("Workflow Execution record %s found" % we_id)
 
     # get workflow record (needed to get workflow source to execute
-    workflowVersion = we_rec['WorkflowVersion']
+    workflowVersion = int(we_rec['WorkflowVersion'])
     wid = we_rec['WorkflowID']
     id = we_rec['_id']
     workflow_record = workflowmanager.getWorkflowDoc(wid, version=workflowVersion)
