@@ -69,12 +69,12 @@ def status():
 
 @app.route("/schedulerStats/weekly.svg")
 def schedulerStatWeekly():
-    return send_from_directory(path=path_of_this_file + "/static/images", filename="scheduler_weekly_stat.svg")
+    return send_from_directory(directory=path_of_this_file + "/static/images", filename="scheduler_weekly_stat.svg")
 
 
 @app.route("/schedulerStats/hourly.svg")
 def schedulerStatHourly():
-    return send_from_directory(path=path_of_this_file + "/static/images", filename="scheduler_hourly_stat.svg")
+    return send_from_directory(directory=path_of_this_file + "/static/images", filename="scheduler_hourly_stat.svg")
 
 
 @app.route('/contact')
