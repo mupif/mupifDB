@@ -298,11 +298,9 @@ def executions():
 
 @app.route('/workflowexecutions/init/<wid>/<int:version>')
 def initexecution(wid, version):
-    # c = mupifDB.workflowmanager.WorkflowExecutionContext.create(wid, '')
-    # weid = c.executionID
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
     if we_record is not None:
-        weid = restApiControl.insertExecution(wid, int(version))  # TODO uncomment commented and delete this
+        weid = restApiControl.insertExecution(wid, int(version))
         return redirect(url_for("executionStatus", weid=weid))
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'))

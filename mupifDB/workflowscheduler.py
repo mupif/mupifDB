@@ -10,7 +10,6 @@ import multiprocessing
 import subprocess
 import enum
 import pidfile
-import workflowmanager
 import zipfile
 import ctypes
 
@@ -148,7 +147,7 @@ def executeWorkflow(we_id):
     workflowVersion = int(we_rec['WorkflowVersion'])
     wid = we_rec['WorkflowID']
     id = we_rec['_id']
-    workflow_record = workflowmanager.getWorkflowDoc(wid, version=workflowVersion)
+    workflow_record = restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
     if workflow_record is None:
         print("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
         log.error("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
