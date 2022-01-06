@@ -69,12 +69,14 @@ def status():
 
 @app.route("/schedulerStats/weekly.svg")
 def schedulerStatWeekly():
-    return send_from_directory(directory=path_of_this_file + "/static/images", filename="scheduler_weekly_stat.svg")
+    # https://stackoverflow.com/questions/67591467/flask-shows-typeerror-send-from-directory-missing-1-required-positional-argum
+    # https://flask.palletsprojects.com/en/2.0.x/api/#flask.send_from_directory
+    return send_from_directory(directory=path_of_this_file + "/static/images", path="scheduler_weekly_stat.svg")
 
 
 @app.route("/schedulerStats/hourly.svg")
 def schedulerStatHourly():
-    return send_from_directory(directory=path_of_this_file + "/static/images", filename="scheduler_hourly_stat.svg")
+    return send_from_directory(directory=path_of_this_file + "/static/images", path="scheduler_hourly_stat.svg")
 
 
 @app.route('/contact')
