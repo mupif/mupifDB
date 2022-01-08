@@ -262,11 +262,11 @@ class WorkflowExecutionContext:
             # freeze the execution record by setting state to "Pending"
             restApiControl.setExecutionStatusPending(self.executionID)
             print("Execution %s state changed to Pending" % self.executionID)
+            return True
         else:
             # raise KeyError("Workflow execution already scheduled/executed")
             raise error.InvalidUsage("Workflow execution already scheduled/executed")
-
-        return 0
+            return False
 
 
 def mapInput(app, value, type, typeID, units, compulsory, objectID):

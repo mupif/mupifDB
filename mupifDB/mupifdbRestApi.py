@@ -96,37 +96,32 @@ def printHelp():
     <tr>
     <th>Service</th><th>Description</th>
     </tr>
-    <tr><td>/usecases/ID</td><td> Details of usecase with given ID</td></tr>
-    <tr><td>/usecases/ID/workflows</td><td> Workflows available for Usecase ID</td></tr>
-    <tr><td>/workflows/ID</td><td> Details of workflow ID</td></tr>
-
-    <tr><td>/workflowexecutions/init/ID/version</td><td>Initialize (schedules) execution of workflow with ID and version, returns workflowexecutionID</td></tr>
-    
-
-    <tr><td>/workflowexecutions/ID</td><td>Show execution ID status</td></tr>
-    <tr><td>/workflowexecutions/ID/inputs</td><td>Show inputs for execution ID </td></tr>
-    <tr><td>/workflowexecutions/ID/outputs</td><td>Show outputs for execution ID </td></tr>
+    <tr><td>/main?action=get_usecase&id=ID</td><td> Details of usecase with given ID</td></tr>
+    <tr><td>/main?action=get_workflows_for_usecase&usecase=ID</td><td> Workflows available for Usecase ID</td></tr>
+    <tr><td>/main?action=get_workflow&wid=ID</td><td> Details of workflow ID</td></tr>
+    <tr><td>/main?action=insert_new_execution&wid=ID&version=Version</td><td>Initialize a new execution of workflow with ID and Version, returns workflowexecutionID</td></tr>
+    <tr><td>/main?action=get_execution&id=ID</td><td>Get record of workflow execution with given ID</td></tr>
+    <tr><td>/main?action=get_execution_inputs&id=ID</td><td>Show inputs for execution ID </td></tr>
+    <tr><td>/main?action=get_execution_outputs&id=ID</td><td>Show outputs for execution ID </td></tr>
     <tr><td>/workflowexecutions/ID/set?NAME=value</td><td>Sets input parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id. The value is string with format depending on input type. If type is mupif.Property then value should be string convertible to number (integer or floating point). If type is mupif.Field then string should be convertible to python tuple used to initialize ConstantField (Example "permeability=(1.e-3, 1.e-3, 1.e-3)").</td></tr>
     <tr><td>/workflowexecutions/ID/get?NAME</td><td>Gets output parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>
-    <tr><td>/executeworkflow/ID</td><td>Execute workflow ID. Note that scheduled workflow execution can be executed only once from "Created" state, for another executions one has to schedule new execution and set inputs.</td></tr>
+    <tr><td>/main?action=schedule_execution&id=ID</td><td>Schedule workflow execution specified by ID. Note that workflow execution can be scheduled only once from "Created" state to state "Pending", for another computation one has to create a new execution and set inputs.</td></tr>
     <tr><td>/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
     <tr><td>/uploads/filenamepath", methods=["POST"]</td><td></td></tr>
     <tr><td>/gridfs/ID</td><td>Show stored file with given ID</td></tr>
     </table>
 
-    <br>Demo:<br>
+    <br><b><u>Demo - uses an existing workflow record in the database</u></b><br>
     <ul>
-    <li> Get list of available UseCases: <a href="/usecases">/usecases</a></li>
-    <li> Get list of available workflows for specific usecase: <a href="/usecases/DemoUseCase/workflows">/usecases/DemoUseCase/workflows</a></li>
-    <li> Get info on specific workflow: <a href="/workflows/Workflow98">/workflows/Workflow98</a></li>
-    <li> Schedule execution of workflow: <a href="/workflowexecutions/init/Workflow98">/workflowexecutions/init/Workflow98</a>, returns workflow execution id (WEID)</li>
+    <li> Get list of available workflows for specific usecase: <a href="/main?action=get_workflows_for_usecase&usecase=Demo_UseCase">/main?action=get_workflows_for_usecase&usecase=Demo_UseCase</a></li>
+    <li> Get info on specific workflow: <a href="/main?action=get_workflow&wid=workflow_13">/main?action=get_workflow&wid=workflow_13</a></li>
+    <li> Create new execution of a workflow: <a href="/main?action=insert_new_execution&wid=workflow_13&version=1">/main?action=insert_new_execution&wid=workflow_13&version=1</a>, returns workflow execution id (WEID)</li>
     <li>For given execution id (WEID):<ul>
-            <li> Get status of workflow execution: <a href="/workflowexecutions/WEID">/workflowexecutions/WEID</a></li>
-            <li> Get workflow execution inputs: <a href="/workflowexecutions/WEID/inputs">/workflowexecutions/WEID/inputs</a></li>
+            <li> Get workflow execution record: <a href="/main?action=get_execution&id=WEID">/main?action=get_execution&id=WEID</a></li>
+            <li> Get workflow execution inputs: <a href="/main?action=get_execution_inputs&id=WEID">/main?action=get_execution_inputs&id=WEID</a></li>
             <li> Setting workflow execution inputs (inputs can be set only for execution with status 'Created'): <a href="/workflowexecutions/WEID/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3">/workflowexecutions/WEID/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3</a></li>
-            <li> Executing workflow (workflow can be executed only with status 'Created'): <a href="/executeworkflow/WEID">/executeworkflow/WEID</a></li>
-            <li> Get status of workflow execution: <a href="/workflowexecutions/WEID">/workflowexecutions/WEID</a></li>
-            <li> Get Workflow execution outputs: <a href="/workflowexecutions/WEID/outputs">/workflowexecutions/WEID/outputs</a></li>
+            <li> Schedule workflow execution (it can be done only if the status is 'Created'): <a href="/main?action=schedule_execution&id=WEID">main?action=schedule_execution&id=WEID</a></li>
+            <li> Get workflow execution outputs: <a href="/main?action=get_execution_outputs&id=WEID">/main?action=get_execution_outputs&id=WEID</a></li>
             </ul></li>
     </ul>
 
@@ -347,9 +342,8 @@ def scheduleExecution(weid):
     print("Execution request by %s from %s" % (user, remoteAddr))
 
     c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
-    c.execute()
-    return redirect(url_for("get_workflowexecution", id=weid))
-    # return (id)
+    if(c.execute()):
+        return jsonify({'result': "OK"})
 
 
 # --------------------------------------------------
@@ -617,7 +611,7 @@ def main():
             else:
                 return jsonify({'error': "Param 'wid' not specified."})
 
-        if action == "get_workflow_with_usecase":
+        if action == "get_workflows_for_usecase":
             if "usecase" in args:
                 return get_workflows_with_usecase(args["usecase"])
             else:
@@ -684,13 +678,13 @@ def main():
             else:
                 return jsonify({'error': "Param 'id' not specified."})
 
-        if action == "insert_execution_all":
+        if action == "insert_new_execution":
             if "wid" in args and "version" in args:
                 return insert_execution(args["wid"], args["version"])
             else:
                 return jsonify({'error': "Param 'wid' or 'version' not specified."})
 
-        if action == "insert_execution":
+        if action == "insert_execution_data":
             return insert_executionRecord(json.loads(request.get_data()))
 
         if action == "get_execution_inputs":

@@ -59,7 +59,7 @@ def getWorkflowRecords():
 
 def getWorkflowRecordsWithUsecase(usecase):
     data = []
-    response = requests.get(RESTserver + "main?action=get_workflow_with_usecase&usecase=" + str(usecase))
+    response = requests.get(RESTserver + "main?action=get_workflows_for_usecase&usecase=" + str(usecase))
     response_json = response.json()
     for record in response_json['result']:
         data.append(record)
@@ -193,13 +193,13 @@ def setExecutionStatusFailed(execution_id):
 
 
 def insertExecution(workflow_wid, version):
-    response = requests.get(RESTserver + "main?action=insert_execution_all&wid=" + str(workflow_wid) + "&version=" + str(version))
+    response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(workflow_wid) + "&version=" + str(version))
     response_json = response.json()
     return response_json['result']
 
 
 def insertExecutionRecord(data):
-    response = requests.get(RESTserver + "main?action=insert_execution", data=json.dumps(data))
+    response = requests.get(RESTserver + "main?action=insert_execution_data", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
 
