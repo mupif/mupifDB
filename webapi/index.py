@@ -373,7 +373,7 @@ def setExecutionInputs(weid):
                 # originID  = request.form.getvalue('OriginID_%d'%c)
                 msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
                 payload[name+'{'+str(objID)+'}'] = value
-                restApiControl.setIOProperty(execution_record['Inputs'], name, 'Value', value, objID)
+                restApiControl.setExecutionInputValue(weid, name, value, objID)
                 c = c+1
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
             return my_render_template("basic.html", body=Markup(msg))

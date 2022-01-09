@@ -99,12 +99,13 @@ def getWorkflowDoc(wid, version=-1):
 
 
 class WorkflowExecutionIODataSet:
-    def __init__(self, wec, IOid):
+    def __init__(self, wec, IOid, weid):
         self.wec = wec
         self.IOid = IOid
+        self.weid = weid
     
     @staticmethod
-    def create(workflowID, type='Input', workflowVer=-1):
+    def create(workflowID, type, workflowVer=-1):
         rec = {'Type': type, 'DataSet': []}
 
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
@@ -165,9 +166,8 @@ class WorkflowExecutionIODataSet:
         @param: value associated value
         @throws: KeyError if input parameter name not found
         """
-        # print(f'WorkflowExecutionIODataSet:set self={self.IOid}: {name}={value}, objid={obj_id}')
         if self.wec.getStatus() == 'Created':
-            restApiControl.setIOProperty(self.IOid, name, "Value", value, obj_id)
+            restApiControl.setExecutionInputValue(self.weid, name, value, obj_id)
         else:
             raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
  
@@ -247,7 +247,7 @@ class WorkflowExecutionContext:
 
     def getIODataDoc(self, type='Inputs'):
         doc = self._getWorkflowExecutionDocument()    
-        return WorkflowExecutionIODataSet(self, self.get(type))
+        return WorkflowExecutionIODataSet(self, self.get(type), self.executionID)
 
     def getStatus(self):
         wed = self._getWorkflowExecutionDocument()

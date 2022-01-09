@@ -87,8 +87,6 @@ def printHelp():
     <tr><td><a href="/main?action=get_usecases">/main?action=get_usecases</a></td><td>List of UseCases</td></tr>
     <tr><td><a href="/main?action=get_workflows">/main?action=get_workflows</a></td><td>List of Workflows</td></tr>
     <tr><td><a href="/main?action=get_executions">/main?action=get_executions</a></td><td>List of Workflow Executions</td></tr>
-    <tr><td><a href="/schedulerStats/hourly.svg">/schedulerStats/hourly.svg</a></td><td>Scheduler hourly statistics (svg chart)</td></tr>
-    <tr><td><a href="/schedulerStats/weekly.svg">/schedulerStats/weekly.svg</a></td><td>Scheduler weekly statistics (svg chart)</td></tr>
     </table>
 
     <br>Advanced REST API services:</br>
@@ -103,12 +101,12 @@ def printHelp():
     <tr><td>/main?action=get_execution&id=ID</td><td>Get record of workflow execution with given ID</td></tr>
     <tr><td>/main?action=get_execution_inputs&id=ID</td><td>Show inputs for execution ID </td></tr>
     <tr><td>/main?action=get_execution_outputs&id=ID</td><td>Show outputs for execution ID </td></tr>
-    <tr><td>/workflowexecutions/ID/set?NAME=value</td><td>Sets input parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id. The value is string with format depending on input type. If type is mupif.Property then value should be string convertible to number (integer or floating point). If type is mupif.Field then string should be convertible to python tuple used to initialize ConstantField (Example "permeability=(1.e-3, 1.e-3, 1.e-3)").</td></tr>
-    <tr><td>/workflowexecutions/ID/get?NAME</td><td>Gets output parameter for workflow execution ID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>
-    <tr><td>/main?action=schedule_execution&id=ID</td><td>Schedule workflow execution specified by ID. Note that workflow execution can be scheduled only once from "Created" state to state "Pending", for another computation one has to create a new execution and set inputs.</td></tr>
-    <tr><td>/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
-    <tr><td>/uploads/filenamepath", methods=["POST"]</td><td></td></tr>
-    <tr><td>/gridfs/ID</td><td>Show stored file with given ID</td></tr>
+    <tr><td>/main?action=set_execution_input&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Sets input parameter for workflow execution with id WEID. The input is specified by its NAME and OBJ_ID. The VALUE is string with format depending on input type. If type is mupif.Property then value should be string convertible to tuple such as "(5.0,)".</td></tr>
+    <!--<tr><td style="color:red;">/main?action=get_execution_output&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Gets output parameter for workflow execution with id WEID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>-->
+    <tr><td>/main?action=schedule_execution&id=WEID</td><td>Schedule workflow execution specified by id WEID. Note that workflow execution can be scheduled only once from "Created" state to state "Pending", for another computation one has to create a new execution and set inputs.</td></tr>
+    <tr><td style="color:red;">/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
+    <tr><td style="color:red;">/uploads/filenamepath", methods=["POST"]</td><td></td></tr>
+    <tr><td style="color:red;">/gridfs/ID</td><td>Show stored file with given ID</td></tr>
     </table>
 
     <br><b><u>Demo - uses an existing workflow record in the database</u></b><br>
@@ -119,8 +117,10 @@ def printHelp():
     <li>For given execution id (WEID):<ul>
             <li> Get workflow execution record: <a href="/main?action=get_execution&id=WEID">/main?action=get_execution&id=WEID</a></li>
             <li> Get workflow execution inputs: <a href="/main?action=get_execution_inputs&id=WEID">/main?action=get_execution_inputs&id=WEID</a></li>
-            <li> Setting workflow execution inputs (inputs can be set only for execution with status 'Created'): <a href="/workflowexecutions/WEID/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3">/workflowexecutions/WEID/set?YoungModulus=30.e9&Dimension{0}=10.&Dimension{1}=0.1&Dimension{2}=0.3&Force=10e3</a></li>
-            <li> Schedule workflow execution (it can be done only if the status is 'Created'): <a href="/main?action=schedule_execution&id=WEID">main?action=schedule_execution&id=WEID</a></li>
+            <li> Setting workflow execution input #1: <a href="/main?action=set_execution_input&id=WEID&name=Value_1&value=(7.,)&obj_id=1">/main?action=set_execution_input&id=WEID&name=Value_1&value=(7.,)&obj_id=1</a></li>
+            <li> Setting workflow execution input #2: <a href="/main?action=set_execution_input&id=WEID&name=Value_2&value=(2.5,)&obj_id=2">/main?action=set_execution_input&id=WEID&name=Value_2&value=(2.5,)&obj_id=2</a></li>
+            <li> (inputs can be set only for execution with status 'Created')</li>
+            <li> Schedule workflow execution (it can be done only if the status is 'Created'): <a href="/main?action=schedule_execution&id=WEID">/main?action=schedule_execution&id=WEID</a></li>
             <li> Get workflow execution outputs: <a href="/main?action=get_execution_outputs&id=WEID">/main?action=get_execution_outputs&id=WEID</a></li>
             </ul></li>
     </ul>
@@ -399,6 +399,29 @@ def modify_IOData(iod_id, name, attribute, value, obj_id):
     return jsonify({'error': "Value was not updated."})
 
 
+def set_execution_input(weid, name, value, obj_id):
+    output = []
+    print(str(weid))
+    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
+    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+
+    table = mongo.db.IOData
+    # Try objID as both str and int
+    if str(obj_id) == 'None':
+        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
+        if res.matched_count == 1:
+            return jsonify({'result': "OK"})
+    else:
+        res1 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        if isIntable(obj_id):
+            res2 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
+        else:
+            res2 = res1
+        if res1.matched_count == 1 or res2.matched_count == 1:
+            return jsonify({'result': "OK"})
+    return jsonify({'error': "Value was not updated."})
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
@@ -525,36 +548,16 @@ def get_statScheduler():
 
 def set_statScheduler(key, value):
     if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
-        mongo.db.Stat.update_one({}, {"$set": {key: value}})
+        mongo.db.Stat.update_one({}, {"$set": {key: int(value)}})
         return jsonify({'result': True})
     return jsonify({'error': "Given value was not saved."})
 
 
 def update_statScheduler(key, value):
     if key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
-        mongo.db.Stat.update_one({}, {"$inc": {key: value}})
+        mongo.db.Stat.update_one({}, {"$inc": {key: int(value)}})
         return jsonify({'result': True})
     return jsonify({'error': "Given value was not saved."})
-
-
-@app.route("/schedulerStats/weekly.svg")  # todo
-def schedulerStatWeekly():
-    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_weekly_stat.svg")
-
-
-@app.route("/schedulerStats/hourly.svg")  # todo
-def schedulerStatHourly():
-    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_hourly_stat.svg")
-
-
-@app.route("/schedulerStats/loadsmall.svg")  # todo
-def schedulerStatSmall():
-    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_hourly_stat_small.svg")
-
-
-@app.route("/schedulerStats/loadsmall.png")  # todo
-def schedulerStatSmallPng():
-    return send_from_directory(directory=path_of_this_file + "/../webapi/static/images", path="scheduler_hourly_stat_small.png")
 
 
 # --------------------------------------------------
@@ -719,6 +722,12 @@ def main():
                 return modify_IOData(args["id"], args["name"], args["attribute"], args["value"], args["obj_id"])
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'attribute' or 'value' or 'obj_id' not specified."})
+
+        if action == "set_execution_input":
+            if "id" in args and "name" in args and "value" in args and "obj_id" in args:
+                return set_execution_input(args["id"], args["name"], args["value"], args["obj_id"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 
         # --------------------------------------------------
         # Files

@@ -239,6 +239,11 @@ def setIOProperty(iod_id, name, attribute, value, obj_id):
     return response.status_code == 200
 
 
+def setExecutionInputValue(execution_id, name, value, obj_id):
+    response = requests.get(RESTserver + "main?action=set_execution_input&id=" + str(execution_id) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
+    return response.status_code == 200
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
