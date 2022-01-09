@@ -234,13 +234,18 @@ def insertIODataRecord(data):
     return response_json['result']
 
 
-def setIOProperty(iod_id, name, attribute, value, obj_id):
+def setIOProperty(iod_id, name, attribute, value, obj_id):  # TODO to be deleted
     response = requests.get(RESTserver + "main?action=modify_iodata&id=" + str(iod_id) + "&name=" + str(name) + "&attribute=" + str(attribute) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
 
 
 def setExecutionInputValue(execution_id, name, value, obj_id):
     response = requests.get(RESTserver + "main?action=set_execution_input&id=" + str(execution_id) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
+    return response.status_code == 200
+
+
+def setExecutionOutputValue(weid, name, value, obj_id):
+    response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
 
 

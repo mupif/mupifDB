@@ -170,17 +170,15 @@ class WorkflowExecutionIODataSet:
             restApiControl.setExecutionInputValue(self.weid, name, value, obj_id)
         else:
             raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
- 
-    def setAttributes(self, name, attributes, obj_id=None):
+
+    def setOutputVal(self, name, value, obj_id=None):
         """
         Sets the value of output parameter attributes identified by name to given value
         @param: name parameter name
-        @param: attributes dict of kye, value to set
+        @param: value value to set
         @param: value associated value
-        @throws: KeyError if input parameter name not found
         """
-        for key, val in attributes.items():
-            restApiControl.setIOProperty(self.IOid, name, key, val, obj_id)
+        restApiControl.setExecutionOutputValue(self.weid, name, value, obj_id)
 
 
 class WorkflowExecutionContext:
@@ -377,7 +375,7 @@ def setWEInputCGI(eid, form):
         c = c+1
 
 
-# TODO solve the issue with units
+# TODO solve the issue with units in Field
 def mapOutput(app, name, type, typeID, objectID, eid, time, units):
     wec = WorkflowExecutionContext(ObjectId(eid))
     # execution input doc
@@ -387,16 +385,17 @@ def mapOutput(app, name, type, typeID, objectID, eid, time, units):
     if type == 'mupif.Property':
         print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, time), flush=True)
         prop = app.get(mupif.DataID[typeID], time, objectID)
-        out.setAttributes(name, {"Value": prop.getValue(), "Units": units}, objectID)
+        out.setOutputVal(name, prop.inUnitsOf(units).getValue(), objectID)
     elif type == 'mupif.Field':
         with tempfile.TemporaryDirectory() as tempDir:
             field = app.get(mupif.DataID.FID_Temperature, time)
             field.field2VTKData().tofile(tempDir+'/field')
             with open(tempDir+'/field.vtk', 'rb') as f:
-                logID = restApiControl.uploadBinaryFileContent(f)
+                fileID = restApiControl.uploadBinaryFileContent(f)
                 f.close()
-                print("Uploaded field.vtk as id: %s" % logID)
-                out.setAttributes(name, {"Value": logID, "Units": units}, objectID)
+                print("Uploaded field.vtk as id: %s" % fileID)
+                # out.setAttributes(name, {"Value": logID, "Units": units}, objectID) TODO this handling of units doesn't make sense
+                out.setOutputVal(name, fileID, objectID)
 
     else:
         raise KeyError('Handling of io param of type %s not implemented' % type)

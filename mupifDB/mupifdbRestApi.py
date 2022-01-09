@@ -381,7 +381,7 @@ def isIntable(val):
     return True
 
 
-def modify_IOData(iod_id, name, attribute, value, obj_id):
+def modify_IOData(iod_id, name, attribute, value, obj_id):# TODO to be deleted
     table = mongo.db.IOData
     # Try objID as both str and int
     if str(obj_id) == 'None':
@@ -415,6 +415,29 @@ def set_execution_input(weid, name, value, obj_id):
         res1 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
         if isIntable(obj_id):
             res2 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
+        else:
+            res2 = res1
+        if res1.matched_count == 1 or res2.matched_count == 1:
+            return jsonify({'result': "OK"})
+    return jsonify({'error': "Value was not updated."})
+
+
+def set_execution_output(weid, name, value, obj_id):
+    output = []
+    print(str(weid))
+    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
+    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+
+    table = mongo.db.IOData
+    # Try objID as both str and int
+    if str(obj_id) == 'None':
+        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
+        if res.matched_count == 1:
+            return jsonify({'result': "OK"})
+    else:
+        res1 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        if isIntable(obj_id):
+            res2 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
         else:
             res2 = res1
         if res1.matched_count == 1 or res2.matched_count == 1:
@@ -717,7 +740,7 @@ def main():
             data = json.loads(data)
             return insert_IODataRecord(data)
 
-        if action == "modify_iodata":
+        if action == "modify_iodata":  # TODO to be deleted
             if "id" in args and "name" in args and "attribute" in args and "value" in args and "obj_id" in args:
                 return modify_IOData(args["id"], args["name"], args["attribute"], args["value"], args["obj_id"])
             else:
@@ -726,6 +749,12 @@ def main():
         if action == "set_execution_input":
             if "id" in args and "name" in args and "value" in args and "obj_id" in args:
                 return set_execution_input(args["id"], args["name"], args["value"], args["obj_id"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
+
+        if action == "set_execution_output":
+            if "id" in args and "name" in args and "value" in args and "obj_id" in args:
+                return set_execution_output(args["id"], args["name"], args["value"], args["obj_id"])
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 
