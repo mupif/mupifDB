@@ -6,6 +6,7 @@ from flask import request
 from flask_cors import CORS
 import sys
 import os
+import inspect
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
@@ -161,7 +162,6 @@ def addWorkflow(usecaseid):
     success = False
     new_workflow_id = None
     fileID = None
-    classname = ""
     wid = None
     useCase = str(usecaseid)
     if request.form:
@@ -169,7 +169,7 @@ def addWorkflow(usecaseid):
         workflowInputs = None
         workflowOutputs = None
         description = None
-        classname = request.form['classname']
+        classname = None
         zip_filename = "files.zip"
         modulename = ""
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -193,16 +193,27 @@ def addWorkflow(usecaseid):
                                 modulename = file.filename.replace(".py", "")
                                 sys.path.append(tempDir)
                                 moduleImport = importlib.import_module(modulename)
-                                workflowClass = getattr(moduleImport, classname)
-                                workflow_instance = workflowClass()
-                                wid = workflow_instance.getMetadata('ID')
-                                workflowInputs = workflow_instance.getMetadata('Inputs')
-                                workflowOutputs = workflow_instance.getMetadata('Outputs')
-                                description = workflow_instance.getMetadata('Description')
+
+                                classes = []
+                                for name, obj in inspect.getmembers(moduleImport):
+                                    if inspect.isclass(obj):
+                                        if obj.__module__ == modulename:
+                                            classes.append(obj.__name__)
+
+                                if len(classes) == 1:
+                                    classname = classes[0]
+                                    workflowClass = getattr(moduleImport, classname)
+                                    workflow_instance = workflowClass()
+                                    wid = workflow_instance.getMetadata('ID')
+                                    workflowInputs = workflow_instance.getMetadata('Inputs')
+                                    workflowOutputs = workflow_instance.getMetadata('Outputs')
+                                    description = workflow_instance.getMetadata('Description')
+                                else:
+                                    print("File does not contain only one class")
                     else:
                         print(filename + " file NOT provided")
             zf.close()
-            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None:
+            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None and classname is not None:
                 new_workflow_id = mupifDB.workflowmanager.insertWorkflowDefinition(
                     wid=wid,
                     description=description,
@@ -222,9 +233,10 @@ def addWorkflow(usecaseid):
         # generate input form
         html = message
         html += "<h3>Add new workflow:</h3>"
+        html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
         html += "<table>"
 
-        html += '<tr><td>Workflow class name</td><td><input type="text" name="classname" value="'+str(classname)+'"></td></tr>'
+        html += '<input type="hidden" name="somedata" value="">'
 
         html += '<tr><td>Workflow module file</td><td><input type="file" name="file_workflow"></td></tr>'
         for add_file in range(1, 6):

@@ -38,7 +38,6 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     sourceID = None
 
     with open(source, 'rb') as f:
-        # sourceID = restApiControl.uploadBinaryFileContentAndZip(f)
         sourceID = restApiControl.uploadBinaryFileContent(f)
         f.close()
 

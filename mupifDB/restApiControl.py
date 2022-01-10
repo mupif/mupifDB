@@ -234,11 +234,6 @@ def insertIODataRecord(data):
     return response_json['result']
 
 
-def setIOProperty(iod_id, name, attribute, value, obj_id):  # TODO to be deleted
-    response = requests.get(RESTserver + "main?action=modify_iodata&id=" + str(iod_id) + "&name=" + str(name) + "&attribute=" + str(attribute) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
-    return response.status_code == 200
-
-
 def setExecutionInputValue(execution_id, name, value, obj_id):
     response = requests.get(RESTserver + "main?action=set_execution_input&id=" + str(execution_id) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
@@ -262,12 +257,6 @@ def getFileNameByID(fid):
     response = requests.get(RESTserver + "main?action=get_filename&id=" + str(fid), allow_redirects=True)
     response_json = response.json()
     return str(response_json['result'])
-
-
-def uploadBinaryFileContentAndZip(binary_data):  # todo
-    response = requests.post(RESTserver + "upload_and_zip", files={"myfile": binary_data})
-    response_json = response.json()
-    return response_json['result']
 
 
 def uploadBinaryFileContent(binary_data):  # todo

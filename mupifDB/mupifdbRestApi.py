@@ -277,7 +277,7 @@ def get_workflowexecutionOutputs(weid):
     return jsonify({'result': output})
 
 
-def insert_execution(wid, version):  # todo delete this when ready
+def insert_execution(wid, version):
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wid, workflowVer=int(version), requestedBy='')
     return jsonify({'result': c.executionID})
 
@@ -379,24 +379,6 @@ def isIntable(val):
     except ValueError:
         return False
     return True
-
-
-def modify_IOData(iod_id, name, attribute, value, obj_id):# TODO to be deleted
-    table = mongo.db.IOData
-    # Try objID as both str and int
-    if str(obj_id) == 'None':
-        res = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
-        if res.matched_count == 1:
-            return jsonify({'result': "OK"})
-    else:
-        res1 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        if isIntable(obj_id):
-            res2 = table.update_one({'_id': bson.objectid.ObjectId(iod_id)}, {'$set': {"DataSet.$[r].%s" % attribute: value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
-        else:
-            res2 = res1
-        if res1.matched_count == 1 or res2.matched_count == 1:
-            return jsonify({'result': "OK"})
-    return jsonify({'error': "Value was not updated."})
 
 
 def set_execution_input(weid, name, value, obj_id):
@@ -739,12 +721,6 @@ def main():
             data = request.get_data()
             data = json.loads(data)
             return insert_IODataRecord(data)
-
-        if action == "modify_iodata":  # TODO to be deleted
-            if "id" in args and "name" in args and "attribute" in args and "value" in args and "obj_id" in args:
-                return modify_IOData(args["id"], args["name"], args["attribute"], args["value"], args["obj_id"])
-            else:
-                return jsonify({'error': "Param 'id' or 'name' or 'attribute' or 'value' or 'obj_id' not specified."})
 
         if action == "set_execution_input":
             if "id" in args and "name" in args and "value" in args and "obj_id" in args:
