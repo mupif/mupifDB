@@ -30,6 +30,15 @@ RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
 if not RESTserver[-1] == '/':
     RESTserver += '/'
 
+def statusColor(val):
+    if val == 'Finished':
+        return 'color:green;'
+    if val == 'Failed':
+        return 'color:red;'
+    if val == 'Running':
+        return 'color:blue;'
+    return 'color:gray;'
+
 # server (that is, our URL) is obtained within request handlers as flask.request.host_url+'/'
 
 
@@ -141,14 +150,67 @@ def worflows():
 
 
 @app.route('/workflows/<wid>')
-def workflow(wid):
-    wdata = restApiControl.getWorkflowRecord(wid)
-    return my_render_template(
-        'workflow.html',
-        wid=wid, id=wdata['_id'], UseCase=wdata["UseCase"], Description=wdata["Description"],
-        inputs=wdata["IOCard"]["Inputs"], outputs=wdata["IOCard"]["Outputs"],
-        version=wdata["Version"]
-    )
+def workflowNoVersion(wid):
+    return workflow(wid, -1)
+
+
+@app.route('/workflows/<wid>/<version>')
+def workflow(wid, version):
+    wdata = restApiControl.getWorkflowRecordGeneral(wid=wid, version=int(version))
+    html = '<table>'
+    html += '<tr><td>WorkflowID:</td><td>'+str(wdata['wid'])+'</td></tr>'
+    html += '<tr><td>Version:</td><td>'+str(wdata['Version'])+'</td></tr>'
+    html += '<tr><td>UseCase:</td><td>'+str(wdata['UseCase'])+'</td></tr>'
+    html += '<tr><td>Description:</td><td>'+str(wdata['Description'])+'</td></tr>'
+    html += '</table>'
+
+    html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(version)+'">Initialize new execution record</a>'
+    html += '<br><br>Inputs'
+    html += '<table>'
+    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th></thead>'
+    for item in wdata["IOCard"]["Inputs"]:
+        html += '<tr>'
+        html += '<td class="c1">'+str(item['Name'])+'</td>'
+        html += '<td class="c2">'+str(item['Type'])+'</td>'
+        html += '<td class="c3">'+str(item['TypeID'])+'</td>'
+        html += '<td class="c4">'+str(item['Description'])+'</td>'
+        html += '<td class="c5">'+str(item['Units'])+'</td>'
+        html += '<td class="c6">'+str(item['ObjID'])+'</td>'
+        html += '<td class="c7">'+str(item['Compulsory'])+'</td>'
+        # html += '<td class="c7">'+str(item['SetAt'])+'</td>'
+        html += '</tr>'
+    html += '</table>'
+
+    html += '<br>Outputs'
+    html += '<table>'
+    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th></thead>'
+    for item in wdata["IOCard"]["Outputs"]:
+        html += '<tr>'
+        html += '<td class="c1">' + str(item['Name']) + '</td>'
+        html += '<td class="c2">' + str(item['Type']) + '</td>'
+        html += '<td class="c3">' + str(item['TypeID']) + '</td>'
+        html += '<td class="c4">' + str(item['Description']) + '</td>'
+        html += '<td class="c5">' + str(item['Units']) + '</td>'
+        html += '<td class="c6">' + str(item['ObjID']) + '</td>'
+        html += '</tr>'
+    html += '</table>'
+    # html += '<br><br>All versions of this workflow:'
+    html += ''
+    html += ''
+
+    executions = restApiControl.getExecutionRecords(workflow_id=wdata['wid'], workflow_version=wdata['Version'])
+    print(executions)
+    html += '<br><br>Executions of this workflow:'
+    html += '<table><thead><th>status</th><th>id</th><th>created date</th></thead>'
+    for execution in executions:
+        html += '<tr>'
+        html += '<td style="' + statusColor(execution['Status']) + '">' + execution['Status'] + '</td>'
+        html += '<td><a href="">'+execution['_id']+'</a></td>'
+        html += '<td>'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
+        html += '</tr>'
+    html += '</table>'
+
+    return my_render_template('basic.html', body=Markup(html))
 
 
 def allowed_file(filename):
@@ -249,16 +311,8 @@ def addWorkflow(usecaseid):
 
 @app.route('/workflowexecutions')
 def executions():
-    def statusColor(val):
-        if val == 'Finished':
-            return 'color:green;'
-        if val == 'Failed':
-            return 'color:red;'
-        if val == 'Running':
-            return 'color:blue;'
-        return 'color:gray;'
-
     filter_workflow_id = ''
+    filter_workflow_version = ''
     filter_label = ''
     filter_num_lim = '100'
     filter_status = ''
@@ -269,6 +323,8 @@ def executions():
 
     if 'filter_workflow_id' in args:
         filter_workflow_id = str(args['filter_workflow_id'])
+    if 'filter_workflow_version' in args:
+        filter_workflow_version = str(args['filter_workflow_version'])
     if 'filter_label' in args:
         filter_label = str(args['filter_label'])
     if 'filter_num_lim' in args:
@@ -279,6 +335,7 @@ def executions():
     html = '<h3>List of workflow executions:</h3>'
     html += '<form id="filtering_form" action="" style="font-size:12px;" method="get">'
     html += 'WorkflowID: <input type="text" name="filter_workflow_id" value="' + filter_workflow_id + '" style="width:100px;"> '
+    html += 'ver.: <input type="text" name="filter_workflow_version" value="' + filter_workflow_version + '" style="width:20px;"> '
     html += 'label: <input type="text" name="filter_label" value="' + filter_label + '" style="width:100px;"> '
     html += 'status: <select name="filter_status">'
     html += '<option value="">Any</option>'
@@ -291,15 +348,16 @@ def executions():
     html += '<input type="submit" value="filter">'
     html += '</form><br>'
 
-    html += '<table><tr><td>Status</td><td>WorkflowID</td><td></td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
+    html += '<table><tr><td>Status</td><td></td><td>Workflow</td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
     param_filter_workflow_id = filter_workflow_id if filter_workflow_id != '' else None
+    param_filter_workflow_version = filter_workflow_version if filter_workflow_version != '' else None
     param_filter_label = filter_label if filter_label != '' else None
-    data = restApiControl.getExecutionRecords(workflow_id=param_filter_workflow_id, label=param_filter_label, num_limit=filter_num_lim, status=filter_status)
+    data = restApiControl.getExecutionRecords(workflow_id=param_filter_workflow_id, workflow_version=param_filter_workflow_version, label=param_filter_label, num_limit=filter_num_lim, status=filter_status)
     for execution in data:
         html += '<tr>'
         html += '<td style="'+statusColor(execution['Status'])+'">'+execution['Status']+'</td>'
-        html += '<td>'+execution['WorkflowID']+'</td>'
         html += '<td><a href="'+request.host_url+'workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
+        html += '<td>'+execution['WorkflowID']+'(v'+str(execution['WorkflowVersion'])+')</td>'
         html += '<td style="font-size:12px;">'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
         html += '<td style="font-size:12px;">'+str(execution['SubmittedDate']).replace('None', '')[:19]+'</td>'
         html += '<td style="font-size:12px;">'+str(execution['StartDate']).replace('None', '')[:19]+'</td>'

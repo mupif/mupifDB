@@ -93,7 +93,7 @@ def updateWorkflow(data):
 def getWorkflowRecordGeneral(wid, version):
     workflow_newest = getWorkflowRecord(wid)
     if workflow_newest is not None:
-        if workflow_newest['Version'] == version:
+        if workflow_newest['Version'] == version or version == -1 or version == None:
             return workflow_newest
     return getWorkflowRecordFromHistory(wid, version)
 
@@ -135,6 +135,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
     if status is not None:
         endpoint_address += "&status=" + str(status)
 
+    print(endpoint_address)
     response = requests.get(endpoint_address)
     response_json = response.json()
     for record in response_json['result']:

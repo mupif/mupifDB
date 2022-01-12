@@ -232,7 +232,7 @@ def get_workflowexecutions(we_status=None, workflow_id=None, workflow_version=No
     if workflow_id is not None and workflow_id != '':
         filter_dict["WorkflowID"] = workflow_id
     if workflow_version is not None:
-        filter_dict["WorkflowVersion"] = workflow_version
+        filter_dict["WorkflowVersion"] = int(workflow_version)
     if label is not None and label != '':
         filter_dict["label"] = label
     if num_limit is not None:
