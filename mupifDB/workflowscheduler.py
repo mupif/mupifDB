@@ -247,6 +247,8 @@ def executeWorkflow(we_id):
                 log.info("Copying log files to database")
                 with open(tempDir+'/mupif.log', 'rb') as f:
                     logID = restApiControl.uploadBinaryFileContent(f)
+                    if logID is not None:
+                        restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
                 log.info("Copying log files done")
                 print("Copying log files done")
             except:

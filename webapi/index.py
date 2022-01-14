@@ -164,7 +164,7 @@ def workflow(wid, version):
     html += '<tr><td>Description:</td><td>'+str(wdata['Description'])+'</td></tr>'
     html += '</table>'
 
-    html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(version)+'">Initialize new execution record</a>'
+    html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(wdata['Version'])+'">Initialize new execution record</a>'
     html += '<br><br>Inputs'
     html += '<table>'
     html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th></thead>'
@@ -198,17 +198,7 @@ def workflow(wid, version):
     html += ''
     html += ''
 
-    executions = restApiControl.getExecutionRecords(workflow_id=wdata['wid'], workflow_version=wdata['Version'])
-    print(executions)
-    html += '<br><br>Executions of this workflow:'
-    html += '<table><thead><th>status</th><th>id</th><th>created date</th></thead>'
-    for execution in executions:
-        html += '<tr>'
-        html += '<td style="' + statusColor(execution['Status']) + '">' + execution['Status'] + '</td>'
-        html += '<td><a href="">'+execution['_id']+'</a></td>'
-        html += '<td>'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
-        html += '</tr>'
-    html += '</table>'
+    html += '<br><br><a href="/workflowexecutions?filter_workflow_id='+str(wdata['wid'])+'&filter_workflow_version='+str(wdata['Version'])+'">Executions of this workflow</a>'
 
     return my_render_template('basic.html', body=Markup(html))
 
@@ -368,7 +358,7 @@ def executions():
     return my_render_template('basic.html', body=Markup(html))
 
 
-@app.route('/workflowexecutions/init/<wid>/<int:version>')
+@app.route('/workflowexecutions/init/<wid>/<version>')
 def initexecution(wid, version):
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
     if we_record is not None:
@@ -403,7 +393,7 @@ def executionStatus(weid):
     if data['Status'] == 'Finished':
         html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
     if (data['Status'] == 'Finished' or data['Status'] == 'Failed') and logID is not None:
-        html += '<li> <a href="{' + RESTserver + 'gridfs/' + str(logID) + '"> Execution log</a></li>'
+        html += '<li> <a href="' + RESTserver + 'main?action=get_file&id=' + str(logID) + '"> Execution log</a></li>'
     html += '</ul>'
 
     return my_render_template('basic.html', body=Markup(html))
