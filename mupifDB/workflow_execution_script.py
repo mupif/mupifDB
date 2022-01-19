@@ -2,7 +2,7 @@ import importlib
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-os.environ["MUPIF_LOG_LEVEL"] = "DEBUG"
+os.environ["MUPIF_LOG_LEVEL"] = "INFO"
 import mupif as mp
 import logging
 import argparse
