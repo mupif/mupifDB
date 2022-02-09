@@ -2,6 +2,7 @@ import importlib
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append("/var/lib/mupif/mupifDB/")
 os.environ["MUPIF_LOG_LEVEL"] = "INFO"
 import mupif as mp
 import logging
