@@ -8,9 +8,9 @@
         <TD class="c1">{{item.ucid}}</TD>
         <TD class="c2">{{item.Description}}</TD>
         <TD class="c3"><a href="{{ [ server, 'usecases/', item.ucid, '/workflows'] | join }}">List of workflows</a> </TD>
-        <TD class="c3"><a href="{{ [ server, 'workflow_add/', item.ucid] | join }}">Register new workflow</a> </TD>
+<!--        <TD class="c3"><a href="{{ [ server, 'workflow_add/', item.ucid] | join }}">Register new workflow</a> </TD>-->
     </TR>
     {% endfor %}
 </table>
-<br><a href="{{ [ server, 'usecase_add'] | join }}">Register new usecase</a>
+<!--<br><a href="{{ [ server, 'usecase_add'] | join }}">Register new usecase</a>-->
 {% endblock %}

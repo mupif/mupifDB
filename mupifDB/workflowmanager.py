@@ -1,4 +1,5 @@
 import datetime
+import logging
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
@@ -9,7 +10,7 @@ from bson import ObjectId
 import re
 from ast import literal_eval 
 from mupifDB import error
-
+import numpy as np
 from mupifDB import restApiControl
 
 import mupif
@@ -44,11 +45,11 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
     for i in workflowInputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
     
@@ -114,13 +115,13 @@ class WorkflowExecutionIODataSet:
         IOCard = wdoc['IOCard']
         rec = {}
         data = []
-        for io in IOCard[type]:  # loop over workflow inputs
+        for io in IOCard[type]:  # loop over workflow inputs/outputs
             if isinstance(io.get('ObjID', None), list) or isinstance(io.get('ObjID', None), tuple):
                 for objid in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None})
+                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': None, 'Name': None, 'ObjID': None}})
             else:  # single obj_id provided
-                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'Units': io['Units'], 'ObjID': io.get('ObjID', None), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None})
+                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': io.get('ObjID', None), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': None, 'Name': None, 'ObjID': None}})
         rec['Type'] = type
         rec['DataSet'] = data
         rec_id = restApiControl.insertIODataRecord(rec)
@@ -178,6 +179,15 @@ class WorkflowExecutionIODataSet:
         @param: value associated value
         """
         restApiControl.setExecutionOutputValue(self.weid, name, value, obj_id)
+
+    def setOutputFileID(self, name, fileID, obj_id=None):
+        """
+        Sets the value of output parameter attributes identified by name to given value
+        @param: name parameter name
+        @param: value value to set
+        @param: value associated value
+        """
+        restApiControl.setExecutionOutputFileID(self.weid, name, fileID, obj_id)
 
 
 class WorkflowExecutionContext:
@@ -302,6 +312,7 @@ def mapInputs(app, eid):
     for irec in wd['IOCard']['Inputs']:
         name = irec['Name']
         type = irec['Type']
+        valueType = irec['ValueType']
         typeID = irec['TypeID']
         # try to get raw PID from typeID
         match = re.search('\w+\Z', typeID)
@@ -314,13 +325,50 @@ def mapInputs(app, eid):
         if units == 'None':
             units = mupif.U.none
 
-        if isinstance(objID, collections.Iterable):
-            for oid in objID:
-                value = inp.get(name, oid)
-                mapInput(app, value, type, typeID, units, compulsory, oid)
-        else:
-            value = inp.get(name, objID)
-            mapInput(app, value, type, typeID, units, compulsory, objID)
+        vts = {
+            "Scalar": mupif.ValueType.Scalar,
+            "Vector": mupif.ValueType.Vector,
+            "Tensor": mupif.ValueType.Tensor,
+            "ScalarArray": mupif.ValueType.ScalarArray,
+            "VectorArray": mupif.ValueType.VectorArray,
+            "TensorArray": mupif.ValueType.TensorArray
+        }
+
+        if not isinstance(objID, collections.Iterable):
+            objID = [objID]
+
+        vt = vts[valueType]
+        for oid in objID:
+            inp_record = inp.getRec(name, oid)
+            if inp_record['Link']['ExecID'] is not None and inp_record['Link']['Name'] is not None:
+                # map linked value
+                m_wec = WorkflowExecutionContext(ObjectId(inp_record['Link']['ExecID']))
+                m_inp = m_wec.getIODataDoc('Outputs')
+                m_inp_record = m_inp.getRec(inp_record['Link']['Name'], inp_record['Link']['ObjID'])
+
+                if m_inp_record['FileID'] is None:
+                    prop = mupif.ConstantProperty(value=literal_eval(m_inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
+                    app.set(prop, oid)
+                else:
+                    qfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        full_path = tempDir + "/file.h5"
+                        f = open(full_path, 'wb')
+                        f.write(qfile)
+                        f.close()
+                        prop = mupif.ConstantProperty.loadHdf5(full_path)
+                        # hq = mupif.Hdf5OwningRefQuantity(h5path=full_path, mode='readonly')
+                        # hq.openData()
+                        # q = hq.toQuantity()
+                        # prop = mupif.ConstantProperty(quantity=q, propID=mupif.DataID[typeID], valueType=vt)
+                        app.set(prop, oid)
+
+            else:
+                # map classic value stored in string
+                if literal_eval(inp_record['Value']) is not None:
+                    prop = mupif.ConstantProperty(value=literal_eval(inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
+                    app.set(prop, oid)
+                    # mapInput(app, inp_record['Value'], type, typeID, units, compulsory, oid)
 
 
 def generateWEInputCGI(eid):
@@ -384,7 +432,33 @@ def mapOutput(app, name, type, typeID, objectID, eid, time, units):
     if type == 'mupif.Property':
         print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, time), flush=True)
         prop = app.get(mupif.DataID[typeID], time, objectID)
-        out.setOutputVal(name, prop.inUnitsOf(units).getValue(), objectID)
+        if prop.valueType == mupif.ValueType.Scalar:
+            val = prop.inUnitsOf(units).getValue()
+            val = str(val)
+            out.setOutputVal(name, val, objectID)
+        elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
+            # filling the string Value
+            val = prop.inUnitsOf(units).getValue()
+            val = str(tuple(val))
+            out.setOutputVal(name, val, objectID)
+        elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
+            # saving file in GridFS and filling FileID
+            # qty = prop.getQuantity()
+            # hqty = mupif.Hdf5OwningRefQuantity.makeFromQuantity(qty)
+            # hqty.closeData()
+            # source = hqty.h5path
+            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                full_path = tempDir + "/file.h5"
+                prop.saveHdf5(full_path)
+                fileID = None
+                with open(full_path, 'rb') as f:
+                    fileID = restApiControl.uploadBinaryFileContent(f)
+                    f.close()
+                if fileID is not None:
+                    out.setOutputFileID(name, fileID, objectID)
+                else:
+                    print("hdf5 file was not saved")
+
     elif type == 'mupif.Field':
         with tempfile.TemporaryDirectory() as tempDir:
             field = app.get(mupif.DataID.FID_Temperature, time)

@@ -293,46 +293,46 @@ def modifyWorkflowExecution(weid, key, value):
     return jsonify({'result': True})
 
 
-@app.route('/workflowexecutions/<objectid:weid>/set')  # todo
-def setWorkflowExecutionParameter(weid):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
-    print(c)
-    inp = c.getIODataDoc('Inputs')
-    # print(inp)
-    for key, value in request.args.items():
-        m = nameObjectIDpair.match(key)
-        mnone = nameObjectIDpairNone.match(key)
-        if m:
-            name = m.group(1)
-            objid = m.group(2)
-            print(f'Setting {name}({objid}):{value}')
-            inp.set(name, value, obj_id=int(objid))
-        elif mnone:
-            name = mnone.group(1)
-            print(f'Setting {name}:{value}')
-            inp.set(name, value)
-        else:
-            print(f'Setting {key}:{value}')
-            inp.set(key, value)
-    return jsonify({'result': c.executionID})
-
-
-@app.route('/workflowexecutions/<objectid:weid>/get')  # todo
-def getWorkflowExecutionParameter(weid):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
-    orec = c.getIODataDoc('Outputs')
-    output = []
-    for key, value in request.args.items():
-        m = nameObjectIDpair.match(key)
-        if m:
-            name = m.group(1)
-            objid = m.group(2)
-            print(f'Getting {name}({objid})')
-            output.append(orec.getRec(name, obj_id=int(objid)))
-        else:
-            print(f'Getting {key}:{value}')
-            output.append(orec.getRec(key, obj_id=None))
-    return jsonify({'result': output})
+# @app.route('/workflowexecutions/<objectid:weid>/set')
+# def setWorkflowExecutionParameter(weid):
+#     c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
+#     print(c)
+#     inp = c.getIODataDoc('Inputs')
+#     # print(inp)
+#     for key, value in request.args.items():
+#         m = nameObjectIDpair.match(key)
+#         mnone = nameObjectIDpairNone.match(key)
+#         if m:
+#             name = m.group(1)
+#             objid = m.group(2)
+#             print(f'Setting {name}({objid}):{value}')
+#             inp.set(name, value, obj_id=int(objid))
+#         elif mnone:
+#             name = mnone.group(1)
+#             print(f'Setting {name}:{value}')
+#             inp.set(name, value)
+#         else:
+#             print(f'Setting {key}:{value}')
+#             inp.set(key, value)
+#     return jsonify({'result': c.executionID})
+#
+#
+# @app.route('/workflowexecutions/<objectid:weid>/get')
+# def getWorkflowExecutionParameter(weid):
+#     c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
+#     orec = c.getIODataDoc('Outputs')
+#     output = []
+#     for key, value in request.args.items():
+#         m = nameObjectIDpair.match(key)
+#         if m:
+#             name = m.group(1)
+#             objid = m.group(2)
+#             print(f'Getting {name}({objid})')
+#             output.append(orec.getRec(name, obj_id=int(objid)))
+#         else:
+#             print(f'Getting {key}:{value}')
+#             output.append(orec.getRec(key, obj_id=None))
+#     return jsonify({'result': output})
 
 
 def scheduleExecution(weid):
@@ -382,49 +382,97 @@ def isIntable(val):
 
 
 def set_execution_input(weid, name, value, obj_id):
-    output = []
-    print(str(weid))
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
 
     table = mongo.db.IOData
     # Try objID as both str and int
-    if str(obj_id) == 'None':
+    if str(obj_id) == 'None':  # todo leave the option of None/null?
         res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
         if res.matched_count == 1:
             return jsonify({'result': "OK"})
     else:
         res1 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        if isIntable(obj_id):
-            res2 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
-        else:
-            res2 = res1
-        if res1.matched_count == 1 or res2.matched_count == 1:
+        if res1.matched_count == 1:
             return jsonify({'result': "OK"})
     return jsonify({'error': "Value was not updated."})
 
 
-def set_execution_output(weid, name, value, obj_id):
-    output = []
-    print(str(weid))
+def set_execution_input_link(weid, name, obj_id, link_eid, link_name, link_obj_id):
+    if link_obj_id == "":
+        link_obj_id = None
+
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
 
     table = mongo.db.IOData
     # Try objID as both str and int
-    if str(obj_id) == 'None':
-        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
+    if str(obj_id) == 'None':  # todo leave the option of None/null?
+        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].Link": {'ExecID': link_eid, 'Name': link_name, 'ObjID': link_obj_id}}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
         if res.matched_count == 1:
             return jsonify({'result': "OK"})
     else:
-        res1 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        if isIntable(obj_id):
-            res2 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": int(obj_id)}])
-        else:
-            res2 = res1
-        if res1.matched_count == 1 or res2.matched_count == 1:
+        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].Link": {'ExecID': link_eid, 'Name': link_name, 'ObjID': link_obj_id}}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        if res.matched_count == 1:
             return jsonify({'result': "OK"})
-    return jsonify({'error': "Value was not updated."})
+    return jsonify({'error': "Link was not updated."})
+
+
+def set_execution_output(weid, name, obj_id, value=None, file_id=None):
+    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
+    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+    setval = None
+    setkey = "None"
+    if value is not None:
+        setval = value
+        setkey = "Value"
+    elif file_id is not None:
+        setval = file_id
+        setkey = "FileID"
+
+    table = mongo.db.IOData
+    # Try objID as both str and int
+    if str(obj_id) == 'None':  # todo leave the option of None/null?
+        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % setkey: setval}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
+        if res.matched_count == 1:
+            return jsonify({'result': "OK"})
+    else:
+        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % setkey: setval}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        if res.matched_count == 1:
+            return jsonify({'result': "OK"})
+    return jsonify({'error': "Output was not updated."})
+
+
+def get_execution_input(weid, name, obj_id):
+    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
+    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+    print(execution_record)
+    iodata = mongo.db.IOData.find_one({"_id": bson.objectid.ObjectId(execution_record['Inputs'])})
+    print(iodata)
+    for dt in iodata['DataSet']:
+        print('checking ' + str(dt))
+        if dt['Name'] == name:
+            if str(obj_id) == 'None' and str(dt['ObjID']) == 'None':
+                return jsonify({'result': dt['Value']})
+            if dt['ObjID'] == str(obj_id) or dt['ObjID'] == int(obj_id):
+                return jsonify({'result': dt['Value']})
+    return jsonify({'result': 'None'})
+
+
+def get_execution_output(weid, name, obj_id):
+    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
+    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+    print(execution_record)
+    iodata = mongo.db.IOData.find_one({"_id": bson.objectid.ObjectId(execution_record['Outputs'])})
+    print(iodata)
+    for dt in iodata['DataSet']:
+        print('checking ' + str(dt))
+        if dt['Name'] == name:
+            if str(obj_id) == 'None' and str(dt['ObjID']) == 'None':
+                return jsonify({'result': dt['Value']})
+            if dt['ObjID'] == str(obj_id) or dt['ObjID'] == int(obj_id):
+                return jsonify({'result': dt['Value']})
+    return jsonify({'result': 'None'})
 
 
 # --------------------------------------------------
@@ -449,38 +497,6 @@ def getFilename(fid):
     foundfile = fs.get(bson.objectid.ObjectId(fid))
     fn = foundfile.filename
     return jsonify({'result': fn})
-
-
-@app.route("/upload_and_zip", methods=['GET', 'POST'])  # todo
-def uploadFileAndZip():
-    if request.method == 'POST':
-        # check if the post request has the file part
-        if 'myfile' not in request.files:
-            flash('No file part')
-            return redirect(request.url)
-        file = request.files['myfile']
-        # if user does not select file, browser also
-        # submit an empty part without filename
-        if file.filename == '':
-            flash('No selected file')
-            return redirect(request.url)
-        if file:
-            mf = io.BytesIO()
-
-            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                myfile = open(tempDir + "/" + file.filename, mode="wb")
-                myfile.write(file.read())
-                myfile.close()
-
-                fs = gridfs.GridFS(mongo.db)
-                with zipfile.ZipFile(mf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    zf.write(tempDir + "/" + file.filename, arcname=file.filename)
-                    zf.close()
-
-                    sourceID = fs.put(mf.getvalue(), filename="workflow.zip")
-                    return jsonify({'result': sourceID})
-
-    return jsonify({'result': None})
 
 
 @app.route("/upload", methods=['GET', 'POST'])  # todo
@@ -722,6 +738,12 @@ def main():
             data = json.loads(data)
             return insert_IODataRecord(data)
 
+        if action == "set_execution_input_link":
+            if "id" in args and "name" in args and "obj_id" in args and "link_eid" in args and "link_name" in args and "link_obj_id" in args:
+                return set_execution_input_link(args["id"], args["name"], args["obj_id"], args["link_eid"], args["link_name"], args["link_obj_id"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
+
         if action == "set_execution_input":
             if "id" in args and "name" in args and "value" in args and "obj_id" in args:
                 return set_execution_input(args["id"], args["name"], args["value"], args["obj_id"])
@@ -729,8 +751,23 @@ def main():
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 
         if action == "set_execution_output":
-            if "id" in args and "name" in args and "value" in args and "obj_id" in args:
-                return set_execution_output(args["id"], args["name"], args["value"], args["obj_id"])
+            if "id" in args and "name" in args and "obj_id" in args and ("value" in args or "file_id" in args):
+                if "value" in args:
+                    return set_execution_output(weid=args["id"], name=args["name"], value=args["value"], obj_id=args["obj_id"])
+                elif "file_id" in args:
+                    return set_execution_output(weid=args["id"], name=args["name"], file_id=args["file_id"], obj_id=args["obj_id"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'obj_id' or ('value' or 'file_id') not specified."})
+
+        if action == "get_execution_input":
+            if "id" in args and "name" in args and "obj_id" in args:
+                return get_execution_input(args["id"], args["name"], args["obj_id"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
+
+        if action == "get_execution_output":
+            if "id" in args and "name" in args and "obj_id" in args:
+                return get_execution_output(args["id"], args["name"], args["obj_id"])
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 

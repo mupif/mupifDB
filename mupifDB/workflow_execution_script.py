@@ -13,7 +13,7 @@ import sys
 # from modulename_to_be_replaced import classname_to_be_replaced as workflow_class
 
 log = logging.getLogger()
-mp.util.redirectLog('mupif.log')
+# mp.util.redirectLog('mupif.log')
 
 
 if __name__ == "__main__":
@@ -52,8 +52,7 @@ if __name__ == "__main__":
         workflow.terminate()
 
     except Exception as err:
-        print("Error:" + repr(err))
-        log.info("Error:" + repr(err))
+        log.exception(err)
         if workflow is not None:
             workflow.terminate()
         sys.exit(1)

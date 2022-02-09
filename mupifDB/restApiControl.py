@@ -240,9 +240,31 @@ def setExecutionInputValue(execution_id, name, value, obj_id):
     return response.status_code == 200
 
 
+def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
+    response = requests.get(RESTserver + "main?action=set_execution_input_link&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id) + "&link_eid=" + str(link_eid) + "&link_name=" + str(link_name) + "&link_obj_id=" + str(link_obj_id))
+    return response.status_code == 200
+
+
 def setExecutionOutputValue(weid, name, value, obj_id):
     response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
+
+
+def setExecutionOutputFileID(weid, name, fileID, obj_id):
+    response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&file_id=" + str(fileID) + "&obj_id=" + str(obj_id))
+    return response.status_code == 200
+
+
+def getExecutionInputValue(weid, name, obj_id):
+    response = requests.get(RESTserver + "main?action=get_execution_input&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id))
+    response_json = response.json()
+    return response_json['result']
+
+
+def getExecutionOutputValue(weid, name, obj_id):
+    response = requests.get(RESTserver + "main?action=get_execution_output&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id))
+    response_json = response.json()
+    return response_json['result']
 
 
 # --------------------------------------------------

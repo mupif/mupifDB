@@ -227,7 +227,7 @@ def addWorkflow(usecaseid):
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
             zip_full_path = tempDir + "/" + zip_filename
             zf = zipfile.ZipFile(zip_full_path, mode="w", compression=zipfile.ZIP_DEFLATED)
-            filenames = ['file_workflow', 'file_add_1', 'file_add_2', 'file_add_3', 'file_add_4', 'file_add_5']
+            filenames = ['file_add_1', 'file_add_2', 'file_add_3', 'file_add_4', 'file_add_5', 'file_workflow']
             for filename in filenames:
                 print("checking file " + filename)
                 if filename in request.files:
@@ -429,11 +429,17 @@ def setExecutionInputs(weid):
                 objID = i['ObjID']
                 value = request.form['Value_%d' % c]
                 units = i['Units']
-                # source = request.form.getvalue('Source_%d'%c)
-                # originID  = request.form.getvalue('OriginID_%d'%c)
                 msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
                 payload[name+'{'+str(objID)+'}'] = value
                 restApiControl.setExecutionInputValue(weid, name, value, objID)
+
+                # set Link to output data
+                c_eid = request.form['c_eid_%d' % c]
+                c_name = request.form['c_name_%d' % c]
+                c_objid = request.form['c_objid_%d' % c]
+                if c_eid != "" and c_name != "":
+                    value = restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
+
                 c = c+1
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
             return my_render_template("basic.html", body=Markup(msg))
@@ -462,7 +468,7 @@ def setExecutionInputs(weid):
             form += "%s<br>" % execution_record["RequestedBy"]
 
         form += "<br>Input record for weid %s<table>" % weid
-        form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
+        form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th><th>C_eid</th><th>C_name</th><th>C_objID</th></tr>"
         c = 0
         for i in execution_inputs:
             print(i)
@@ -486,10 +492,19 @@ def setExecutionInputs(weid):
                 pattern = "(%s|%s)" % (floatPattern, tuplePattern)
                 form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td>" % (i['Name'], description, i['Type'], i['ObjID'])
                 if execution_record["Status"] == "Created":
-                    form += "<input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/>" % (pattern, c, i['Value'], required)
+                    # form += "<input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/>" % (pattern, c, i['Value'], required)
+                    form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, i['Value'], required)
                 else:
                     form += str(i['Value'])
-                form += "</td><td>%s</td></tr>" % i.get('Units')
+                form += "</td><td>%s</td>" % i.get('Units')
+
+                # copy form some output data
+                form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"\" style=\"width:100px;\" /></td>" % c
+                form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"\" style=\"width:60px;\" /></td>" % c
+                form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"\" style=\"width:60px;\" /></td>" % c
+
+                form += "</tr>"
+
             elif input_type == "mupif.Field":
                 form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
             else:
