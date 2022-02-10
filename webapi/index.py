@@ -468,7 +468,7 @@ def setExecutionInputs(weid):
             form += "%s<br>" % execution_record["RequestedBy"]
 
         form += "<br>Input record for weid %s<table>" % weid
-        form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th><th>C_eid</th><th>C_name</th><th>C_objID</th></tr>"
+        form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th></tr>"
         c = 0
         for i in execution_inputs:
             print(i)
@@ -499,9 +499,14 @@ def setExecutionInputs(weid):
                 form += "</td><td>%s</td>" % i.get('Units')
 
                 # copy form some output data
-                form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"\" style=\"width:100px;\" /></td>" % c
-                form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"\" style=\"width:60px;\" /></td>" % c
-                form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"\" style=\"width:60px;\" /></td>" % c
+                if execution_record["Status"] == "Created":
+                    form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"%s\" style=\"width:100px;\" /></td>" % (c, i['Link']['ExecID'])
+                    form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['Name'])
+                    form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['ObjID'])
+                else:
+                    form += "<td>" + str(i['Link']['ExecID']) + "</td>"
+                    form += "<td>" + str(i['Link']['Name']) + "</td>"
+                    form += "<td>" + str(i['Link']['ObjID']) + "</td>"
 
                 form += "</tr>"
 

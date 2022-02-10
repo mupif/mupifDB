@@ -45,11 +45,11 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
     Inputs = []
     for i in workflowInputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None), 'Compulsory': i['Required']}
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', ""), 'Compulsory': i['Required']}
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', None)}
+        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', "")}
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
     
@@ -116,12 +116,12 @@ class WorkflowExecutionIODataSet:
         rec = {}
         data = []
         for io in IOCard[type]:  # loop over workflow inputs/outputs
-            if isinstance(io.get('ObjID', None), list) or isinstance(io.get('ObjID', None), tuple):
+            if isinstance(io.get('ObjID', ""), list) or isinstance(io.get('ObjID', ""), tuple):
                 for objid in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': None, 'Name': None, 'ObjID': None}})
+                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
             else:  # single obj_id provided
-                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': io.get('ObjID', None), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': None, 'Name': None, 'ObjID': None}})
+                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': io.get('ObjID', ""), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
         rec['Type'] = type
         rec['DataSet'] = data
         rec_id = restApiControl.insertIODataRecord(rec)
@@ -319,7 +319,7 @@ def mapInputs(app, eid):
         if match:
             typeID = match.group()
         
-        objID = irec.get('ObjID', None)
+        objID = irec.get('ObjID', "")
         compulsory = irec['Compulsory']
         units = irec['Units']
         if units == 'None':
@@ -493,7 +493,7 @@ def mapOutputs(app, eid, time):
         if match:
             typeID = match.group()
         
-        objID = irec.get('ObjID', None)
+        objID = irec.get('ObjID', "")
         # compulsory = irec['Compulsory']
 
         if isinstance(objID, collections.Iterable):

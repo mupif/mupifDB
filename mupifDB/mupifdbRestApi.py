@@ -386,35 +386,20 @@ def set_execution_input(weid, name, value, obj_id):
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
 
     table = mongo.db.IOData
-    # Try objID as both str and int
-    if str(obj_id) == 'None':  # todo leave the option of None/null?
-        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
-        if res.matched_count == 1:
-            return jsonify({'result': "OK"})
-    else:
-        res1 = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        if res1.matched_count == 1:
-            return jsonify({'result': "OK"})
+    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+    if res.matched_count == 1:
+        return jsonify({'result': "OK"})
     return jsonify({'error': "Value was not updated."})
 
 
 def set_execution_input_link(weid, name, obj_id, link_eid, link_name, link_obj_id):
-    if link_obj_id == "":
-        link_obj_id = None
-
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
 
     table = mongo.db.IOData
-    # Try objID as both str and int
-    if str(obj_id) == 'None':  # todo leave the option of None/null?
-        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].Link": {'ExecID': link_eid, 'Name': link_name, 'ObjID': link_obj_id}}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
-        if res.matched_count == 1:
-            return jsonify({'result': "OK"})
-    else:
-        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].Link": {'ExecID': link_eid, 'Name': link_name, 'ObjID': link_obj_id}}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        if res.matched_count == 1:
-            return jsonify({'result': "OK"})
+    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].Link": {'ExecID': link_eid, 'Name': link_name, 'ObjID': link_obj_id}}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+    if res.matched_count == 1:
+        return jsonify({'result': "OK"})
     return jsonify({'error': "Link was not updated."})
 
 
@@ -431,15 +416,9 @@ def set_execution_output(weid, name, obj_id, value=None, file_id=None):
         setkey = "FileID"
 
     table = mongo.db.IOData
-    # Try objID as both str and int
-    if str(obj_id) == 'None':  # todo leave the option of None/null?
-        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % setkey: setval}}, array_filters=[{"r.Name": name, "r.ObjID": None}])
-        if res.matched_count == 1:
-            return jsonify({'result': "OK"})
-    else:
-        res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % setkey: setval}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        if res.matched_count == 1:
-            return jsonify({'result': "OK"})
+    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % setkey: setval}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+    if res.matched_count == 1:
+        return jsonify({'result': "OK"})
     return jsonify({'error': "Output was not updated."})
 
 
