@@ -136,7 +136,7 @@ class WorkflowExecutionIODataSet:
             raise KeyError("Document with ID" + self.IOid + " not found")
         return iod_record
 
-    def getRec(self, name, obj_id=None):
+    def getRec(self, name, obj_id=""):
         """
         Returns the input record identified by name
         @param: input name
@@ -150,7 +150,7 @@ class WorkflowExecutionIODataSet:
                 return rec
         raise KeyError("Input parameter " + name + " Obj_ID " + str(obj_id) + " not found")
          
-    def get(self, name, obj_id=None):
+    def get(self, name, obj_id=""):
         """
         Returns the value of input parameter identified by name
         @param: input name
@@ -159,7 +159,7 @@ class WorkflowExecutionIODataSet:
         """
         return self.getRec(name, obj_id)['Value']
     
-    def set(self, name, value, obj_id=None):
+    def set(self, name, value, obj_id=""):
         """
         Sets the value of output parameter identified by name to given value
         @param: name parameter name
@@ -171,7 +171,7 @@ class WorkflowExecutionIODataSet:
         else:
             raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
 
-    def setOutputVal(self, name, value, obj_id=None):
+    def setOutputVal(self, name, value, obj_id=""):
         """
         Sets the value of output parameter attributes identified by name to given value
         @param: name parameter name
@@ -180,7 +180,7 @@ class WorkflowExecutionIODataSet:
         """
         restApiControl.setExecutionOutputValue(self.weid, name, value, obj_id)
 
-    def setOutputFileID(self, name, fileID, obj_id=None):
+    def setOutputFileID(self, name, fileID, obj_id=""):
         """
         Sets the value of output parameter attributes identified by name to given value
         @param: name parameter name
@@ -340,7 +340,7 @@ def mapInputs(app, eid):
         vt = vts[valueType]
         for oid in objID:
             inp_record = inp.getRec(name, oid)
-            if inp_record['Link']['ExecID'] is not None and inp_record['Link']['Name'] is not None:
+            if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
                 # map linked value
                 m_wec = WorkflowExecutionContext(ObjectId(inp_record['Link']['ExecID']))
                 m_inp = m_wec.getIODataDoc('Outputs')
@@ -357,10 +357,6 @@ def mapInputs(app, eid):
                         f.write(qfile)
                         f.close()
                         prop = mupif.ConstantProperty.loadHdf5(full_path)
-                        # hq = mupif.Hdf5OwningRefQuantity(h5path=full_path, mode='readonly')
-                        # hq.openData()
-                        # q = hq.toQuantity()
-                        # prop = mupif.ConstantProperty(quantity=q, propID=mupif.DataID[typeID], valueType=vt)
                         app.set(prop, oid)
 
             else:
@@ -442,11 +438,6 @@ def mapOutput(app, name, type, typeID, objectID, eid, time, units):
             val = str(tuple(val))
             out.setOutputVal(name, val, objectID)
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
-            # saving file in GridFS and filling FileID
-            # qty = prop.getQuantity()
-            # hqty = mupif.Hdf5OwningRefQuantity.makeFromQuantity(qty)
-            # hqty.closeData()
-            # source = hqty.h5path
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                 full_path = tempDir + "/file.h5"
                 prop.saveHdf5(full_path)
