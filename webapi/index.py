@@ -1,4 +1,5 @@
 import importlib
+import math
 import zipfile
 import tempfile
 from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory
@@ -7,6 +8,7 @@ from flask_cors import CORS
 import sys
 import os
 import inspect
+import mupif as mp
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
@@ -537,12 +539,78 @@ def getExecutionOutputs(weid):
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
     form += "<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
     for i in execution_outputs:
-        # print(i)
-        form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (i['Name'], i['Type'], i['ObjID'], i['Value'], escape(i.get('Units')))
+        val = i['Value']
+        if  i['FileID'] != None and i['FileID'] != '':
+            val = '<a href="/property_array_view/' + str(i['FileID']) + '/1">link</a>'
+        form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (i['Name'], i['Type'], i['ObjID'], val, escape(i.get('Units')))
     form += "</table>"
     form += "</br><a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
     # print (form)
     return my_render_template('basic.html', body=Markup(form))
+
+
+@app.route("/property_array_view/<file_id>/<page>")
+def propertyArrayView(file_id, page):
+    page = int(page)
+    html = '<h3>Content of mupif.Property stored in file id %s</h3>' % file_id
+
+    pfile = restApiControl.getBinaryFileContentByID(file_id)
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+        full_path = tempDir + "/file.h5"
+        f = open(full_path, 'wb')
+        f.write(pfile)
+        f.close()
+        prop = mp.ConstantProperty.loadHdf5(full_path)
+        propval = prop.getValue()
+
+        html += '<table style="font-size:14px;">'
+        html += '<tr><td>Type_ID:</td><td>' + str(prop.propID) + '</td></tr>'
+        html += '<tr><td>Units:</td><td>' + str(prop.getUnit().to_string()) + '</td></tr>'
+        html += '<tr><td>ValueType:</td><td>' + str(prop.valueType) + '</td></tr>'
+        html += '</table>'
+
+        tot_elems = propval.shape[0]
+        per_page = 100
+        maxpage = math.ceil(tot_elems/per_page)
+        if page < 1:
+            page = 1
+        if page > maxpage:
+            page = maxpage
+
+        id_start = int((page - 1) * per_page)
+        id_end = int((page) * per_page)
+
+        html += '<h4>'
+        if page > 1:
+            html += '&nbsp;&nbsp;<a href="/property_array_view/' + file_id + '/' + str(page - 1) + '"><</a>'
+
+        html += '&nbsp;&nbsp;&nbsp;page ' + str(page) + '&nbsp;/&nbsp;' + str(maxpage) + '&nbsp;&nbsp;&nbsp;'
+
+        if page < maxpage:
+            html += '<a href="/property_array_view/' + file_id + '/' + str(page + 1) + '">></a>'
+        html += '</h4>'
+
+        html += '<table style="font-size:12px;">'
+        html += '<td></td>'
+        for col_id in range(len(propval[0])):
+            html += '<td style="text-align:center;color:gray;"><i>[' + str(col_id+1) + ']</i></td>'
+        sub_propval = propval[id_start:id_end]
+        row_id = id_start + 1
+        for elem in sub_propval:
+            html += '<tr><td><i style="color:gray;">[' + str(row_id) + ']</i></td>'
+            if len(elem.shape) == 0:
+                html += '<td>%.3e</td>' % elem
+            else:
+                for subelem in elem:
+                    if len(subelem.shape) == 0:
+                        html += '<td>%.3e</td>' % subelem
+                    else:
+                        html += '<td>' + str(subelem) + '</td>'
+            html += '</tr>'
+            row_id += 1
+        html += '<table><br><br><br><br><br><br><br><br><br><br>'
+
+    return my_render_template('basic.html', body=Markup(html))
 
 
 @app.route('/hello/<name>')

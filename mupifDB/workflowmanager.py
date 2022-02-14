@@ -276,28 +276,28 @@ class WorkflowExecutionContext:
             return False
 
 
-def mapInput(app, value, type, typeID, units, compulsory, objectID):
-    if value is not None:
-        # map value 
-        if type == 'mupif.Property':
-            print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
-            fvalue = literal_eval(value)
-            if isinstance(fvalue, tuple):
-                app.set(mupif.ConstantProperty(value=fvalue, propID=mupif.DataID[typeID], valueType=mupif.ValueType.Vector, unit=units), objectID)
-            else:
-                app.set(mupif.ConstantProperty(value=float(value), propID=mupif.DataID[typeID], valueType=mupif.ValueType.Scalar, unit=units), objectID)
-        elif type == 'mupif.Field':
-            # assume Field == ConstantField
-            print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
-            fvalue = literal_eval(value)
-            if isinstance(fvalue, tuple):
-                app.set(mupif.constantfield.ConstantField(None, mupif.DataID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
-            else:
-                raise TypeError('Tuple expected when handling io param of type %s' % type)
-        else:
-            raise KeyError('Handling of io param of type %s not implemented' % type)
-    elif (value is None) and (compulsory is True):
-        raise KeyError('Compulsory parameter %s not defined in workflow execution dataset' % typeID)
+# def mapInput(app, value, type, typeID, units, compulsory, objectID):
+#     if value is not None:
+#         # map value
+#         if type == 'mupif.Property':
+#             print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
+#             fvalue = literal_eval(value)
+#             if isinstance(fvalue, tuple):
+#                 app.set(mupif.ConstantProperty(value=fvalue, propID=mupif.DataID[typeID], valueType=mupif.ValueType.Vector, unit=units), objectID)
+#             else:
+#                 app.set(mupif.ConstantProperty(value=float(value), propID=mupif.DataID[typeID], valueType=mupif.ValueType.Scalar, unit=units), objectID)
+#         elif type == 'mupif.Field':
+#             # assume Field == ConstantField
+#             print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
+#             fvalue = literal_eval(value)
+#             if isinstance(fvalue, tuple):
+#                 app.set(mupif.constantfield.ConstantField(None, mupif.DataID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
+#             else:
+#                 raise TypeError('Tuple expected when handling io param of type %s' % type)
+#         else:
+#             raise KeyError('Handling of io param of type %s not implemented' % type)
+#     elif (value is None) and (compulsory is True):
+#         raise KeyError('Compulsory parameter %s not defined in workflow execution dataset' % typeID)
 
 
 def mapInputs(app, eid):
@@ -350,11 +350,11 @@ def mapInputs(app, eid):
                     prop = mupif.ConstantProperty(value=literal_eval(m_inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
                     app.set(prop, oid)
                 else:
-                    qfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
+                    pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
                     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                         full_path = tempDir + "/file.h5"
                         f = open(full_path, 'wb')
-                        f.write(qfile)
+                        f.write(pfile)
                         f.close()
                         prop = mupif.ConstantProperty.loadHdf5(full_path)
                         app.set(prop, oid)
