@@ -592,7 +592,10 @@ def propertyArrayView(file_id, page):
 
         html += '<table style="font-size:12px;">'
         html += '<td></td>'
-        for col_id in range(len(propval[0])):
+        num_cols = 1
+        if len(propval[0].shape) > 0:
+            num_cols = propval[0].shape[0]
+        for col_id in range(num_cols):
             html += '<td style="text-align:center;color:gray;"><i>[' + str(col_id+1) + ']</i></td>'
         sub_propval = propval[id_start:id_end]
         row_id = id_start + 1
