@@ -375,17 +375,21 @@ def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
     html = ''
-    html += 'Execution record ID: ' + weid + '<br>'
-    html += 'WorkflowID: ' + data['WorkflowID'] + '<br>'
-    html += 'Task ID: ' + data['Task_ID'] + '<br>'
-    html += 'Label: ' + data['label'] + '<br>'
-    html += 'E-mail address: ' + data['RequestedBy'] + '<br>'
 
-    html += '<dl>'
-    html += '<dt>Status:' + str(data['Status']) + '</dt>'
-    html += '<dt>Start Date:' + str(data['StartDate']) + '</dt>'
-    html += '<dt>End Date:' + str(data['EndDate']) + '</dt>'
-    html += '</dl>'
+    html += '<table style="font-size:14px;">'
+    html += '<tr><td>Execution record ID:</td><td>' + str(weid) + '</td></tr>'
+    html += '<tr><td>Workflow ID:</td><td>' + str(data['WorkflowID']) + '</td></tr>'
+    html += '<tr><td>Workflow version:</td><td>' + str(data['WorkflowVersion']) + '</td></tr>'
+    html += '<tr><td>Task ID:</td><td>' + str(data['Task_ID']) + '</td></tr>'
+    html += '<tr><td>Label:</td><td>' + str(data['label']) + '</td></tr>'
+    html += '<tr><td>E-mail address:</td><td>' + str(data['RequestedBy']) + '</td></tr>'
+
+    html += '<tr><td colspan="2" style="height:10px;"></td></tr>'
+
+    html += '<tr><td>Status:</td><td>' + str(data['Status']) + '</td></tr>'
+    html += '<tr><td>Start Date:</td><td>' + str(data['StartDate']) + '</td></tr>'
+    html += '<tr><td>End Date:</td><td>' + str(data['EndDate']) + '</td></tr>'
+    html += '</table>'
     html += '<br>'
     html += 'Actions:<br>'
     html += '<ul>'
@@ -580,17 +584,16 @@ def propertyArrayView(file_id, page):
         id_start = int((page - 1) * per_page)
         id_end = int((page) * per_page)
 
-        html += '<h4>'
-        if page > 1:
-            html += '&nbsp;&nbsp;<a href="/property_array_view/' + file_id + '/' + str(page - 1) + '"><</a>'
+        if maxpage > 1:
+            html += '<h4>'
+            if page > 1:
+                html += '&nbsp;&nbsp;<a href="/property_array_view/' + file_id + '/' + str(page - 1) + '"><</a>'
+            html += '&nbsp;&nbsp;&nbsp;page ' + str(page) + '&nbsp;/&nbsp;' + str(maxpage) + '&nbsp;&nbsp;&nbsp;'
+            if page < maxpage:
+                html += '<a href="/property_array_view/' + file_id + '/' + str(page + 1) + '">></a>'
+            html += '</h4>'
 
-        html += '&nbsp;&nbsp;&nbsp;page ' + str(page) + '&nbsp;/&nbsp;' + str(maxpage) + '&nbsp;&nbsp;&nbsp;'
-
-        if page < maxpage:
-            html += '<a href="/property_array_view/' + file_id + '/' + str(page + 1) + '">></a>'
-        html += '</h4>'
-
-        html += '<table style="font-size:12px;">'
+        html += '<table style="font-size:12px;margin-top:10px;">'
         html += '<td></td>'
         num_cols = 1
         if len(propval[0].shape) > 0:
