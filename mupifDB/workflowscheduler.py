@@ -289,8 +289,15 @@ if __name__ == '__main__':
     # restApiControl.setExecutionStatusPending('61a5854c97ac8ebf9887bbc1')
 
     setupLogger(fileName="scheduler.log")
+
     with statusLock:
-        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0)
+        import requests.adapters
+        import urllib3
+        adapter=requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8,backoff_factor=.05))
+        session=requests.Session()
+        for proto in ('http://','https://'): session.mount(proto,adapter)
+        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
+
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
     atexit.register(stop, pool)
