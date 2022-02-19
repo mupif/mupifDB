@@ -119,9 +119,9 @@ class WorkflowExecutionIODataSet:
             if isinstance(io.get('ObjID', ""), list) or isinstance(io.get('ObjID', ""), tuple):
                 for objid in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
+                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
             else:  # single obj_id provided
-                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'Units': io['Units'], 'ObjID': io.get('ObjID', ""), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
+                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': io.get('ObjID', ""), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
         rec['Type'] = type
         rec['DataSet'] = data
         rec_id = restApiControl.insertIODataRecord(rec)
