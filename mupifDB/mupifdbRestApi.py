@@ -131,9 +131,18 @@ def printHelp():
 
 
 # --------------------------------------------------
-# Usecases
+# Users
 # --------------------------------------------------
 
+def get_user_by_IP(ip):
+    table = mongo.db.Users
+    res = table.find_one({'IP': ip})
+    return jsonify({'result': res})
+
+
+# --------------------------------------------------
+# Usecases
+# --------------------------------------------------
 
 def get_usecases():
     table = mongo.db.UseCases
@@ -291,48 +300,6 @@ def insert_executionRecord(data):
 def modifyWorkflowExecution(weid, key, value):
     mongo.db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(weid)}, {"$set": {key: value}})
     return jsonify({'result': True})
-
-
-# @app.route('/workflowexecutions/<objectid:weid>/set')
-# def setWorkflowExecutionParameter(weid):
-#     c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
-#     print(c)
-#     inp = c.getIODataDoc('Inputs')
-#     # print(inp)
-#     for key, value in request.args.items():
-#         m = nameObjectIDpair.match(key)
-#         mnone = nameObjectIDpairNone.match(key)
-#         if m:
-#             name = m.group(1)
-#             objid = m.group(2)
-#             print(f'Setting {name}({objid}):{value}')
-#             inp.set(name, value, obj_id=int(objid))
-#         elif mnone:
-#             name = mnone.group(1)
-#             print(f'Setting {name}:{value}')
-#             inp.set(name, value)
-#         else:
-#             print(f'Setting {key}:{value}')
-#             inp.set(key, value)
-#     return jsonify({'result': c.executionID})
-#
-#
-# @app.route('/workflowexecutions/<objectid:weid>/get')
-# def getWorkflowExecutionParameter(weid):
-#     c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
-#     orec = c.getIODataDoc('Outputs')
-#     output = []
-#     for key, value in request.args.items():
-#         m = nameObjectIDpair.match(key)
-#         if m:
-#             name = m.group(1)
-#             objid = m.group(2)
-#             print(f'Getting {name}({objid})')
-#             output.append(orec.getRec(name, obj_id=int(objid)))
-#         else:
-#             print(f'Getting {key}:{value}')
-#             output.append(orec.getRec(key, obj_id=None))
-#     return jsonify({'result': output})
 
 
 def scheduleExecution(weid):
@@ -581,6 +548,16 @@ def main():
     if "action" in args:
         action = str(args["action"])
         print("Request for action %s" % action)
+
+        # --------------------------------------------------
+        # Users
+        # --------------------------------------------------
+
+        if action == "get_user_by_ip":
+            if "ip" in args:
+                return get_user_by_IP(args["ip"])
+            else:
+                return jsonify({'error': "Param 'ip' not specified."})
 
         # --------------------------------------------------
         # Usecases

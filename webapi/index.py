@@ -49,6 +49,18 @@ def getUserIPAddress():
     return request.remote_addr
 
 
+def getRightsOfCurrentUser():
+    user = restApiControl.getUserByIP(getUserIPAddress())
+    if user is not None:
+        if 'Rights' in user:
+            return int(user['Rights'])
+    return 0
+
+
+def getUserHasAdminRights():
+    return True if getRightsOfCurrentUser() >= 10 else False
+
+
 def my_render_template(*args,**kw):
     'Wraps render_template and ads a few common keywords'
     return render_template(*args,title='MuPIFDB web interface',server=request.host_url,RESTserver=RESTserver,**kw)
@@ -80,7 +92,6 @@ def status():
     msg += "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
     msg += "    <dd>Failed executions:"+str(stat['failedExecutions'])+"</dd>"
     msg += "</dl></div>"
-    msg += ""
     return my_render_template('stat.html', body=Markup(msg))
 
 
@@ -107,17 +118,38 @@ def contact():
 
 @app.route('/usecases')
 def usecases():
+    admin_rights = getUserHasAdminRights()
+
     data = restApiControl.getUsecaseRecords()
-    return my_render_template('usecases.html', items=data)
+
+    html = '<h3>UseCases:</h3>'
+    html += '<table>'
+    html += '<tr><th>ID</th><th>Description</th><th></th><th></th></tr>'
+    html += '<tr>'
+    for uc in data:
+        html += '<td>' + uc['ucid'] + '</td>'
+        html += '<td>' + uc['Description'] + '</td>'
+        html += '<td><a href="/usecases/' + uc['ucid'] + '/workflows">List of workflows</a></td>'
+        html += '<td>'
+        if admin_rights:
+            html += '<a href="/workflow_add/' + uc['ucid'] + '">Register new workflow</a>'
+        html += '</td>'
+    html += '</tr>'
+    html += '</table>'
+    if admin_rights:
+        html += '<br><a href="/usecase_add">Register new UseCase</a>'
+    return my_render_template('basic.html', body=Markup(html))
 
 
 @app.route('/usecase_add', methods=('GET', 'POST'))
 def addUseCase():
+    admin_rights = getUserHasAdminRights()
+
     message = ''
     usecase_id = ''
     usecase_description = ''
     new_usecase_id = None
-    if request.form:
+    if request.form and admin_rights:
         usecase_id = request.form['usecase_id']
         usecase_description = request.form['usecase_description']
         if usecase_id is not None and usecase_description is not None:
@@ -136,11 +168,14 @@ def addUseCase():
     if new_usecase_id is None:
         html = message
         html += "<h3>Add new UseCase:</h3>"
-        html += "<table>"
-        html += '<tr><td>UseCase ID (string)</td><td><input type="text" name="usecase_id" value="'+str(usecase_id)+'"></td></tr>'
-        html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
-        html += "</table>"
-        html += "<input type=\"submit\" value=\"Submit\" />"
+        if admin_rights:
+            html += "<table>"
+            html += '<tr><td>UseCase ID (string)</td><td><input type="text" name="usecase_id" value="'+str(usecase_id)+'"></td></tr>'
+            html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
+            html += "</table>"
+            html += "<input type=\"submit\" value=\"Submit\" />"
+        else:
+            html += "<h5>You don't have permission to visit this page.</h5>"
         return my_render_template('form.html', form=html)
 
 
@@ -217,13 +252,15 @@ def allowed_file(filename):
 
 @app.route('/workflow_add/<usecaseid>', methods=('GET', 'POST'))
 def addWorkflow(usecaseid):
+    admin_rights = getUserHasAdminRights()
+
     message = ''
     success = False
     new_workflow_id = None
     fileID = None
     wid = None
     useCase = str(usecaseid)
-    if request.form:
+    if request.form and admin_rights:
         print(request.files)
         workflowInputs = None
         workflowOutputs = None
@@ -292,17 +329,20 @@ def addWorkflow(usecaseid):
         # generate input form
         html = message
         html += "<h3>Add new workflow:</h3>"
-        html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
-        html += "<table>"
+        if admin_rights:
+            html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
+            html += "<table>"
 
-        html += '<input type="hidden" name="somedata" value="">'
+            html += '<input type="hidden" name="somedata" value="">'
 
-        html += '<tr><td>Workflow module file</td><td><input type="file" name="file_workflow"></td></tr>'
-        for add_file in range(1, 6):
-            html += '<tr><td>Additional file #%d</td><td><input type="file" name="file_add_%d"></td></tr>' % (add_file, add_file)
+            html += '<tr><td>Workflow module file</td><td><input type="file" name="file_workflow"></td></tr>'
+            for add_file in range(1, 6):
+                html += '<tr><td>Additional file #%d</td><td><input type="file" name="file_add_%d"></td></tr>' % (add_file, add_file)
 
-        html += "</table>"
-        html += "<input type=\"submit\" value=\"Submit\" />"
+            html += "</table>"
+            html += "<input type=\"submit\" value=\"Submit\" />"
+        else:
+            html += "<h5>You don't have permission to visit this page.</h5>"
         return my_render_template('form.html', form=html)
 
 

@@ -15,6 +15,16 @@ if not RESTserver[-1] == '/':
 
 
 # --------------------------------------------------
+# Users
+# --------------------------------------------------
+
+def getUserByIP(ip):
+    response = requests.get(RESTserver + "main?action=get_user_by_ip&ip=" + str(ip))
+    response_json = response.json()
+    return response_json['result']
+
+
+# --------------------------------------------------
 # Usecases
 # --------------------------------------------------
 
