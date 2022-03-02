@@ -16,8 +16,17 @@ tableExecution = {
     'EndDate': None,
     'ExecutionLog': None,
     'RequestedBy': None,
+    'UserIP': None,
     'Inputs': None,
     'Outputs': None,
     'Task_ID': '',
     'label': ''
+}
+
+
+tableUser = {
+    'IP': None,
+    'Name': None,
+    'Organization': None,
+    'Rights': None
 }

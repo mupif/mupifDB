@@ -277,8 +277,8 @@ def get_workflowexecutionOutputs(weid):
     return jsonify({'result': output})
 
 
-def insert_execution(wid, version):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wid, workflowVer=int(version), requestedBy='')
+def insert_execution(wid, version, ip):
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wid, workflowVer=int(version), requestedBy='', ip=ip)
     return jsonify({'result': c.executionID})
 
 
@@ -682,8 +682,8 @@ def main():
                 return jsonify({'error': "Param 'id' not specified."})
 
         if action == "insert_new_execution":
-            if "wid" in args and "version" in args:
-                return insert_execution(args["wid"], args["version"])
+            if "wid" in args and "version" in args and "ip" in args:
+                return insert_execution(args["wid"], args["version"], args["ip"])
             else:
                 return jsonify({'error': "Param 'wid' or 'version' not specified."})
 

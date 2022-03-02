@@ -32,6 +32,7 @@ RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
 if not RESTserver[-1] == '/':
     RESTserver += '/'
 
+
 def statusColor(val):
     if val == 'Finished':
         return 'color:green;'
@@ -42,6 +43,10 @@ def statusColor(val):
     return 'color:gray;'
 
 # server (that is, our URL) is obtained within request handlers as flask.request.host_url+'/'
+
+
+def getUserIPAddress():
+    return request.remote_addr
 
 
 def my_render_template(*args,**kw):
@@ -61,7 +66,7 @@ def about():
         <p><a href=\"http://www.mupif.org\">MuPIF</a> is open-source, modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. <a href=\"https://github.com/mupif/mupifDB\">MuPIFDB</a> is database layer (based on MongoDB) and workflow manager/scheduler for MuPIF with REST API.</p>
         <p>The MuPIFDB web interface allows to use MupifDB REST API from web browser in a user friendly way, allowing to inspect all the stored data and to intialize, schedule and monitor individual workflow executions.</p> 
     """
-    return my_render_template('basic.html',body=Markup(msg))
+    return my_render_template('basic.html', body=Markup(msg))
 
 
 @app.route('/status')
@@ -364,7 +369,7 @@ def executions():
 def initexecution(wid, version):
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
     if we_record is not None:
-        weid = restApiControl.insertExecution(wid, int(version))
+        weid = restApiControl.insertExecution(wid, int(version), ip=getUserIPAddress())
         return redirect(url_for("executionStatus", weid=weid))
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'))

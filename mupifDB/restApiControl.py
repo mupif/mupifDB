@@ -193,8 +193,8 @@ def setExecutionStatusFailed(execution_id):
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
-def insertExecution(workflow_wid, version):
-    response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(workflow_wid) + "&version=" + str(version))
+def insertExecution(workflow_wid, version, ip):
+    response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(workflow_wid) + "&version=" + str(version) + "&ip=" + str(ip))
     response_json = response.json()
     return response_json['result']
 

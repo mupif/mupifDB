@@ -196,7 +196,7 @@ class WorkflowExecutionContext:
         self.executionID = executionID
 
     @staticmethod
-    def create(workflowID, requestedBy='', workflowVer=-1):
+    def create(workflowID, requestedBy='', workflowVer=-1, ip=''):
         """
         """
         # first query for workflow document
@@ -207,6 +207,7 @@ class WorkflowExecutionContext:
             rec['WorkflowID'] = workflowID
             rec['WorkflowVersion'] = wdoc.get('Version', 1)
             rec['RequestedBy'] = requestedBy
+            rec['UserIP'] = ip
             rec['CreatedDate'] = str(datetime.datetime.now())
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
