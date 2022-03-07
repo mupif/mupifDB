@@ -262,10 +262,11 @@ class WorkflowExecutionContext:
         return wed['Status']
 
 
-def isIterable(val):
+def ObjIDIsIterable(val):
     try:
         a = val[0]
-        return True
+        if not isinstance(val, str):
+            return True
     except:
         return False
 
@@ -289,7 +290,7 @@ def checkInputs(eid):
         objID = input_template.get('ObjID', "")
         compulsory = input_template['Compulsory']
 
-        if not isIterable(objID):
+        if not ObjIDIsIterable(objID):
             objID = [objID]
 
         for oid in objID:
@@ -372,7 +373,7 @@ def mapInputs(app, eid):
             "TensorArray": mupif.ValueType.TensorArray
         }
 
-        if not isIterable(objID):
+        if not ObjIDIsIterable(objID):
             objID = [objID]
 
         vt = vts[valueType]
@@ -435,7 +436,7 @@ def mapOutputs(app, eid, time):
         
         objID = output_template.get('ObjID', "")
 
-        if not isIterable(objID):
+        if not ObjIDIsIterable(objID):
             objID = [objID]
 
         for oid in objID:
