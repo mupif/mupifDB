@@ -42,9 +42,6 @@ if __name__ == "__main__":
         workflow_class = getattr(moduleImport, workflow_record["classname"])
         #
 
-        wec = mupifDB.workflowmanager.WorkflowExecutionContext(ObjectId(args.id))
-        inp = wec.getIODataDoc('Inputs')
-
         workflow = workflow_class()
         workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
         mupifDB.workflowmanager.mapInputs(workflow, args.id)

@@ -3,7 +3,6 @@ import re
 import psutil
 import tempfile
 import io
-import zipfile
 import bson
 import json
 from flask import Flask, redirect, url_for, send_file, send_from_directory, flash, request, jsonify
@@ -148,16 +147,16 @@ def get_usecases():
     table = mongo.db.UseCases
     output = []
     for s in table.find():
-        output.append(s)
+        output.append(table_structures.extendRecord(s, table_structures.tableUseCase))
     return jsonify({'result': output})
 
 
 def get_usecase(ucid):
     table = mongo.db.UseCases
-    output = []
-    for s in table.find({"ucid": ucid}):
-        output.append(s)
-    return jsonify({'result': output})
+    res = table.find_one({"ucid": ucid})
+    if res is not None:
+        return jsonify({'result': table_structures.extendRecord(res, table_structures.tableUseCase)})
+    return jsonify({'result': None, 'error': 'Record was not found.'})
 
 
 def insert_usecaseRecord(ucid, description):
@@ -174,7 +173,7 @@ def get_workflows():
     table = mongo.db.Workflows
     output = []
     for s in table.find():
-        output.append(s)
+        output.append(table_structures.extendRecord(s, table_structures.tableWorkflow))
     return jsonify({'result': output})
 
 
@@ -182,16 +181,20 @@ def get_workflows_with_usecase(usecase):
     table = mongo.db.Workflows
     output = []
     for s in table.find({"UseCase": usecase}):
-        output.append(s)
+        output.append(table_structures.extendRecord(s, table_structures.tableWorkflow))
     return jsonify({'result': output})
+
+
+def _get_workflow(wid):
+    table = mongo.db.Workflows
+    return table.find_one({"wid": wid})
 
 
 def get_workflow(wid):
-    table = mongo.db.Workflows
-    output = []
-    for s in table.find({"wid": wid}):
-        output.append(s)
-    return jsonify({'result': output})
+    res = _get_workflow(wid)
+    if res is not None:
+        return jsonify({'result': table_structures.extendRecord(res, table_structures.tableWorkflow)})
+    return jsonify({'result': None, 'error': 'Record was not found.'})
 
 
 def modifyWorkflow(wid, key, value):
@@ -219,8 +222,7 @@ def get_workflowFromHistory(wid, version):
     table = mongo.db.WorkflowsHistory
     output = []
     for s in table.find({"wid": wid, "Version": int(version)}):
-        # output.append(s)
-        output.append({'_id': s['_id'], 'wid': s['wid'], 'Description': s['Description'], 'UseCase': s['UseCase'], 'IOCard': s['IOCard'], 'Version': s.get('Version', 1)})
+        output.append(table_structures.extendRecord(s, table_structures.tableWorkflow))
     return jsonify({'result': output})
 
 
@@ -256,16 +258,25 @@ def get_workflowexecutions(we_status=None, workflow_id=None, workflow_version=No
     return jsonify({'result': output})
 
 
-def get_workflowexecution(weid):
+def _get_workflowexecution(weid):
     table = mongo.db.WorkflowExecutions
-    output = []
-    print(str(weid))
-    for s in table.find({"_id": bson.objectid.ObjectId(weid)}):
-        output.append(table_structures.extendRecord(s, table_structures.tableExecution))
-    return jsonify({'result': output})
+    return table.find_one({"_id": bson.objectid.ObjectId(weid)})
 
 
-def get_workflowexecutionInputs(weid):
+def get_workflowexecution(weid):
+    res = _get_workflowexecution(weid)
+    if res is not None:
+        return jsonify({'result': table_structures.extendRecord(res, table_structures.tableExecution)})
+    return jsonify({'result': None, 'error': 'Record was not found.'})
+
+
+def get_execution_inputs_check(weid):  # todo
+    if mupifDB.workflowmanager.checkInputs(weid):
+        return jsonify({'result': 'OK'})
+    return jsonify({'result': 'Fail'})
+
+
+def get_workflowexecutionInputs(weid):  # todo
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
     output = []
@@ -275,13 +286,12 @@ def get_workflowexecutionInputs(weid):
     return jsonify({'result': output})
 
 
-def get_workflowexecutionOutputs(weid):
+def get_workflowexecutionOutputs(weid):  # todo
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
     output = []
     if wi['Outputs'] is not None:
         inp = mongo.db.IOData.find_one({'_id': bson.objectid.ObjectId(wi['Outputs'])})
-        # print(inp)
         output = inp['DataSet']
     return jsonify({'result': output})
 
@@ -303,14 +313,11 @@ def modifyWorkflowExecution(weid, key, value):
 
 
 def scheduleExecution(weid):
-    # print(id)
-    user = request.headers.get('From')
-    remoteAddr = request.remote_addr
-    print("Execution request by %s from %s" % (user, remoteAddr))
-
-    c = mupifDB.workflowmanager.WorkflowExecutionContext(weid)
-    if(c.execute()):
-        return jsonify({'result': "OK"})
+    execution_record = _get_workflowexecution(weid)
+    if execution_record['Status'] == 'Created':
+        if mupifDB.restApiControl.setExecutionStatusPending(weid):
+            return jsonify({'result': "OK"})
+    return jsonify({'result': "Fail"})
 
 
 # --------------------------------------------------
@@ -319,19 +326,10 @@ def scheduleExecution(weid):
 
 def get_IOData(iod_id):
     table = mongo.db.IOData
-    output = []
-    for s in table.find({"_id": bson.objectid.ObjectId(iod_id)}):
-        output.append(s)
-    return jsonify({'result': output})
-
-    # table = mongo.db.WorkflowExecutions
-    # wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
-    # output = []
-    # if wi['Outputs'] is not None:
-    #     inp = mongo.db.IOData.find_one({'_id': wi['Outputs']})
-    #     # print(inp)
-    #     output = inp['DataSet']
-    # return jsonify({'result': output})
+    res = table.find_one({"_id": bson.objectid.ObjectId(iod_id)})
+    if res is not None:
+        return jsonify({'result': res})
+    return jsonify({'result': None, 'error': 'Record was not found.'})
 
 
 def insert_IODataRecord(data):
@@ -389,36 +387,25 @@ def set_execution_output(weid, name, obj_id, value=None, file_id=None):
     return jsonify({'error': "Output was not updated."})
 
 
-def get_execution_input(weid, name, obj_id):
+def get_execution_input_or_output(weid, name, obj_id, inout):
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
-    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
-    print(execution_record)
-    iodata = mongo.db.IOData.find_one({"_id": bson.objectid.ObjectId(execution_record['Inputs'])})
-    print(iodata)
-    for dt in iodata['DataSet']:
-        print('checking ' + str(dt))
-        if dt['Name'] == name:
-            if str(obj_id) == 'None' and str(dt['ObjID']) == 'None':
-                return jsonify({'result': dt['Value']})
-            if dt['ObjID'] == str(obj_id) or dt['ObjID'] == int(obj_id):
-                return jsonify({'result': dt['Value']})
-    return jsonify({'result': 'None'})
+    if s is not None:
+        execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+        iodata = mongo.db.IOData.find_one({"_id": bson.objectid.ObjectId(execution_record[inout])})
+        if iodata is not None:
+            for dt in iodata['DataSet']:
+                if dt['Name'] == name:
+                    if str(dt['ObjID']) == str(obj_id):
+                        return jsonify({'result': dt['Value']})
+    return jsonify({'result': None})
+
+
+def get_execution_input(weid, name, obj_id):
+    return get_execution_input_or_output(weid, name, obj_id, 'Inputs')
 
 
 def get_execution_output(weid, name, obj_id):
-    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
-    execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
-    print(execution_record)
-    iodata = mongo.db.IOData.find_one({"_id": bson.objectid.ObjectId(execution_record['Outputs'])})
-    print(iodata)
-    for dt in iodata['DataSet']:
-        print('checking ' + str(dt))
-        if dt['Name'] == name:
-            if str(obj_id) == 'None' and str(dt['ObjID']) == 'None':
-                return jsonify({'result': dt['Value']})
-            if dt['ObjID'] == str(obj_id) or dt['ObjID'] == int(obj_id):
-                return jsonify({'result': dt['Value']})
-    return jsonify({'result': 'None'})
+    return get_execution_input_or_output(weid, name, obj_id, 'Outputs')
 
 
 # --------------------------------------------------
@@ -643,6 +630,12 @@ def main():
         if action == "get_execution":
             if "id" in args:
                 return get_workflowexecution(args["id"])
+            else:
+                return jsonify({'error': "Param 'id' not specified."})
+
+        if action == "get_execution_inputs_check":
+            if "id" in args:
+                return get_execution_inputs_check(args["id"])
             else:
                 return jsonify({'error': "Param 'id' not specified."})
 

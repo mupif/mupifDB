@@ -260,69 +260,106 @@ class WorkflowExecutionContext:
     def getStatus(self):
         wed = self._getWorkflowExecutionDocument()
         return wed['Status']
-            
-    def execute(self):
-        wed = self._getWorkflowExecutionDocument()
-        wd = self._getWorkflowDocument()
-        print('Scheduling the new execution:%s' % self.executionID)
-
-        if wed['Status'] == 'Created':
-            # freeze the execution record by setting state to "Pending"
-            restApiControl.setExecutionStatusPending(self.executionID)
-            print("Execution %s state changed to Pending" % self.executionID)
-            return True
-        else:
-            # raise KeyError("Workflow execution already scheduled/executed")
-            raise error.InvalidUsage("Workflow execution already scheduled/executed")
-            return False
 
 
-# def mapInput(app, value, type, typeID, units, compulsory, objectID):
-#     if value is not None:
-#         # map value
-#         if type == 'mupif.Property':
-#             print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
-#             fvalue = literal_eval(value)
-#             if isinstance(fvalue, tuple):
-#                 app.set(mupif.ConstantProperty(value=fvalue, propID=mupif.DataID[typeID], valueType=mupif.ValueType.Vector, unit=units), objectID)
-#             else:
-#                 app.set(mupif.ConstantProperty(value=float(value), propID=mupif.DataID[typeID], valueType=mupif.ValueType.Scalar, unit=units), objectID)
-#         elif type == 'mupif.Field':
-#             # assume Field == ConstantField
-#             print('Mapping %s, units %s, value:%s' % (mupif.DataID[typeID], units, value))
-#             fvalue = literal_eval(value)
-#             if isinstance(fvalue, tuple):
-#                 app.set(mupif.constantfield.ConstantField(None, mupif.DataID[typeID], mupif.ValueType.Scalar, units, 0.0, values=fvalue, objectID=objectID), objectID)
-#             else:
-#                 raise TypeError('Tuple expected when handling io param of type %s' % type)
-#         else:
-#             raise KeyError('Handling of io param of type %s not implemented' % type)
-#     elif (value is None) and (compulsory is True):
-#         raise KeyError('Compulsory parameter %s not defined in workflow execution dataset' % typeID)
+def isIterable(val):
+    try:
+        a = val[0]
+        return True
+    except:
+        return False
+
+
+def checkInputs(eid):
+    execution = restApiControl.getExecutionRecord(eid)
+    workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
+    workflow_input_templates = workflow['IOCard']['Inputs']
+    execution_inputs = restApiControl.getIODataRecord(execution['Inputs'])['DataSet']
+
+    for input_template in workflow_input_templates:
+        name = input_template['Name']
+        input_type = input_template['Type']
+        valueType = input_template['ValueType']
+        typeID = input_template['TypeID']
+        # try to get raw PID from typeID
+        match = re.search('\w+\Z', typeID)
+        if match:
+            typeID = match.group()
+
+        objID = input_template.get('ObjID', "")
+        compulsory = input_template['Compulsory']
+
+        if not isIterable(objID):
+            objID = [objID]
+
+        for oid in objID:
+            if compulsory:
+                part_input_check = False
+
+                inp_record = None
+                for exec_inp in execution_inputs:
+                    if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
+                        inp_record = exec_inp
+                        break
+
+                if inp_record is not None:
+                    if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
+                        # Link -> check if it finds an existing record first
+                        m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
+                        m_execution_outputs = restApiControl.getIODataRecord(execution['Outputs'])['DataSet']
+
+                        m_inp_record = None
+                        for exec_out in m_execution_outputs:
+                            if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
+                                m_inp_record = exec_out
+                                break
+
+                        if m_inp_record is not None:
+                            # now check the value
+                            if m_inp_record['FileID'] is None:
+                                if literal_eval(m_inp_record['Value']) is not None:
+                                    part_input_check = True
+                            else:
+                                pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
+                                with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                                    full_path = tempDir + "/file.h5"
+                                    f = open(full_path, 'wb')
+                                    f.write(pfile)
+                                    f.close()
+                                    prop = mupif.ConstantProperty.loadHdf5(full_path)
+                                    if prop.getValue() is not None:
+                                        part_input_check = True
+
+                    else:
+                        # check only not None value
+                        if inp_record['Value'] != 'None' and inp_record['Value'] != '' and inp_record['Value'] is not None:
+                            part_input_check = True
+
+                if part_input_check is False:
+                    return False
+
+    return True
 
 
 def mapInputs(app, eid):
-    # request workflow execution doc
-    print('Map Inputs eid %s' % eid)
-    wec = WorkflowExecutionContext(ObjectId(eid))
-    # get worflow doc
-    wd = wec._getWorkflowDocument()
-    # execution input doc
-    inp = wec.getIODataDoc('Inputs')
-    # loop over workflow inputs
-    for irec in wd['IOCard']['Inputs']:
-        name = irec['Name']
-        type = irec['Type']
-        valueType = irec['ValueType']
-        typeID = irec['TypeID']
+    execution = restApiControl.getExecutionRecord(eid)
+    workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
+    workflow_input_templates = workflow['IOCard']['Inputs']
+    execution_inputs = restApiControl.getIODataRecord(execution['Inputs'])['DataSet']
+
+    for input_template in workflow_input_templates:
+        name = input_template['Name']
+        input_type = input_template['Type']
+        valueType = input_template['ValueType']
+        typeID = input_template['TypeID']
         # try to get raw PID from typeID
         match = re.search('\w+\Z', typeID)
         if match:
             typeID = match.group()
         
-        objID = irec.get('ObjID', "")
-        compulsory = irec['Compulsory']
-        units = irec['Units']
+        objID = input_template.get('ObjID', "")
+        compulsory = input_template['Compulsory']
+        units = input_template['Units']
         if units == 'None':
             units = mupif.U.none
 
@@ -335,163 +372,100 @@ def mapInputs(app, eid):
             "TensorArray": mupif.ValueType.TensorArray
         }
 
-        if not isinstance(objID, collections.Iterable):
+        if not isIterable(objID):
             objID = [objID]
 
         vt = vts[valueType]
         for oid in objID:
-            inp_record = inp.getRec(name, oid)
-            if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
-                # map linked value
-                m_wec = WorkflowExecutionContext(ObjectId(inp_record['Link']['ExecID']))
-                m_inp = m_wec.getIODataDoc('Outputs')
-                m_inp_record = m_inp.getRec(inp_record['Link']['Name'], inp_record['Link']['ObjID'])
+            inp_record = None
+            for exec_inp in execution_inputs:
+                if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
+                    inp_record = exec_inp
+                    break
 
-                if m_inp_record['FileID'] is None:
-                    prop = mupif.ConstantProperty(value=literal_eval(m_inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
-                    app.set(prop, oid)
+            if inp_record is not None:
+                if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
+                    # map linked value
+                    m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
+                    m_execution_outputs = restApiControl.getIODataRecord(execution['Outputs'])['DataSet']
+
+                    m_inp_record = None
+                    for exec_out in m_execution_outputs:
+                        if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
+                            m_inp_record = exec_out
+                            break
+
+                    if m_inp_record is not None:
+                        if m_inp_record['FileID'] is None:
+                            prop = mupif.ConstantProperty(value=literal_eval(m_inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
+                            app.set(prop, oid)
+                        else:
+                            pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
+                            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                                full_path = tempDir + "/file.h5"
+                                f = open(full_path, 'wb')
+                                f.write(pfile)
+                                f.close()
+                                prop = mupif.ConstantProperty.loadHdf5(full_path)
+                                app.set(prop, oid)
+
                 else:
-                    pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        prop = mupif.ConstantProperty.loadHdf5(full_path)
+                    # map classic value stored in string
+                    if literal_eval(inp_record['Value']) is not None:
+                        prop = mupif.ConstantProperty(value=literal_eval(inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
                         app.set(prop, oid)
-
-            else:
-                # map classic value stored in string
-                if literal_eval(inp_record['Value']) is not None:
-                    prop = mupif.ConstantProperty(value=literal_eval(inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
-                    app.set(prop, oid)
-                    # mapInput(app, inp_record['Value'], type, typeID, units, compulsory, oid)
-
-
-def generateWEInputCGI(eid):
-    # request workflow execution doc
-    wec = WorkflowExecutionContext(ObjectId(eid))
-    # execution input doc
-    inp = wec.getIODataDoc('Inputs')
-    print("<h1>Edit input record for executionID: %s</h1><br />"%eid)
-    print("<form action=\"/cgi-bin/demo01b.py\" method=\"post\">")
-
-    # table header
-    print("<table><tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Source</th><th>Origin</th></tr>")
-
-    # loop over workflow inputs
-    c = 0
-    for irec in inp._getDocument()['DataSet']:
-        name = irec['Name']
-        type = irec['Type']
-        # typeID=irec['TypeID']
-        objID = irec['ObjID']
-        print("<tr><td><b>%s</b></td><td>%s</td><td>%s</td>" % (name, type, objID))
-        print("<td><input type=\"text\" name=\"Value_%d\" /></td>" % c)
-        print("<td><input type=\"text\" name=\"Source_%d\" /></td>" % c)
-        print("<td><input type=\"text\" name=\"OriginID_%d\" /></td></tr>" % c)
-        c = c+1
-    print("</table>")
-    print("<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % eid)
-    print("<input type=\"submit\" value=\"Submit\" /></form>")
-
-
-def setWEInputCGI(eid, form):
-    wec = WorkflowExecutionContext(ObjectId(eid))
-    # execution input doc
-    inp = wec.getIODataDoc('Inputs')
-    print('Input rec id: %s<br>' % inp.IOid)
-    c = 0
-    for irec in inp._getDocument()['DataSet']:
-        name = irec['Name']
-        objID = irec['ObjID']
-        value = form.getvalue('Value_%d' % c)
-        source = form.getvalue('Source_%d' % c)
-        originID = form.getvalue('OriginID_%d' % c)
-        print('Setting %s, ObjID %s to %s ' % (name, objID, value))
-        try:
-            inp.set(name, value, objID)
-            print(' OK<br>')
-        except Exception as e:
-            print(' Failed<br>')
-            print(e)
-        # set source and origin
-        c = c+1
-
-
-# TODO solve the issue with units in Field
-def mapOutput(app, name, type, typeID, objectID, eid, time, units):
-    wec = WorkflowExecutionContext(ObjectId(eid))
-    # execution input doc
-    out = wec.getIODataDoc('Outputs')
-    # map value 
-    print('Mapping %s, name:%s' % (typeID, name), flush=True)
-    if type == 'mupif.Property':
-        print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], objectID, time), flush=True)
-        prop = app.get(mupif.DataID[typeID], time, objectID)
-        if prop.valueType == mupif.ValueType.Scalar:
-            val = prop.inUnitsOf(units).getValue()
-            val = str(val)
-            out.setOutputVal(name, val, objectID)
-        elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-            # filling the string Value
-            val = prop.inUnitsOf(units).getValue()
-            val = str(tuple(val))
-            out.setOutputVal(name, val, objectID)
-        elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
-            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                full_path = tempDir + "/file.h5"
-                prop.saveHdf5(full_path)
-                fileID = None
-                with open(full_path, 'rb') as f:
-                    fileID = restApiControl.uploadBinaryFileContent(f)
-                    f.close()
-                if fileID is not None:
-                    out.setOutputFileID(name, fileID, objectID)
-                else:
-                    print("hdf5 file was not saved")
-
-    elif type == 'mupif.Field':
-        with tempfile.TemporaryDirectory() as tempDir:
-            field = app.get(mupif.DataID.FID_Temperature, time)
-            field.field2VTKData().tofile(tempDir+'/field')
-            with open(tempDir+'/field.vtk', 'rb') as f:
-                fileID = restApiControl.uploadBinaryFileContent(f)
-                f.close()
-                print("Uploaded field.vtk as id: %s" % fileID)
-                # out.setAttributes(name, {"Value": logID, "Units": units}, objectID) TODO this handling of units doesn't make sense
-                out.setOutputVal(name, fileID, objectID)
-
-    else:
-        raise KeyError('Handling of io param of type %s not implemented' % type)
 
 
 def mapOutputs(app, eid, time):
-    # request workflow execution doc
-    print('Maping Outputs for eid %s' % eid, flush=True)
-    wec = WorkflowExecutionContext(ObjectId(eid))
-    # get worflow doc
-    wd = wec._getWorkflowDocument()
-    # execution out doc
-    inp = wec.getIODataDoc('Outputs')
-    # loop over workflow inputs
-    for irec in wd['IOCard']['Outputs']:
-        name = irec['Name']
-        type = irec['Type']
-        units = irec['Units']
-        typeID = irec['TypeID']
+    print("mapOutputs()")
+
+    execution = restApiControl.getExecutionRecord(eid)
+    workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
+    workflow_output_templates = workflow['IOCard']['Outputs']
+
+    for output_template in workflow_output_templates:
+        name = output_template['Name']
+        output_type = output_template['Type']
+        units = output_template['Units']
+        typeID = output_template['TypeID']
         # try to get raw PID from typeID
         match = re.search('\w+\Z', typeID)
         if match:
             typeID = match.group()
         
-        objID = irec.get('ObjID', "")
-        # compulsory = irec['Compulsory']
+        objID = output_template.get('ObjID', "")
 
-        if isinstance(objID, collections.Iterable):
-            for oid in objID:
-                value = inp.get(name, oid)
-                mapOutput(app, name, type, typeID, oid, eid, time, units)
-        else:
-            value = inp.get(name, objID)
-            mapOutput(app, name, type, typeID, objID, eid, time, units)
+        if not isIterable(objID):
+            objID = [objID]
+
+        for oid in objID:
+            print("oid = " + str(oid))
+            # map value
+            print('Mapping %s, name:%s' % (typeID, name), flush=True)
+            if output_type == 'mupif.Property':
+                print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], oid, time), flush=True)
+                prop = app.get(mupif.DataID[typeID], time, oid)
+                if prop.valueType == mupif.ValueType.Scalar:
+                    val = prop.inUnitsOf(units).getValue()
+                    val = str(val)
+                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
+                elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
+                    # filling the string Value
+                    val = prop.inUnitsOf(units).getValue()
+                    val = str(tuple(val))
+                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
+                elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        full_path = tempDir + "/file.h5"
+                        prop.saveHdf5(full_path)
+                        fileID = None
+                        with open(full_path, 'rb') as f:
+                            fileID = restApiControl.uploadBinaryFileContent(f)
+                            f.close()
+                        if fileID is not None:
+                            restApiControl.setExecutionOutputFileID(eid, name, fileID, oid)
+                        else:
+                            print("hdf5 file was not saved")
+
+            else:
+                raise KeyError('Handling of io param of type %s not implemented' % output_type)

@@ -40,9 +40,7 @@ def getUsecaseRecords():
 def getUsecaseRecord(ucid):
     response = requests.get(RESTserver + "main?action=get_usecase&id=" + ucid)
     response_json = response.json()
-    for record in response_json['result']:
-        return record
-    return None
+    return response_json['result']
 
 
 def insertUsecaseRecord(ucid, description):
@@ -79,9 +77,7 @@ def getWorkflowRecordsWithUsecase(usecase):
 def getWorkflowRecord(wid):
     response = requests.get(RESTserver + "main?action=get_workflow&wid=" + wid)
     response_json = response.json()
-    for record in response_json['result']:
-        return record
-    return None
+    return response_json['result']
 
 
 def setWorkflowParameter(workflow_id, param, value):
@@ -156,9 +152,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
 def getExecutionRecord(weid):
     response = requests.get(RESTserver + "main?action=get_execution&id=" + str(weid))
     response_json = response.json()
-    for record in response_json['result']:
-        return record
-    return None
+    return response_json['result']
 
 
 def getScheduledExecutions():
@@ -227,6 +221,12 @@ def getExecutionOutputRecord(weid):
     return response_json['result']
 
 
+def getExecutionInputsCheck(weid):
+    response = requests.get(RESTserver + "main?action=get_execution_inputs_check&id=" + str(weid))
+    response_json = response.json()
+    return response_json['result'] == 'OK'
+
+
 # --------------------------------------------------
 # IO Data
 # --------------------------------------------------
@@ -234,9 +234,7 @@ def getExecutionOutputRecord(weid):
 def getIODataRecord(iod_id):
     response = requests.get(RESTserver + "main?action=get_iodata&id=" + str(iod_id))
     response_json = response.json()
-    for record in response_json['result']:
-        return record
-    return None
+    return response_json['result']
 
 
 def insertIODataRecord(data):

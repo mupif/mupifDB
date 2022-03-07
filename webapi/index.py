@@ -440,7 +440,10 @@ def executionStatus(weid):
     html += '<ul>'
     html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
     if data['Status'] == 'Created':
-        html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
+        if restApiControl.getExecutionInputsCheck(weid):
+            html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
+        else:
+            html += '<li>Some inputs are not defined propertly. Cannot be scheduled.</li>'
     if data['Status'] == 'Finished':
         html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
     if (data['Status'] == 'Finished' or data['Status'] == 'Failed') and logID is not None:
@@ -519,7 +522,7 @@ def setExecutionInputs(weid):
             form += "%s<br>" % execution_record["RequestedBy"]
 
         form += "<br>Input record for weid %s<table>" % weid
-        form += "<tr><th>Name</th><th>Description</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th></tr>"
+        form += "<tr><th>Name</th><th>Type</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th></tr>"
         c = 0
         for i in execution_inputs:
             print(i)
@@ -541,13 +544,20 @@ def setExecutionInputs(weid):
                 floatPattern = "^[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?"
                 tuplePattern = "^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,\s*[-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?)*\)"
                 pattern = "(%s|%s)" % (floatPattern, tuplePattern)
-                form += "<tr><td>#%s</td><td>%s</td><td>%s</td><td>%s</td><td>" % (i['Name'], description, i['Type'], i['ObjID'])
+                form += '<tr>'
+                form += '<td>' + str(i['Name']) + '</td>'
+                form += '<td>' + str(i['Type']) + '</td>'
+                form += '<td>' + str(i['TypeID']).replace('mupif.DataID.', '') + '</td>'
+                form += '<td>' + str(description) + '</td>'
+                form += '<td>' + str(i['ObjID']) + '</td>'
+                form += '<td>'
                 if execution_record["Status"] == "Created":
                     # form += "<input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/>" % (pattern, c, i['Value'], required)
                     form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, i['Value'], required)
                 else:
                     form += str(i['Value'])
-                form += "</td><td>%s</td>" % i.get('Units')
+                form += "</td>"
+                form += '<td>' + str(i.get('Units')) + '</td>'
 
                 # copy form some output data
                 if execution_record["Status"] == "Created":
@@ -586,12 +596,19 @@ def getExecutionOutputs(weid):
 
     # generate result table form
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
-    form += "<tr><th>Name</th><th>Type</th><th>ObjID</th><th>Value</th><th>Units</th></tr>"
+    form += "<tr><th>Name</th><th>Type</th><th>DataID</th><th>ObjID</th><th>Value</th><th>Units</th><th>Description</th></tr>"
     for i in execution_outputs:
         val = i['Value']
-        if  i['FileID'] != None and i['FileID'] != '':
+        if i['FileID'] is not None and i['FileID'] != '':
             val = '<a href="/property_array_view/' + str(i['FileID']) + '/1">link</a>'
-        form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (i['Name'], i['Type'], i['ObjID'], val, escape(i.get('Units')))
+        form += '<tr>'
+        form += '<td>' + str(i['Name']) + '</td>'
+        form += '<td>' + str(i['Type']) + '</td>'
+        form += '<td>' + str(i['TypeID']).replace('mupif.DataID.', '') + '</td>'
+        form += '<td>' + str(i['ObjID']) + '</td>'
+        form += '<td>' + str(val) + '</td>'
+        form += '<td>' + str(escape(i.get('Units'))) + '</td>'
+        # form += '<td>' + str(i['Description']) + '</td>'
     form += "</table>"
     form += "</br><a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
     # print (form)

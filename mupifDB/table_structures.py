@@ -6,6 +6,24 @@ def extendRecord(record, structure):
     return record
 
 
+tableUseCase = {
+    'ucid': None,
+    'Description': None
+}
+
+
+tableWorkflow = {
+    'wid': None,
+    'Description': None,
+    'UseCase': None,
+    'Version': None,
+    'GridFSID': None,
+    'modulename': None,
+    'classname': None,
+    'IOCard': {'Inputs': [], 'Outputs': []}
+}
+
+
 tableExecution = {
     'WorkflowID': None,
     'WorkflowVersion': None,
