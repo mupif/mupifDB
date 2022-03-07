@@ -2,13 +2,14 @@ import importlib
 import math
 import zipfile
 import tempfile
-from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory
+from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory, jsonify
 from flask import request
 from flask_cors import CORS
 import sys
 import os
 import inspect
 import mupif as mp
+import requests
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
@@ -419,8 +420,11 @@ def initexecution(wid, version):
 def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
-    html = ''
-
+    html = '';
+    html += '<script type="text/javascript">window.execution_id = "' + weid + '";</script>'
+    html += '<script type="text/javascript" src="/main.js"></script>'
+    if data['Status'] == 'Pending' or data['Status'] == 'Running' or data['Status'] == 'Scheduled':
+        html += '<script type="text/javascript">let timer_refresh = setInterval(reloadIfExecStatusIsChanged, 15000);</script>'
     html += '<table style="font-size:14px;">'
     html += '<tr><td>Execution record ID:</td><td>' + str(weid) + '</td></tr>'
     html += '<tr><td>Workflow ID:</td><td>' + str(data['WorkflowID']) + '</td></tr>'
@@ -684,6 +688,21 @@ def propertyArrayView(file_id, page):
 @app.route('/hello/<name>')
 def hello(name=None):
     return my_render_template('hello.html', name=name, content="Welcome to MuPIFDB web interface")
+
+
+@app.route('/main.js')
+def mainjs():
+    return send_from_directory(directory='./', path='main.js')
+
+
+@app.route('/restapi/')
+def restapi():
+    full_url = str(request.url)
+    args_str = full_url.split('?')[1]
+    full_rest_url = RESTserver + "main?" + args_str
+    print(full_rest_url)
+    response = requests.get(full_rest_url)
+    return jsonify(response.json())
 
 
 if __name__ == '__main__':
