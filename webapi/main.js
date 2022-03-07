@@ -12,7 +12,7 @@ function reloadIfExecStatusIsChanged(){
                 jsn = JSON.parse(this.responseText)
                 if('result' in jsn){
                     if('Status' in jsn['result']){
-                        if(jsn['result']['Status'] == 'Finished'){
+                        if(jsn['result']['Status'] == 'Finished' || jsn['result']['Status'] == 'Failed'){
                             location.reload();
                         }
                     }

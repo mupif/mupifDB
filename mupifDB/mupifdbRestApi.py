@@ -112,7 +112,7 @@ def printHelp():
     <ul>
     <li> Get list of available workflows for specific usecase: <a href="/main?action=get_workflows_for_usecase&usecase=Demo_UseCase">/main?action=get_workflows_for_usecase&usecase=Demo_UseCase</a></li>
     <li> Get info on specific workflow: <a href="/main?action=get_workflow&wid=workflow_13">/main?action=get_workflow&wid=workflow_13</a></li>
-    <li> Create new execution of a workflow: <a href="/main?action=insert_new_execution&wid=workflow_13&version=1">/main?action=insert_new_execution&wid=workflow_13&version=1</a>, returns workflow execution id (WEID)</li>
+    <li> Create new execution of a workflow: <a href="/main?action=insert_new_execution&wid=workflow_13&version=1&ip="%s"">/main?action=insert_new_execution&wid=workflow_13&version=1&ip="%s"</a>, returns workflow execution id (WEID)</li>
     <li>For given execution id (WEID):<ul>
             <li> Get workflow execution record: <a href="/main?action=get_execution&id=WEID">/main?action=get_execution&id=WEID</a></li>
             <li> Get workflow execution inputs: <a href="/main?action=get_execution_inputs&id=WEID">/main?action=get_execution_inputs&id=WEID</a></li>
@@ -124,7 +124,7 @@ def printHelp():
             </ul></li>
     </ul>
 
-    """
+    """ % (request.remote_addr, request.remote_addr)
 
     return ans
 
@@ -655,7 +655,7 @@ def main():
             if "wid" in args and "version" in args and "ip" in args:
                 return insert_execution(args["wid"], args["version"], args["ip"])
             else:
-                return jsonify({'error': "Param 'wid' or 'version' not specified."})
+                return jsonify({'error': "Param 'wid' or 'version' or 'ip' not specified."})
 
         if action == "insert_execution_data":
             return insert_executionRecord(json.loads(request.get_data()))
