@@ -100,7 +100,7 @@ def printHelp():
     <tr><td>/main?action=get_execution&id=ID</td><td>Get record of workflow execution with given ID</td></tr>
     <tr><td>/main?action=get_execution_inputs&id=ID</td><td>Show inputs for execution ID </td></tr>
     <tr><td>/main?action=get_execution_outputs&id=ID</td><td>Show outputs for execution ID </td></tr>
-    <tr><td>/main?action=set_execution_input&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Sets input parameter for workflow execution with id WEID. The input is specified by its NAME and OBJ_ID. The VALUE is string with format depending on input type. If type is mupif.Property then value should be string convertible to tuple such as "(5.0,)".</td></tr>
+    <tr><td>/main?action=set_execution_input&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Sets input parameter for workflow execution with id WEID. The input is specified by its NAME and OBJ_ID. The VALUE is string with format depending on input type. If type is mupif.Property and ValueType is Scalar then value should be a float such as "5.0".</td></tr>
     <!--<tr><td style="color:red;">/main?action=get_execution_output&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Gets output parameter for workflow execution with id WEID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>-->
     <tr><td>/main?action=schedule_execution&id=WEID</td><td>Schedule workflow execution specified by id WEID. Note that workflow execution can be scheduled only once from "Created" state to state "Pending", for another computation one has to create a new execution and set inputs.</td></tr>
     <tr><td style="color:red;">/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
@@ -116,8 +116,8 @@ def printHelp():
     <li>For given execution id (WEID):<ul>
             <li> Get workflow execution record: <a href="/main?action=get_execution&id=WEID">/main?action=get_execution&id=WEID</a></li>
             <li> Get workflow execution inputs: <a href="/main?action=get_execution_inputs&id=WEID">/main?action=get_execution_inputs&id=WEID</a></li>
-            <li> Setting workflow execution input #1: <a href="/main?action=set_execution_input&id=WEID&name=Value_1&value=(7.,)&obj_id=1">/main?action=set_execution_input&id=WEID&name=Value_1&value=(7.,)&obj_id=1</a></li>
-            <li> Setting workflow execution input #2: <a href="/main?action=set_execution_input&id=WEID&name=Value_2&value=(2.5,)&obj_id=2">/main?action=set_execution_input&id=WEID&name=Value_2&value=(2.5,)&obj_id=2</a></li>
+            <li> Setting workflow execution input #1: <a href="/main?action=set_execution_input&id=WEID&name=Value_1&value=7.&obj_id=1">/main?action=set_execution_input&id=WEID&name=Value_1&value=7.&obj_id=1</a></li>
+            <li> Setting workflow execution input #2: <a href="/main?action=set_execution_input&id=WEID&name=Value_2&value=2.5&obj_id=2">/main?action=set_execution_input&id=WEID&name=Value_2&value=2.5&obj_id=2</a></li>
             <li> (inputs can be set only for execution with status 'Created')</li>
             <li> Schedule workflow execution (it can be done only if the status is 'Created'): <a href="/main?action=schedule_execution&id=WEID">/main?action=schedule_execution&id=WEID</a></li>
             <li> Get workflow execution outputs: <a href="/main?action=get_execution_outputs&id=WEID">/main?action=get_execution_outputs&id=WEID</a></li>
@@ -253,7 +253,7 @@ def get_workflowexecutions(we_status=None, workflow_id=None, workflow_version=No
 
     table = mongo.db.WorkflowExecutions
     output = []
-    for s in table.find(filter_dict).limit(num_limit):
+    for s in table.find(filter_dict).sort('CreatedDate', 1).limit(num_limit):
         output.append(table_structures.extendRecord(s, table_structures.tableExecution))
     return jsonify({'result': output})
 
