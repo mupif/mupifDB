@@ -43,7 +43,7 @@ head {
 
 body {
     clear: both;
-    height: 600px;
+    height: auto;
 }
   
 .right {
@@ -55,8 +55,8 @@ body {
   }
 
   .sidenav, .right {
-    height: 600px;		
-    height: 600px;
+    height: auto;
+    height: auto;
     overflow: scroll;		
     overflow: auto;
  
