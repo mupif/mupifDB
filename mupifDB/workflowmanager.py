@@ -279,7 +279,7 @@ def checkInputs(eid):
 
     for input_template in workflow_input_templates:
         name = input_template['Name']
-        input_type = input_template['Type']
+        object_type = input_template['Type']
         valueType = input_template['ValueType']
         typeID = input_template['TypeID']
         # try to get raw PID from typeID
@@ -295,49 +295,55 @@ def checkInputs(eid):
 
         for oid in objID:
             if compulsory:
-                part_input_check = False
+                if object_type == 'mupif.Property':
 
-                inp_record = None
-                for exec_inp in execution_inputs:
-                    if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
-                        inp_record = exec_inp
-                        break
+                    part_input_check = False
 
-                if inp_record is not None:
-                    if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
-                        # Link -> check if it finds an existing record first
-                        m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
-                        m_execution_outputs = restApiControl.getIODataRecord(execution['Outputs'])['DataSet']
+                    inp_record = None
+                    for exec_inp in execution_inputs:
+                        if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
+                            inp_record = exec_inp
+                            break
 
-                        m_inp_record = None
-                        for exec_out in m_execution_outputs:
-                            if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
-                                m_inp_record = exec_out
-                                break
+                    if inp_record is not None:
+                        if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
+                            # Link -> check if it finds an existing record first
+                            m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
+                            m_execution_outputs = restApiControl.getIODataRecord(m_execution['Outputs'])['DataSet']
 
-                        if m_inp_record is not None:
-                            # now check the value
-                            if m_inp_record['FileID'] is None:
-                                if literal_eval(m_inp_record['Value']) is not None:
-                                    part_input_check = True
-                            else:
-                                pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
-                                with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                                    full_path = tempDir + "/file.h5"
-                                    f = open(full_path, 'wb')
-                                    f.write(pfile)
-                                    f.close()
-                                    prop = mupif.ConstantProperty.loadHdf5(full_path)
-                                    if prop.getValue() is not None:
+                            m_inp_record = None
+                            for exec_out in m_execution_outputs:
+                                if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
+                                    m_inp_record = exec_out
+                                    break
+
+                            if m_inp_record is not None:
+                                # now check the value
+                                if m_inp_record['FileID'] is None:
+                                    if literal_eval(m_inp_record['Value']) is not None:
                                         part_input_check = True
+                                    print('A')
+                                else:
+                                    pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
+                                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                                        full_path = tempDir + "/file.h5"
+                                        f = open(full_path, 'wb')
+                                        f.write(pfile)
+                                        f.close()
+                                        prop = mupif.ConstantProperty.loadHdf5(full_path)
+                                        if prop.getValue() is not None:
+                                            part_input_check = True
+                                    print('B')
 
-                    else:
-                        # check only not None value
-                        if inp_record['Value'] != 'None' and inp_record['Value'] != '' and inp_record['Value'] is not None:
-                            part_input_check = True
+                        else:
+                            # check only not None value
+                            if inp_record['Value'] != 'None' and inp_record['Value'] != '' and inp_record['Value'] is not None:
+                                part_input_check = True
 
-                if part_input_check is False:
-                    return False
+                    if part_input_check is False:
+                        return False
+                else:
+                    raise ValueError('Handling of io param of type %s not implemented' % object_type)
 
     return True
 
@@ -350,7 +356,7 @@ def mapInputs(app, eid):
 
     for input_template in workflow_input_templates:
         name = input_template['Name']
-        input_type = input_template['Type']
+        object_type = input_template['Type']
         valueType = input_template['ValueType']
         typeID = input_template['TypeID']
         # try to get raw PID from typeID
@@ -378,43 +384,46 @@ def mapInputs(app, eid):
 
         vt = vts[valueType]
         for oid in objID:
-            inp_record = None
-            for exec_inp in execution_inputs:
-                if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
-                    inp_record = exec_inp
-                    break
+            if object_type == 'mupif.Property':
+                inp_record = None
+                for exec_inp in execution_inputs:
+                    if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
+                        inp_record = exec_inp
+                        break
 
-            if inp_record is not None:
-                if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
-                    # map linked value
-                    m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
-                    m_execution_outputs = restApiControl.getIODataRecord(execution['Outputs'])['DataSet']
+                if inp_record is not None:
+                    if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
+                        # map linked value
+                        m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
+                        m_execution_outputs = restApiControl.getIODataRecord(m_execution['Outputs'])['DataSet']
 
-                    m_inp_record = None
-                    for exec_out in m_execution_outputs:
-                        if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
-                            m_inp_record = exec_out
-                            break
+                        m_inp_record = None
+                        for exec_out in m_execution_outputs:
+                            if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
+                                m_inp_record = exec_out
+                                break
 
-                    if m_inp_record is not None:
-                        if m_inp_record['FileID'] is None:
-                            prop = mupif.ConstantProperty(value=literal_eval(m_inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
-                            app.set(prop, oid)
-                        else:
-                            pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
-                            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                                full_path = tempDir + "/file.h5"
-                                f = open(full_path, 'wb')
-                                f.write(pfile)
-                                f.close()
-                                prop = mupif.ConstantProperty.loadHdf5(full_path)
+                        if m_inp_record is not None:
+                            if m_inp_record['FileID'] is None:
+                                prop = mupif.ConstantProperty(value=literal_eval(m_inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
                                 app.set(prop, oid)
+                            else:
+                                pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
+                                with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                                    full_path = tempDir + "/file.h5"
+                                    f = open(full_path, 'wb')
+                                    f.write(pfile)
+                                    f.close()
+                                    prop = mupif.ConstantProperty.loadHdf5(full_path)
+                                    app.set(prop, oid)
 
-                else:
-                    # map classic value stored in string
-                    if literal_eval(inp_record['Value']) is not None:
-                        prop = mupif.ConstantProperty(value=literal_eval(inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
-                        app.set(prop, oid)
+                    else:
+                        # map classic value stored in string
+                        if literal_eval(inp_record['Value']) is not None:
+                            prop = mupif.ConstantProperty(value=literal_eval(inp_record['Value']), propID=mupif.DataID[typeID], valueType=vt, unit=units)
+                            app.set(prop, oid)
+            else:
+                raise ValueError('Handling of io param of type %s not implemented' % object_type)
 
 
 def mapOutputs(app, eid, time):
@@ -426,7 +435,7 @@ def mapOutputs(app, eid, time):
 
     for output_template in workflow_output_templates:
         name = output_template['Name']
-        output_type = output_template['Type']
+        object_type = output_template['Type']
         units = output_template['Units']
         typeID = output_template['TypeID']
         # try to get raw PID from typeID
@@ -440,10 +449,7 @@ def mapOutputs(app, eid, time):
             objID = [objID]
 
         for oid in objID:
-            print("oid = " + str(oid))
-            # map value
-            print('Mapping %s, name:%s' % (typeID, name), flush=True)
-            if output_type == 'mupif.Property':
+            if object_type == 'mupif.Property':
                 print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], oid, time), flush=True)
                 prop = app.get(mupif.DataID[typeID], time, oid)
                 if prop.valueType == mupif.ValueType.Scalar:
@@ -469,4 +475,4 @@ def mapOutputs(app, eid, time):
                             print("hdf5 file was not saved")
 
             else:
-                raise KeyError('Handling of io param of type %s not implemented' % output_type)
+                raise ValueError('Handling of io param of type %s not implemented' % object_type)

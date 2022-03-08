@@ -5,33 +5,34 @@
     background-color: rgb(212, 212, 212);
     /*padding-top: 20px;*/
     clear:both;
-  }
-  
-  .sidenav a {
+}
+
+.sidenav a {
     padding: 2px 2px 2px 4px;
     text-decoration: none;
     font-size: 20px;
     color: #000;
     display: block;
-  }
-  
-  .sidenav a:hover {
+}
+
+.sidenav a:hover {
     color: #2836fd;
     background-color: rgb(230, 230, 230);
-  }
-  
-  .footer {
-      clear: both;
-      width: 100%;
-  }
+}
 
-  table {
+.footer {
+    clear: both;
+    width: 100%;
+    text-align: center;
+}
+
+table {
     border-collapse: collapse;
-  }
-  
-  table, th, td {
+}
+
+table, th, td {
     border: 1px solid black;
-  }
+}
 
 head {
     clear: both;
@@ -39,27 +40,27 @@ head {
 
 .main {
     clear: both;
+    background-color: rgb(238, 242, 255);
+    min-height: 200px;
 }
 
 body {
     clear: both;
     height: auto;
 }
-  
+
 .right {
     font-size: 16px; /* Increased text to enable scrolling */
     padding: 0px 10px;
     /*float: right;*/
     /*width: 100%;*/
     background-color: rgb(238, 242, 255);
-  }
+}
 
-  .sidenav, .right {
+.sidenav, .right {
     height: auto;
     height: auto;
     overflow: scroll;		
     overflow: auto;
- 
-    
 }
 

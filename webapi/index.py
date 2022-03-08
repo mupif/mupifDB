@@ -705,5 +705,99 @@ def restapi():
     return jsonify(response.json())
 
 
+@app.route('/workflow_check')
+def workflow_check():
+
+    message = ''
+    success = False
+    new_workflow_id = None
+    fileID = None
+    wid = None
+    useCase = str(usecaseid)
+    if request.form:
+        print(request.files)
+        workflowInputs = None
+        workflowOutputs = None
+        description = None
+        classname = None
+        zip_filename = "files.zip"
+        modulename = ""
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            zip_full_path = tempDir + "/" + zip_filename
+            zf = zipfile.ZipFile(zip_full_path, mode="w", compression=zipfile.ZIP_DEFLATED)
+            filenames = ['file_add_1', 'file_add_2', 'file_add_3', 'file_add_4', 'file_add_5', 'file_workflow']
+            for filename in filenames:
+                print("checking file " + filename)
+                if filename in request.files:
+                    file = request.files[filename]
+                    if file.filename != '':
+                        print(filename + " file given")
+                        if file and (allowed_file(file.filename) or filename != 'file_workflow'):
+                            myfile = open(tempDir + "/" + file.filename, mode="wb")
+                            myfile.write(file.read())
+                            myfile.close()
+                            zf.write(tempDir + "/" + file.filename, arcname=file.filename)
+
+                            if filename == 'file_workflow':
+                                print("analyzing workflow file")
+                                modulename = file.filename.replace(".py", "")
+                                sys.path.append(tempDir)
+                                moduleImport = importlib.import_module(modulename)
+
+                                classes = []
+                                for name, obj in inspect.getmembers(moduleImport):
+                                    if inspect.isclass(obj):
+                                        if obj.__module__ == modulename:
+                                            classes.append(obj.__name__)
+
+                                if len(classes) == 1:
+                                    classname = classes[0]
+                                    workflowClass = getattr(moduleImport, classname)
+                                    workflow_instance = workflowClass()
+                                    wid = workflow_instance.getMetadata('ID')
+                                    workflowInputs = workflow_instance.getMetadata('Inputs')
+                                    workflowOutputs = workflow_instance.getMetadata('Outputs')
+                                    description = workflow_instance.getMetadata('Description')
+                                else:
+                                    print("File does not contain only one class")
+                    else:
+                        print(filename + " file NOT provided")
+            zf.close()
+            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None and classname is not None:
+                new_workflow_id = mupifDB.workflowmanager.insertWorkflowDefinition(
+                    wid=wid,
+                    description=description,
+                    source=zip_full_path,
+                    useCase=useCase,
+                    workflowInputs=workflowInputs,
+                    workflowOutputs=workflowOutputs,
+                    modulename=modulename,
+                    classname=classname
+                )
+
+    if new_workflow_id is not None:
+        html = '<h3>Workflow has been registered</h3>'
+        html += '<a href="/workflows/' + str(wid) + '">Go to workflow detail</a>'
+        return my_render_template('basic.html', body=Markup(html))
+    else:
+        # generate input form
+        html = message
+        html += "<h3>Testing workflow implementation</h3>"
+        html += "<h4>Upload the Python file:</h4>"
+        html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
+        html += "<table>"
+
+        html += '<input type="hidden" name="somedata" value="">'
+
+        html += '<tr><td>Workflow module file</td><td><input type="file" name="file_workflow"></td></tr>'
+        for add_file in range(1, 6):
+            html += '<tr><td>Additional file #%d</td><td><input type="file" name="file_add_%d"></td></tr>' % (add_file, add_file)
+
+        html += "</table>"
+        html += "<input type=\"submit\" value=\"Submit\" />"
+
+        return my_render_template('form.html', form=html)
+
+
 if __name__ == '__main__':
     app.run(debug=True)
