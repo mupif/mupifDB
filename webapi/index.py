@@ -1,3 +1,4 @@
+import copy
 import importlib
 import math
 import zipfile
@@ -705,16 +706,20 @@ def restapi():
     return jsonify(response.json())
 
 
-@app.route('/workflow_check')
+@app.route('/workflow_check', methods=('GET', 'POST'))
 def workflow_check():
+    html = ''
+    html += "<h3>Testing workflow implementation</h3>"
 
-    message = ''
     success = False
     new_workflow_id = None
     fileID = None
     wid = None
-    useCase = str(usecaseid)
     if request.form:
+
+        html += "<h5><a href="">Back</a></h5>"
+
+        noproblem = False
         print(request.files)
         workflowInputs = None
         workflowOutputs = None
@@ -754,36 +759,52 @@ def workflow_check():
                                     classname = classes[0]
                                     workflowClass = getattr(moduleImport, classname)
                                     workflow_instance = workflowClass()
-                                    wid = workflow_instance.getMetadata('ID')
-                                    workflowInputs = workflow_instance.getMetadata('Inputs')
-                                    workflowOutputs = workflow_instance.getMetadata('Outputs')
-                                    description = workflow_instance.getMetadata('Description')
+
+                                    noproblem = True
+
+                                    schema = copy.deepcopy(mp.workflow.WorkflowSchema)
+                                    schema['required'].remove('Dependencies')
+                                    schema['required'].remove('Execution')
+                                    schema['properties'].pop('Execution', None)
+                                    try:
+                                        workflow_instance.validateMetadata(schema)
+                                    except:
+                                        noproblem = False
+                                        html += '<h5 style="color:red;">Metadata validation was not successful.</h5>'
+
+                                    # TODO do more checks
+                                    # wid = workflow_instance.getMetadata('ID')
+                                    # workflowInputs = workflow_instance.getMetadata('Inputs')
+                                    # workflowOutputs = workflow_instance.getMetadata('Outputs')
+                                    # description = workflow_instance.getMetadata('Description')
+                                    #
+                                    # if wid is None:
+                                    #     noproblem = False
+                                    # if workflowInputs is None:
+                                    #     noproblem = False
+                                    # if workflowOutputs is None:
+                                    #     noproblem = False
+                                    # if description is None:
+                                    #     noproblem = False
+                                    # if classname is None:
+                                    #     noproblem = False
+
                                 else:
                                     print("File does not contain only one class")
-                    else:
-                        print(filename + " file NOT provided")
+                                    html += '<h5 style="color:red;">The workflow file doesn\'t contain only one class.</h5>'
+                    elif filename == 'file_workflow':
+                        html += '<h5 style="color:red;">The workflow file was not provided.</h5>'
             zf.close()
-            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None and classname is not None:
-                new_workflow_id = mupifDB.workflowmanager.insertWorkflowDefinition(
-                    wid=wid,
-                    description=description,
-                    source=zip_full_path,
-                    useCase=useCase,
-                    workflowInputs=workflowInputs,
-                    workflowOutputs=workflowOutputs,
-                    modulename=modulename,
-                    classname=classname
-                )
 
-    if new_workflow_id is not None:
-        html = '<h3>Workflow has been registered</h3>'
-        html += '<a href="/workflows/' + str(wid) + '">Go to workflow detail</a>'
+        if noproblem is True:
+            html += '<h5 style="color:green;">No problems found in the workflow implementation.</h5>'
+
         return my_render_template('basic.html', body=Markup(html))
     else:
         # generate input form
-        html = message
-        html += "<h3>Testing workflow implementation</h3>"
-        html += "<h4>Upload the Python file:</h4>"
+        html = ''
+
+        html += "<h4>Upload the workflow Python file (and consecutive Python modules):</h4>"
         html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
         html += "<table>"
 
