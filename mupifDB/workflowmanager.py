@@ -1,16 +1,11 @@
 import datetime
-import logging
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import tempfile
-import collections
-from bson import ObjectId
 import re
-from ast import literal_eval 
-from mupifDB import error
-import numpy as np
+from ast import literal_eval
 from mupifDB import restApiControl
 
 import mupif

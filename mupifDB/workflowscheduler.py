@@ -14,6 +14,7 @@ import zipfile
 import ctypes
 
 import restApiControl
+import my_email
 
 from pathlib import Path
 
@@ -243,14 +244,17 @@ def executeWorkflow(we_id):
                 print(it)
 
             try:
-                print("Copying log files to database")
                 log.info("Copying log files to database")
-                with open(tempDir+'/mupif.log', 'rb') as f:
-                    logID = restApiControl.uploadBinaryFileContent(f)
-                    if logID is not None:
-                        restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
-                log.info("Copying log files done")
-                print("Copying log files done")
+                if os.path.exists(tempDir+'/mupif.log'):
+                    with open(tempDir+'/mupif.log', 'rb') as f:
+                        logID = restApiControl.uploadBinaryFileContent(f)
+                        if logID is not None:
+                            restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
+                    log.info("Copying log files done")
+                    print("Copying log files done")
+                else:
+                    log.info("Log file does not exist")
+                    print('Log file does not exist')
             except:
                 log.info("Copying log files was not successful")
                 print("Copying log files was not successful")
@@ -263,12 +267,17 @@ def executeWorkflow(we_id):
             print("Workflow execution %s Finished" % we_id)
             log.info("Workflow execution %s Finished" % we_id)
             restApiControl.setExecutionStatusFinished(we_id)
+
+            my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Finished
         else:
             print("Workflow execution %s Failed" % we_id)
             log.info("Workflow execution %s Failed" % we_id)
             restApiControl.setExecutionStatusFailed(we_id)
+
+            my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Failed
+
 
     else:
         print("WEID %s not scheduled for execution" % we_id)
@@ -293,11 +302,10 @@ if __name__ == '__main__':
     with statusLock:
         import requests.adapters
         import urllib3
-        adapter=requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8,backoff_factor=.05))
-        session=requests.Session()
-        for proto in ('http://','https://'): session.mount(proto,adapter)
+        adapter = requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8, backoff_factor=.05))
+        session = requests.Session()
+        for proto in ('http://', 'https://'): session.mount(proto, adapter)
         restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
-
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
     atexit.register(stop, pool)

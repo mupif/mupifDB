@@ -696,7 +696,7 @@ def mainjs():
     return send_from_directory(directory='./', path='main.js')
 
 
-@app.route('/restapi/')
+@app.route('/api/')
 def restapi():
     full_url = str(request.url)
     args_str = full_url.split('?')[1]
