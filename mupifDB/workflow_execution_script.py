@@ -8,10 +8,10 @@ import logging
 import argparse
 import mupifDB
 import sys
-
+import mupif as mp
 
 log = logging.getLogger()
-# mp.util.redirectLog('mupif.log')
+mp.util.redirectLog('mupif.log')
 
 
 if __name__ == "__main__":
