@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import mupifDB
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
 import table_structures
+import mupif as mp
 
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
@@ -408,6 +409,50 @@ def get_execution_output(weid, name, obj_id):
     return get_execution_input_or_output(weid, name, obj_id, 'Outputs')
 
 
+#
+
+def get_execution_input_or_output_typearray(weid, name, obj_id, start, num, inout):
+    s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
+    if s is not None:
+        execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
+        iodata = mongo.db.IOData.find_one({"_id": bson.objectid.ObjectId(execution_record[inout])})
+        if iodata is not None:
+            for dt in iodata['DataSet']:
+                if dt['Name'] == name:
+                    if str(dt['ObjID']) == str(obj_id):
+                        file_id = dt.get('FileID', None)
+                        if file_id is not None:
+                            pfile = mupifDB.restApiControl.getBinaryFileContentByID(file_id)
+                            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                                full_path = tempDir + "/file.h5"
+                                f = open(full_path, 'wb')
+                                f.write(pfile)
+                                f.close()
+                                prop = mp.ConstantProperty.loadHdf5(full_path)
+                                propval = prop.getValue()
+
+                                tot_elems = propval.shape[0]
+                                id_start = int(start)
+                                id_num = int(num)
+                                if id_num <= 0:
+                                    id_num = tot_elems
+                                id_end = id_start+id_num
+
+                                sub_propval = propval[id_start:id_end]
+                                return jsonify({'result': sub_propval.tolist()})
+                        else:
+                            return jsonify({'result': None, 'error': 'This record has FileID=null.'})
+    return jsonify({'result': None, 'error': 'Something went wrong.'})
+
+
+def get_execution_input_typearray(weid, name, obj_id, start, num):
+    return get_execution_input_or_output_typearray(weid, name, obj_id, start, num, 'Inputs')
+
+
+def get_execution_output_typearray(weid, name,obj_id, start, num):
+    return get_execution_input_or_output_typearray(weid, name, obj_id, start, num, 'Outputs')
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
@@ -760,6 +805,22 @@ def main():
 
         # --------------------------------------------------
         # No action
+        # --------------------------------------------------
+
+        if action == "get_execution_input_typearray":
+            if "id" in args and "name" in args and "obj_id" in args and "start" in args and "num" in args:
+                return get_execution_input_typearray(args["id"], args["name"], args["obj_id"], args["start"], args["num"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' or 'start' or 'num' not specified."})
+
+        if action == "get_execution_output_typearray":
+            if "id" in args and "name" in args and "obj_id" in args and "start" in args and "num" in args:
+                return get_execution_output_typearray(args["id"], args["name"], args["obj_id"], args["start"], args["num"])
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' or 'start' or 'num' not specified."})
+
+        # --------------------------------------------------
+        # Stat
         # --------------------------------------------------
 
         return jsonify({'error': "Action '%s' not found." % action})
