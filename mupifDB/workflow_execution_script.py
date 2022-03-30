@@ -12,7 +12,7 @@ import mupif as mp
 
 log = logging.getLogger()
 mp.util.redirectLog('mupif.log')
-
+log.info('Execution script started')
 
 if __name__ == "__main__":
     workflow = None
