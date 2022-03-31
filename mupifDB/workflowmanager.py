@@ -101,8 +101,6 @@ class WorkflowExecutionIODataSet:
     
     @staticmethod
     def create(workflowID, type, workflowVer=-1):
-        rec = {'Type': type, 'DataSet': []}
-
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if wdoc is None:
             raise KeyError("Workflow document with ID" + workflowID + " not found")
@@ -114,9 +112,9 @@ class WorkflowExecutionIODataSet:
             if isinstance(io.get('ObjID', ""), list) or isinstance(io.get('ObjID', ""), tuple):
                 for objid in io['ObjID']:
                     # make separate input entry for each obj_id
-                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
+                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Object': {}, 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
             else:  # single obj_id provided
-                data.append({'Name': io['Name'], 'Type': io['Type'], 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': io.get('ObjID', ""), 'Compulsory': io.get('Compulsory', None), 'Source': None, 'OriginId': None, 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
+                data.append({'Name': io['Name'], 'Type': io['Type'], 'Object': {}, 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': io.get('ObjID', ""), 'Compulsory': io.get('Compulsory', None), 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
         rec['Type'] = type
         rec['DataSet'] = data
         rec_id = restApiControl.insertIODataRecord(rec)
@@ -165,24 +163,6 @@ class WorkflowExecutionIODataSet:
             restApiControl.setExecutionInputValue(self.weid, name, value, obj_id)
         else:
             raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
-
-    def setOutputVal(self, name, value, obj_id=""):
-        """
-        Sets the value of output parameter attributes identified by name to given value
-        @param: name parameter name
-        @param: value value to set
-        @param: value associated value
-        """
-        restApiControl.setExecutionOutputValue(self.weid, name, value, obj_id)
-
-    def setOutputFileID(self, name, fileID, obj_id=""):
-        """
-        Sets the value of output parameter attributes identified by name to given value
-        @param: name parameter name
-        @param: value value to set
-        @param: value associated value
-        """
-        restApiControl.setExecutionOutputFileID(self.weid, name, fileID, obj_id)
 
 
 class WorkflowExecutionContext:
@@ -447,15 +427,8 @@ def mapOutputs(app, eid, time):
             if object_type == 'mupif.Property':
                 print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], oid, time), flush=True)
                 prop = app.get(mupif.DataID[typeID], time, oid)
-                if prop.valueType == mupif.ValueType.Scalar:
-                    val = prop.inUnitsOf(units).getValue()
-                    val = str(val)
-                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
-                elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-                    # filling the string Value
-                    val = prop.inUnitsOf(units).getValue()
-                    val = str(tuple(val))
-                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
+                if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
+                    restApiControl.setExecutionOutputObject(eid, name, oid, prop.to_db_dict())
                 elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
                     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                         full_path = tempDir + "/file.h5"
@@ -465,9 +438,20 @@ def mapOutputs(app, eid, time):
                             fileID = restApiControl.uploadBinaryFileContent(f)
                             f.close()
                         if fileID is not None:
+                            restApiControl.setExecutionOutputObject(eid, name, oid, {'FileID': fileID})
                             restApiControl.setExecutionOutputFileID(eid, name, fileID, oid)
                         else:
                             print("hdf5 file was not saved")
+
+                if prop.valueType == mupif.ValueType.Scalar:
+                    val = prop.inUnitsOf(units).getValue()
+                    val = str(val)
+                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
+                elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
+                    # filling the string Value
+                    val = prop.inUnitsOf(units).getValue()
+                    val = str(tuple(val))
+                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
 
             else:
                 raise ValueError('Handling of io param of type %s not implemented' % object_type)

@@ -253,6 +253,11 @@ def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
     return response.status_code == 200
 
 
+def setExecutionOutputObject(weid, name, obj_id, object_dict):
+    response = requests.put(RESTserver + "main?action=set_execution_output_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
+    return response.status_code == 200
+
+
 def setExecutionOutputValue(weid, name, value, obj_id):
     response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200

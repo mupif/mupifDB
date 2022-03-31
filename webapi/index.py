@@ -421,7 +421,7 @@ def initexecution(wid, version):
 def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
-    html = '';
+    html = ''
     html += '<script type="text/javascript">window.execution_id = "' + weid + '";</script>'
     html += '<script type="text/javascript" src="/main.js"></script>'
     if data['Status'] == 'Pending' or data['Status'] == 'Running' or data['Status'] == 'Scheduled':
