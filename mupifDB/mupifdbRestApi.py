@@ -388,11 +388,19 @@ def set_execution_output(weid, name, obj_id, value=None, file_id=None):
     return jsonify({'error': "Output was not updated."})
 
 
+def set_execution_input_object(weid, name, obj_id, object_dict):
+    return set_execution_io_object(weid, name, obj_id, object_dict, 'Inputs')
+
+
 def set_execution_output_object(weid, name, obj_id, object_dict):
+    return set_execution_io_object(weid, name, obj_id, object_dict, 'Outputs')
+
+
+def set_execution_io_object(weid, name, obj_id, object_dict, inout):  # inout is Inputs or Outputs
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
     table = mongo.db.IOData
-    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].Object": object_dict}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record[inout])}, {'$set': {"DataSet.$[r].Object": object_dict}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
     if res.matched_count == 1:
         return jsonify({'result': "OK"})
     return jsonify({'error': "Output was not updated."})
@@ -762,6 +770,13 @@ def main():
                     return set_execution_output(weid=args["id"], name=args["name"], file_id=args["file_id"], obj_id=args["obj_id"])
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'obj_id' or ('value' or 'file_id') not specified."})
+
+        if action == "set_execution_input_object":
+            if "id" in args and "name" in args and "obj_id" in args:
+                print(request.get_json())
+                return set_execution_input_object(weid=args["id"], name=args["name"], obj_id=args["obj_id"], object_dict=request.get_json())
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'obj_id' not specified."})
 
         if action == "set_execution_output_object":
             if "id" in args and "name" in args and "obj_id" in args:

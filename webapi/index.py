@@ -11,6 +11,7 @@ import os
 import inspect
 import mupif as mp
 import requests
+from ast import literal_eval
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
@@ -482,22 +483,31 @@ def setExecutionInputs(weid):
             # process submitted data
             msg = ""
             c = 0
-            payload = {}
             for i in execution_inputs:
                 name = i['Name']
                 objID = i['ObjID']
                 value = request.form['Value_%d' % c]
                 units = i['Units']
-                msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
-                payload[name+'{'+str(objID)+'}'] = value
-                restApiControl.setExecutionInputValue(weid, name, value, objID)
 
                 # set Link to output data
                 c_eid = request.form['c_eid_%d' % c]
                 c_name = request.form['c_name_%d' % c]
                 c_objid = request.form['c_objid_%d' % c]
                 if c_eid != "" and c_name != "":
-                    value = restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
+                    restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
+                    restApiControl.setExecutionInputObject(weid, name, objID, {})
+                else:
+                    msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
+                    restApiControl.setExecutionInputValue(weid, name, value, objID)
+                    object_dict = {
+                        'ClassName': 'ConstantProperty',
+                        'ValueType': i['ValueType'],
+                        'DataID': i['TypeID'].replace('mupif.DataID.', ''),
+                        'Unit': i['Units'],
+                        'Value': literal_eval(value),
+                        'Time': None
+                    }
+                    restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
 
                 c = c+1
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"

@@ -297,7 +297,6 @@ def checkInputs(eid):
                                 if m_inp_record['FileID'] is None:
                                     if literal_eval(m_inp_record['Value']) is not None:
                                         part_input_check = True
-                                    print('A')
                                 else:
                                     pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
                                     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -308,8 +307,6 @@ def checkInputs(eid):
                                         prop = mupif.ConstantProperty.loadHdf5(full_path)
                                         if prop.getValue() is not None:
                                             part_input_check = True
-                                    print('B')
-
                         else:
                             # check only not None value
                             if inp_record['Value'] != 'None' and inp_record['Value'] != '' and inp_record['Value'] is not None:
