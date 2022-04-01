@@ -424,6 +424,18 @@ def mapOutputs(app, eid, time):
             if object_type == 'mupif.Property':
                 print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], oid, time), flush=True)
                 prop = app.get(mupif.DataID[typeID], time, oid)
+
+                # todo delete
+                if prop.valueType == mupif.ValueType.Scalar:
+                    val = prop.inUnitsOf(units).getValue()
+                    val = str(val)
+                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
+                elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
+                    # filling the string Value
+                    val = prop.inUnitsOf(units).getValue()
+                    val = str(tuple(val))
+                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
+
                 if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
                     restApiControl.setExecutionOutputObject(eid, name, oid, prop.to_db_dict())
                 elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
@@ -436,19 +448,9 @@ def mapOutputs(app, eid, time):
                             f.close()
                         if fileID is not None:
                             restApiControl.setExecutionOutputObject(eid, name, oid, {'FileID': fileID})
-                            restApiControl.setExecutionOutputFileID(eid, name, fileID, oid)
+                            restApiControl.setExecutionOutputFileID(eid, name, fileID, oid)  # todo delete
                         else:
                             print("hdf5 file was not saved")
-
-                if prop.valueType == mupif.ValueType.Scalar:
-                    val = prop.inUnitsOf(units).getValue()
-                    val = str(val)
-                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
-                elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-                    # filling the string Value
-                    val = prop.inUnitsOf(units).getValue()
-                    val = str(tuple(val))
-                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
 
             else:
                 raise ValueError('Handling of io param of type %s not implemented' % object_type)

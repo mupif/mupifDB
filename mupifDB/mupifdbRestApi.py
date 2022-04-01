@@ -5,6 +5,7 @@ import tempfile
 import io
 import bson
 import json
+from ast import literal_eval
 from flask import Flask, redirect, url_for, send_file, send_from_directory, flash, request, jsonify
 from flask_pymongo import PyMongo
 from flask_cors import CORS
@@ -297,6 +298,16 @@ def get_workflowexecutionOutputs(weid):  # todo
     return jsonify({'result': output})
 
 
+def get_execution_io_item(weid, name, obj_id, inout):
+    table = mongo.db.WorkflowExecutions
+    wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
+    data = mongo.db.IOData.find_one({'_id': bson.objectid.ObjectId(wi[inout])})
+    for elem in data['DataSet']:
+        if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
+            return jsonify({'result': elem})
+    return jsonify({'result': None})
+
+
 def insert_execution(wid, version, ip):
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wid, workflowVer=int(version), requestedBy='', ip=ip)
     return jsonify({'result': c.executionID})
@@ -347,12 +358,35 @@ def isIntable(val):
     return True
 
 
-def set_execution_input(weid, name, value, obj_id):
+def set_execution_io_value(weid, name, obj_id, value, inout):
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
 
     table = mongo.db.IOData
-    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Inputs'])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record[inout])}, {'$set': {"DataSet.$[r].%s" % "Value": value}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+
+    # todo delete
+    # temporary fix
+    data = None
+    if inout == 'Inputs':
+        data = mupifDB.restApiControl.getExecutionInputRecordItem(weid, name, obj_id)
+    if inout == 'Outputs':
+        data = mupifDB.restApiControl.getExecutionOutputRecordItem(weid, name, obj_id)
+    if data is not None:
+        object_dict = {
+            'ClassName': 'ConstantProperty',
+            'ValueType': data['ValueType'],
+            'DataID': data['TypeID'].replace('mupif.DataID.', ''),
+            'Unit': data['Units'],
+            'Value': literal_eval(value),
+            'Time': None
+        }
+        if inout == 'Inputs':
+            mupifDB.restApiControl.setExecutionInputObject(weid, name, obj_id, object_dict)
+        if inout == 'Outputs':
+            mupifDB.restApiControl.setExecutionOutputObject(weid, name, obj_id, object_dict)
+    #
+
     if res.matched_count == 1:
         return jsonify({'result': "OK"})
     return jsonify({'error': "Value was not updated."})
@@ -369,20 +403,12 @@ def set_execution_input_link(weid, name, obj_id, link_eid, link_name, link_obj_i
     return jsonify({'error': "Link was not updated."})
 
 
-def set_execution_output(weid, name, obj_id, value=None, file_id=None):
+def set_execution_output_fileid(weid, name, obj_id, file_id):
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
-    setval = None
-    setkey = "None"
-    if value is not None:
-        setval = value
-        setkey = "Value"
-    elif file_id is not None:
-        setval = file_id
-        setkey = "FileID"
 
     table = mongo.db.IOData
-    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].%s" % setkey: setval}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+    res = table.update_one({'_id': bson.objectid.ObjectId(execution_record['Outputs'])}, {'$set': {"DataSet.$[r].FileID": file_id}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
     if res.matched_count == 1:
         return jsonify({'result': "OK"})
     return jsonify({'error': "Output was not updated."})
@@ -406,7 +432,7 @@ def set_execution_io_object(weid, name, obj_id, object_dict, inout):  # inout is
     return jsonify({'error': "Output was not updated."})
 
 
-def get_execution_input_or_output(weid, name, obj_id, inout):
+def get_execution_io_value(weid, name, obj_id, inout):
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     if s is not None:
         execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
@@ -419,17 +445,9 @@ def get_execution_input_or_output(weid, name, obj_id, inout):
     return jsonify({'result': None})
 
 
-def get_execution_input(weid, name, obj_id):
-    return get_execution_input_or_output(weid, name, obj_id, 'Inputs')
-
-
-def get_execution_output(weid, name, obj_id):
-    return get_execution_input_or_output(weid, name, obj_id, 'Outputs')
-
-
 #
 
-def get_execution_input_or_output_typearray(weid, name, obj_id, start, num, inout):
+def get_execution_io_value_typearray(weid, name, obj_id, start, num, inout):
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     if s is not None:
         execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
@@ -461,14 +479,6 @@ def get_execution_input_or_output_typearray(weid, name, obj_id, start, num, inou
                         else:
                             return jsonify({'result': None, 'error': 'This record has FileID=null.'})
     return jsonify({'result': None, 'error': 'Something went wrong.'})
-
-
-def get_execution_input_typearray(weid, name, obj_id, start, num):
-    return get_execution_input_or_output_typearray(weid, name, obj_id, start, num, 'Inputs')
-
-
-def get_execution_output_typearray(weid, name,obj_id, start, num):
-    return get_execution_input_or_output_typearray(weid, name, obj_id, start, num, 'Outputs')
 
 
 # --------------------------------------------------
@@ -735,6 +745,18 @@ def main():
             else:
                 return jsonify({'error': "Param 'id' not specified."})
 
+        if action == "get_execution_input_item":
+            if "id" in args:
+                return get_execution_io_item(args["id"], args["name"], args["obj_id"], 'Inputs')
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'obj_id' not specified."})
+
+        if action == "get_execution_output_item":
+            if "id" in args:
+                return get_execution_io_item(args["id"], args["name"], args["obj_id"], 'Outputs')
+            else:
+                return jsonify({'error': "Param 'id' or 'name' or 'obj_id' not specified."})
+
         # --------------------------------------------------
         # IO Data
         # --------------------------------------------------
@@ -758,16 +780,16 @@ def main():
 
         if action == "set_execution_input":
             if "id" in args and "name" in args and "value" in args and "obj_id" in args:
-                return set_execution_input(args["id"], args["name"], args["value"], args["obj_id"])
+                return set_execution_io_value(args["id"], args["name"], args["obj_id"], args["value"], 'Inputs')
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 
         if action == "set_execution_output":
             if "id" in args and "name" in args and "obj_id" in args and ("value" in args or "file_id" in args):
                 if "value" in args:
-                    return set_execution_output(weid=args["id"], name=args["name"], value=args["value"], obj_id=args["obj_id"])
+                    return set_execution_io_value(args["id"], args["name"], args["obj_id"], args["value"], 'Outputs')
                 elif "file_id" in args:
-                    return set_execution_output(weid=args["id"], name=args["name"], file_id=args["file_id"], obj_id=args["obj_id"])
+                    return set_execution_output_fileid(args["id"], args["name"], args["obj_id"], args["file_id"])
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'obj_id' or ('value' or 'file_id') not specified."})
 
@@ -787,13 +809,13 @@ def main():
 
         if action == "get_execution_input":
             if "id" in args and "name" in args and "obj_id" in args:
-                return get_execution_input(args["id"], args["name"], args["obj_id"])
+                return get_execution_io_value(args["id"], args["name"], args["obj_id"], 'Inputs')
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 
         if action == "get_execution_output":
             if "id" in args and "name" in args and "obj_id" in args:
-                return get_execution_output(args["id"], args["name"], args["obj_id"])
+                return get_execution_io_value(args["id"], args["name"], args["obj_id"], 'Outputs')
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' not specified."})
 
@@ -841,13 +863,13 @@ def main():
 
         if action == "get_execution_input_typearray":
             if "id" in args and "name" in args and "obj_id" in args and "start" in args and "num" in args:
-                return get_execution_input_typearray(args["id"], args["name"], args["obj_id"], args["start"], args["num"])
+                return get_execution_io_value_typearray(args["id"], args["name"], args["obj_id"], args["start"], args["num"], 'Inputs')
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' or 'start' or 'num' not specified."})
 
         if action == "get_execution_output_typearray":
             if "id" in args and "name" in args and "obj_id" in args and "start" in args and "num" in args:
-                return get_execution_output_typearray(args["id"], args["name"], args["obj_id"], args["start"], args["num"])
+                return get_execution_io_value_typearray(args["id"], args["name"], args["obj_id"], args["start"], args["num"], 'Outputs')
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' or 'start' or 'num' not specified."})
 

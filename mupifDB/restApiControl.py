@@ -221,6 +221,20 @@ def getExecutionOutputRecord(weid):
     return response_json['result']
 
 
+def getExecutionInputRecordItem(weid, name, obj_id):
+    io_data = getExecutionInputRecord(weid)
+    for elem in io_data:
+        if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
+            return elem
+
+
+def getExecutionOutputRecordItem(weid, name, obj_id):
+    io_data = getExecutionOutputRecord(weid)
+    for elem in io_data:
+        if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
+            return elem
+
+
 def getExecutionInputsCheck(weid):
     response = requests.get(RESTserver + "main?action=get_execution_inputs_check&id=" + str(weid))
     response_json = response.json()
