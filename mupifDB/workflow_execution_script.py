@@ -4,6 +4,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append("/var/lib/mupif/mupifDB/")
 os.environ["MUPIF_LOG_LEVEL"] = "INFO"
+os.environ["MUPIF_LOG_FILE"] = "mupif.log"
 import logging
 import argparse
 import mupifDB
@@ -11,7 +12,6 @@ import sys
 import mupif as mp
 
 log = logging.getLogger()
-mp.util.redirectLog('mupif.log')
 log.info('Execution script started')
 
 if __name__ == "__main__":
