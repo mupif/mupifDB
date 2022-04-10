@@ -510,6 +510,7 @@ def setExecutionInputs(weid):
                             'Value': literal_eval(value),
                             'Time': None
                         }
+                        restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
                         restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
                     else:
                         pass
