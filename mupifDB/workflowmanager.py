@@ -246,6 +246,69 @@ def ObjIDIsIterable(val):
         return False
 
 
+def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False):
+    if linked_output:
+        inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
+    else:
+        inp_record = restApiControl.getExecutionInputRecordItem(eid, name, obj_id)
+    if inp_record is not None:
+        link_eid = inp_record['Link'].get('ExecID', '')
+        link_name = inp_record['Link'].get('Name', '')
+        link_oid = inp_record['Link'].get('ObjID', '')
+        if link_eid != "" and link_name != "":
+            # check linked value
+            return checkInput(
+                eid=link_eid,
+                name=link_name,
+                obj_id=link_oid,
+                object_type=object_type,
+                data_id=data_id,
+                linked_output=True
+            )
+
+        else:
+            # check value from database record
+            if object_type == 'mupif.Property':
+                file_id = inp_record['Object'].get('FileID', None)
+                if file_id is None:
+                    # property from dict
+                    try:
+                        prop = mupif.ConstantProperty.from_db_dict(inp_record['Object'])
+                        return True
+                    except:
+                        return False
+                else:
+                    # property from hdf5 file
+                    pfile = restApiControl.getBinaryFileContentByID(file_id)
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        print("ggg")
+                        full_path = tempDir + "/file.h5"
+                        f = open(full_path, 'wb')
+                        f.write(pfile)
+                        f.close()
+                        try:
+                            prop = mupif.ConstantProperty.loadHdf5(full_path)
+                            return True
+                        except:
+                            return False
+            elif object_type == 'mupif.HeavyStruct':
+                file_id = inp_record['Object'].get('FileID', None)
+                if file_id is not None:
+                    # load from hdf5 file
+                    pfile = restApiControl.getBinaryFileContentByID(file_id)
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        full_path = tempDir + "/file.h5"
+                        f = open(full_path, 'wb')
+                        f.write(pfile)
+                        f.close()
+                        try:
+                            hs = mupif.HeavyStruct(h5path=full_path, mode='readonly', id=mupif.DataID[data_id])
+                            return True
+                        except:
+                            return False
+    return False
+
+
 def checkInputs(eid):
     execution = restApiControl.getExecutionRecord(eid)
     workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
@@ -256,74 +319,32 @@ def checkInputs(eid):
         name = input_template['Name']
         object_type = input_template['Type']
         valueType = input_template['ValueType']
-        typeID = input_template['TypeID']
+        data_id = input_template['TypeID']
         # try to get raw PID from typeID
-        match = re.search('\w+\Z', typeID)
+        match = re.search('\w+\Z', data_id)
         if match:
-            typeID = match.group()
+            data_id = match.group()
 
         objID = input_template.get('ObjID', "")
         compulsory = input_template['Compulsory']
+        if compulsory:
+            if not ObjIDIsIterable(objID):
+                objID = [objID]
 
-        if not ObjIDIsIterable(objID):
-            objID = [objID]
-
-        for oid in objID:
-            if compulsory:
-                if object_type == 'mupif.Property':
-
-                    part_input_check = False
-
-                    inp_record = None
-                    for exec_inp in execution_inputs:
-                        if exec_inp['Name'] == name and exec_inp['ObjID'] == oid:
-                            inp_record = exec_inp
-                            break
-
-                    if inp_record is not None:
-                        if inp_record['Link']['ExecID'] != "" and inp_record['Link']['Name'] != "":
-                            # Link -> check if it finds an existing record first
-                            m_execution = restApiControl.getExecutionRecord(inp_record['Link']['ExecID'])
-                            m_execution_outputs = restApiControl.getIODataRecord(m_execution['Outputs'])['DataSet']
-
-                            m_inp_record = None
-                            for exec_out in m_execution_outputs:
-                                if exec_out['Name'] == inp_record['Link']['Name'] and exec_out['ObjID'] == inp_record['Link']['ObjID']:
-                                    m_inp_record = exec_out
-                                    break
-
-                            if m_inp_record is not None:
-                                # now check the value
-                                if m_inp_record['FileID'] is None:
-                                    if literal_eval(m_inp_record['Value']) is not None:
-                                        part_input_check = True
-                                else:
-                                    pfile = restApiControl.getBinaryFileContentByID(m_inp_record['FileID'])
-                                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                                        full_path = tempDir + "/file.h5"
-                                        f = open(full_path, 'wb')
-                                        f.write(pfile)
-                                        f.close()
-                                        prop = mupif.ConstantProperty.loadHdf5(full_path)
-                                        if prop.getValue() is not None:
-                                            part_input_check = True
-                        else:
-                            # check only not None value
-                            if inp_record['Value'] != 'None' and inp_record['Value'] != '' and inp_record['Value'] is not None:
-                                part_input_check = True
-
-                    if part_input_check is False:
-                        return False
-                else:
-                    raise ValueError('Handling of io param of type %s not implemented' % object_type)
+            for oid in objID:
+                if checkInput(
+                    eid=eid,
+                    name=name,
+                    obj_id=oid,
+                    data_id=data_id,
+                    object_type=object_type
+                ) is False:
+                    return False
 
     return True
 
 
-def mapInput(app, eid, name, obj_id, app_obj_id, object_type, linked_output=False):
-    execution = restApiControl.getExecutionRecord(eid)
-    execution_inputs = restApiControl.getIODataRecord(execution['Inputs'])['DataSet']
-
+def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False):
     if linked_output:
         inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
@@ -341,6 +362,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, linked_output=Fals
                 obj_id=link_oid,
                 app_obj_id=app_obj_id,
                 object_type=object_type,
+                data_id=data_id,
                 linked_output=True
             )
 
@@ -362,6 +384,18 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, linked_output=Fals
                         f.close()
                         prop = mupif.ConstantProperty.loadHdf5(full_path)
                         app.set(prop, app_obj_id)
+            elif object_type == 'mupif.HeavyStruct':
+                file_id = inp_record['Object'].get('FileID', None)
+                if file_id is not None:
+                    # load from hdf5 file
+                    pfile = restApiControl.getBinaryFileContentByID(file_id)
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        full_path = tempDir + "/file.h5"
+                        f = open(full_path, 'wb')
+                        f.write(pfile)
+                        f.close()
+                        hs = mupif.HeavyStruct(h5path=full_path, mode='readonly', id=mupif.DataID[data_id])
+                        app.set(hs, app_obj_id)
             else:
                 raise ValueError('Handling of io param of type %s is not implemented' % object_type)
 
@@ -373,13 +407,65 @@ def mapInputs(app, eid):
 
     for input_template in workflow_input_templates:
         name = input_template['Name']
+        object_type = input_template.get('Type', '')
+        data_id = input_template['TypeID']
+        # try to get raw PID from typeID
+        match = re.search('\w+\Z', data_id)
+        if match:
+            data_id = match.group()
+
         objID = input_template.get('ObjID', "")
-        Type = input_template.get('Type', '')
         if not ObjIDIsIterable(objID):
             objID = [objID]
 
         for oid in objID:
-            mapInput(app=app, eid=eid, name=name, obj_id=oid, app_obj_id=oid, object_type=Type)
+            mapInput(
+                app=app,
+                eid=eid,
+                name=name,
+                obj_id=oid,
+                app_obj_id=oid,
+                data_id=data_id,
+                object_type=object_type
+            )
+
+
+def mapOutput(app, eid, name, obj_id, data_id, time, object_type):
+    if object_type == 'mupif.Property':
+        prop = app.get(mupif.DataID[data_id], time, obj_id)
+
+        if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
+            restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+        elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
+            with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                full_path = tempDir + "/file.h5"
+                prop.saveHdf5(full_path)
+                fileID = None
+                with open(full_path, 'rb') as f:
+                    fileID = restApiControl.uploadBinaryFileContent(f)
+                    f.close()
+                if fileID is not None:
+                    restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                else:
+                    print("hdf5 file was not saved")
+    elif object_type == 'mupif.HeavyStruct':
+        hs = app.get(mupif.DataID[data_id], time, obj_id)
+
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            full_path = tempDir + "/file.h5"
+            hs_copy = hs.deepcopy()
+            hs.moveStorage(full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFileContent(f)
+                f.close()
+            if fileID is not None:
+                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+            else:
+                print("hdf5 file was not saved")
+
+    else:
+        raise ValueError('Handling of io param of type %s not implemented' % object_type)
 
 
 def mapOutputs(app, eid, time):
@@ -390,49 +476,23 @@ def mapOutputs(app, eid, time):
     for output_template in workflow_output_templates:
         name = output_template['Name']
         object_type = output_template['Type']
-        units = output_template['Units']
         typeID = output_template['TypeID']
         # try to get raw PID from typeID
         match = re.search('\w+\Z', typeID)
         if match:
             typeID = match.group()
-        
-        objID = output_template.get('ObjID', "")
 
+        objID = output_template.get('ObjID', "")
         if not ObjIDIsIterable(objID):
             objID = [objID]
 
         for oid in objID:
-            if object_type == 'mupif.Property':
-                print("Requesting %s, objID %s, time %s" % (mupif.DataID[typeID], oid, time), flush=True)
-                prop = app.get(mupif.DataID[typeID], time, oid)
-
-                # todo delete
-                if prop.valueType == mupif.ValueType.Scalar:
-                    val = prop.inUnitsOf(units).getValue()
-                    val = str(val)
-                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
-                elif prop.valueType in [mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-                    # filling the string Value
-                    val = prop.inUnitsOf(units).getValue()
-                    val = str(tuple(val))
-                    restApiControl.setExecutionOutputValue(eid, name, val, oid)
-
-                if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-                    restApiControl.setExecutionOutputObject(eid, name, oid, prop.to_db_dict())
-                elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        prop.saveHdf5(full_path)
-                        fileID = None
-                        with open(full_path, 'rb') as f:
-                            fileID = restApiControl.uploadBinaryFileContent(f)
-                            f.close()
-                        if fileID is not None:
-                            restApiControl.setExecutionOutputObject(eid, name, oid, {'FileID': fileID})
-                            restApiControl.setExecutionOutputFileID(eid, name, fileID, oid)  # todo delete
-                        else:
-                            print("hdf5 file was not saved")
-
-            else:
-                raise ValueError('Handling of io param of type %s not implemented' % object_type)
+            mapOutput(
+                app=app,
+                eid=eid,
+                name=name,
+                obj_id=oid,
+                data_id=typeID,
+                time=time,
+                object_type=object_type
+            )

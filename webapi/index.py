@@ -3,6 +3,8 @@ import importlib
 import math
 import zipfile
 import tempfile
+
+import mupif
 from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory, jsonify
 from flask import request
 from flask_cors import CORS
@@ -497,17 +499,20 @@ def setExecutionInputs(weid):
                     restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
                     restApiControl.setExecutionInputObject(weid, name, objID, {})
                 else:
-                    msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
-                    restApiControl.setExecutionInputValue(weid, name, value, objID)
-                    object_dict = {
-                        'ClassName': 'ConstantProperty',
-                        'ValueType': i['ValueType'],
-                        'DataID': i['TypeID'].replace('mupif.DataID.', ''),
-                        'Unit': i['Units'],
-                        'Value': literal_eval(value),
-                        'Time': None
-                    }
-                    restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
+                    if i['Type'] == 'mupif.Property':
+                        msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
+
+                        object_dict = {
+                            'ClassName': 'ConstantProperty',
+                            'ValueType': i['ValueType'],
+                            'DataID': i['TypeID'].replace('mupif.DataID.', ''),
+                            'Unit': i['Units'],
+                            'Value': literal_eval(value),
+                            'Time': None
+                        }
+                        restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
+                    else:
+                        pass
 
                 c = c+1
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
@@ -567,10 +572,14 @@ def setExecutionInputs(weid):
                 form += '<td>' + str(i['ObjID']) + '</td>'
                 form += '<td>'
                 if execution_record["Status"] == "Created":
-                    # form += "<input type=\"text\" pattern=\"%s\" name=\"Value_%d\" value=\"%s\" %s/>" % (pattern, c, i['Value'], required)
-                    form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, i['Value'], required)
+                    try:
+                        prop = mupif.ConstantProperty.from_db_dict(i['Object'])
+                        ival = prop.quantity.inUnitsOf(i['Units']).value.tolist()
+                    except:
+                        ival = None
+                    form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
                 else:
-                    form += str(i['Value'])
+                    form += str(i['Object']['Value'])
                 form += "</td>"
                 form += '<td>' + str(i.get('Units')) + '</td>'
 
@@ -586,18 +595,20 @@ def setExecutionInputs(weid):
 
                 form += "</tr>"
 
-            elif input_type == "mupif.Field":
-                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
-            else:
-                # fallback input no check except for required
-                form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
+            # elif input_type == "mupif.Field":
+            #     form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" pattern=\"^\([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?(,[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)*\)\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
+            # else:
+            #     # fallback input no check except for required
+            #     form += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/></td><td>%s</td></tr>" % (i['Name'], description, i['Type'], i['ObjID'], c, i['Value'], required, i.get('Units'))
+
             c += 1
+
         form += "</table>"
         form += "<br>"
         form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
         if execution_record["Status"] == "Created":
             form += "<input type=\"submit\" value=\"Submit\" />"
-        # print (form)
+
         return my_render_template('form.html', form=form)
 
 
@@ -611,19 +622,24 @@ def getExecutionOutputs(weid):
 
     # generate result table form
     form = "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
-    form += "<tr><th>Name</th><th>Type</th><th>DataID</th><th>ObjID</th><th>Value</th><th>Units</th><th>Description</th></tr>"
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Units</th><th>Value</th></tr>"
     for i in execution_outputs:
-        val = i['Value']
-        if i['FileID'] is not None and i['FileID'] != '':
-            val = '<a href="/property_array_view/' + str(i['FileID']) + '/1">link</a>'
+        val = '<i>unable to display</i>'
+        if i['Type'] == 'mupif.Property':
+            if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
+                val = '<a href="/property_array_view/' + str(i['Object'].get('FileID')) + '/1">link</a>'
+            else:
+                prop = mupif.ConstantProperty.from_db_dict(i['Object'])
+                val = prop.inUnitsOf(i.get('Units', '')).getValue()
+
         form += '<tr>'
         form += '<td>' + str(i['Name']) + '</td>'
         form += '<td>' + str(i['Type']) + '</td>'
+        form += '<td>' + str(i.get('ValueType', '')) + '</td>'
         form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
         form += '<td>' + str(i['ObjID']) + '</td>'
-        form += '<td>' + str(val) + '</td>'
         form += '<td>' + str(escape(i.get('Units'))) + '</td>'
-        # form += '<td>' + str(i['Description']) + '</td>'
+        form += '<td>' + str(val) + '</td>'
     form += "</table>"
     form += "</br><a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
     # print (form)
