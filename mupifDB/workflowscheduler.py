@@ -229,7 +229,7 @@ def executeWorkflow(we_id):
 {ll} command is {cmd} {ll}
 ''')
                 env=os.environ.copy()
-                if 'PYTHONPATH' in env: env['PYTHONPATH']+=f':{mupifDBSrcDir}'
+                if 'PYTHONPATH' in env: env['PYTHONPATH']+=f'{os.pathsep}{mupifDBSrcDir}'
                 else: env['PYTHONPATH']=mupifDBSrcDir
 
                 completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
