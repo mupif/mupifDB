@@ -1,7 +1,7 @@
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
-sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
+sys.path.append(mupifDBModDir:=((os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(mupifDBSrcDir:=(mupifDBModDir+'/..'))
 
 import time
 import atexit
@@ -127,7 +127,6 @@ def setupLogger(fileName, level=logging.DEBUG):
 
     return logger
 
-
 def executeWorkflow(we_id):
     # returns a tuple (we_id, result)
     print("executeWorkflow invoked")
@@ -204,20 +203,10 @@ def executeWorkflow(we_id):
                 else:
                     print("Unsupported file extension")
 
-                print("Copying template executor script.")
-                f_in = open(os.path.dirname(os.path.abspath(__file__)) + "/workflow_execution_script.py", 'rt')
-                f_out = open(tempDir + '/workflow_execution_script.py', "wt")
-                for line in f_in:
-                    data = line.replace("modulename_to_be_replaced", workflow_record['modulename'])
-                    data = data.replace("classname_to_be_replaced", workflow_record['classname'])
-                    f_out.write(data)
-                f_in.close()
-                f_out.close()
+                print("Copying executor script.")
 
-                # p = Path(tempDir)
-                # for it in p.iterdir():
-                #     print(it)
-
+                execScript=pathlib.Path(tempDir+'/workflow_execution_script.py')
+                shutil.copy(mupifDBModDir+'/workflow_execution_script.py',execScript)
             except Exception as e:
                 log.error(str(e))
                 # set execution code to failed ...yes or no?
@@ -230,10 +219,25 @@ def executeWorkflow(we_id):
             # update status
             updateStatRunning()
             restApiControl.setExecutionStatusRunning(we_id)
-            python_executor_script_filename = 'workflow_execution_script.py'
-            cmd = ['/usr/bin/python3', tempDir+'/' + python_executor_script_filename, '-eid', str(we_id)]
+            # uses the same python interpreter as the current process
+            cmd = [sys.executable, execScript, '-eid', str(we_id)]
             # print(cmd)
-            completed = subprocess.call(cmd, cwd=tempDir)
+            workflowLogName = tempDir+'/workflow.log')
+            with open(workflowLogName,'w') as workflowLog:
+                ll=10*'='
+                workflowLog.write(f'''{ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+{ll} command is {cmd} {ll}
+''')
+                env=os.environ.copy()
+                if 'PYTHONPATH' in env: env['PYTHONPATH']+=f':{mupifDBSrcDir}'
+                else: env['PYTHONPATH']=mupifDBSrcDir
+
+                completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
+                workflowLog.write(f'''{ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+{ll} duration: {str((dt:=(t0-t1))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
+{ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS}) {ll}
+''')
+
             # print(tempDir)
             print('command:' + str(cmd) + ' Return Code:'+str(completed))
             # store execution log
@@ -245,16 +249,13 @@ def executeWorkflow(we_id):
 
             try:
                 log.info("Copying log files to database")
-                if os.path.exists(tempDir+'/mupif.log'):
-                    with open(tempDir+'/mupif.log', 'rb') as f:
-                        logID = restApiControl.uploadBinaryFileContent(f)
-                        if logID is not None:
-                            restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
-                    log.info("Copying log files done")
-                    print("Copying log files done")
-                else:
-                    log.info("Log file does not exist")
-                    print('Log file does not exist')
+                # if os.path.exists(tempDir+'/mupif.log'):
+                with open(workflowLogName, 'rb') as f:
+                    logID = restApiControl.uploadBinaryFileContent(f)
+                    if logID is not None:
+                        restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
+                log.info("Copying log files done")
+                print("Copying log files done")
             except:
                 log.info("Copying log files was not successful")
                 print("Copying log files was not successful")

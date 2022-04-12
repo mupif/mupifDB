@@ -1,15 +1,18 @@
 import importlib
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append("/var/lib/mupif/mupifDB/")
-os.environ["MUPIF_LOG_LEVEL"] = "INFO"
-os.environ["MUPIF_LOG_FILE"] = "mupif.log"
+
+# workflowscheduler sets PYTHONPATH env var, thus mupifDB should be normally importable
+# unlike mupif
+
+#sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+#sys.path.append("/var/lib/mupif/mupifDB/")
+#os.environ["MUPIF_LOG_LEVEL"] = "INFO"
+#os.environ["MUPIF_LOG_FILE"] = "mupif.log"
 import logging
 import argparse
 import mupifDB
-import sys
-import mupif as mp
+# import mupif as mp
 
 log = logging.getLogger()
 log.info('Execution script started')
