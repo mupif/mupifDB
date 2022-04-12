@@ -1,7 +1,7 @@
 import sys
 import os
-sys.path.append(mupifDBModDir:=((os.path.dirname(os.path.abspath(__file__)))))
-sys.path.append(mupifDBSrcDir:=(mupifDBModDir+'/..'))
+sys.path.append(mupifDBModDir := (os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(mupifDBSrcDir := (mupifDBModDir+'/..'))
 
 import time
 import atexit
@@ -17,6 +17,8 @@ import restApiControl
 import my_email
 
 from pathlib import Path
+import shutil
+import datetime
 
 import logging
 # logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
@@ -127,6 +129,7 @@ def setupLogger(fileName, level=logging.DEBUG):
 
     return logger
 
+
 def executeWorkflow(we_id):
     # returns a tuple (we_id, result)
     print("executeWorkflow invoked")
@@ -146,15 +149,14 @@ def executeWorkflow(we_id):
     # get workflow record (needed to get workflow source to execute
     workflowVersion = int(we_rec['WorkflowVersion'])
     wid = we_rec['WorkflowID']
-    id = we_rec['_id']
     workflow_record = restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
     if workflow_record is None:
         print("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
         log.error("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
         raise KeyError("Workflow document with ID %s, version %s not found" % (wid, workflowVersion))
     else:
-        print("Workflow document with wid %s, id %s, version %s found" % (wid, id, workflowVersion))
-        log.info("Workflow document with wid %s, id %s, version %s found" % (wid, id, workflowVersion))
+        print("Workflow document with wid %s, id %s, version %s found" % (wid, we_rec['_id'], workflowVersion))
+        log.info("Workflow document with wid %s, id %s, version %s found" % (wid, we_rec['_id'], workflowVersion))
 
     # check if status is "Scheduled"
     if we_rec['Status'] == 'Scheduled':
@@ -205,7 +207,7 @@ def executeWorkflow(we_id):
 
                 print("Copying executor script.")
 
-                execScript=pathlib.Path(tempDir+'/workflow_execution_script.py')
+                execScript = Path(tempDir+'/workflow_execution_script.py')
                 shutil.copy(mupifDBModDir+'/workflow_execution_script.py',execScript)
             except Exception as e:
                 log.error(str(e))
@@ -215,28 +217,29 @@ def executeWorkflow(we_id):
             # execute
             print("Executing we_id %s, tempdir %s" % (we_id, tempDir))
             log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
-            # print("Executing we_id %s, tempdir %s" % (we_id, tempDir))
             # update status
             updateStatRunning()
             restApiControl.setExecutionStatusRunning(we_id)
             # uses the same python interpreter as the current process
             cmd = [sys.executable, execScript, '-eid', str(we_id)]
             # print(cmd)
-            workflowLogName = tempDir+'/workflow.log')
-            with open(workflowLogName,'w') as workflowLog:
-                ll=10*'='
-                workflowLog.write(f'''{ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
-{ll} command is {cmd} {ll}
-''')
-                env=os.environ.copy()
-                if 'PYTHONPATH' in env: env['PYTHONPATH']+=f':{mupifDBSrcDir}'
-                else: env['PYTHONPATH']=mupifDBSrcDir
+            workflowLogName = tempDir+'/workflow.log'
+            with open(workflowLogName, 'w') as workflowLog:
+                ll = 10*'='
+                workflowLog.write(f'''
+{ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+{ll} command is {cmd} {ll}''')
+                env = os.environ.copy()
+                if 'PYTHONPATH' in env:
+                    env['PYTHONPATH'] += f':{mupifDBSrcDir}'
+                else:
+                    env['PYTHONPATH'] = mupifDBSrcDir
 
                 completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
-                workflowLog.write(f'''{ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
-{ll} duration: {str((dt:=(t0-t1))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
-{ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS}) {ll}
-''')
+                workflowLog.write(f'''
+{ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+{ll} duration: {str((dt:=(t1-t0))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
+{ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS'}) {ll}''')
 
             # print(tempDir)
             print('command:' + str(cmd) + ' Return Code:'+str(completed))
@@ -279,7 +282,6 @@ def executeWorkflow(we_id):
             my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Failed
 
-
     else:
         print("WEID %s not scheduled for execution" % we_id)
         log.error("WEID %s not scheduled for execution" % we_id)
@@ -305,7 +307,8 @@ if __name__ == '__main__':
         import urllib3
         adapter = requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8, backoff_factor=.05))
         session = requests.Session()
-        for proto in ('http://', 'https://'): session.mount(proto, adapter)
+        for proto in ('http://', 'https://'):
+            session.mount(proto, adapter)
         restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)

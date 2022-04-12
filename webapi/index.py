@@ -499,6 +499,7 @@ def setExecutionInputs(weid):
                     restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
                     restApiControl.setExecutionInputObject(weid, name, objID, {})
                 else:
+                    restApiControl.setExecutionInputLink(weid, name, objID, '', '', '')
                     if i['Type'] == 'mupif.Property':
                         msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
 
@@ -510,7 +511,6 @@ def setExecutionInputs(weid):
                             'Value': literal_eval(value),
                             'Time': None
                         }
-                        restApiControl.setExecutionInputLink(weid, name, objID, '', '', '')
                         restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
                     else:
                         pass
