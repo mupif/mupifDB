@@ -274,7 +274,7 @@ def executeWorkflow(we_id):
             return we_id, ExecutionResult.Failed
         elif completed == 2:
             log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
-            restApiControl.setExecutionStatusPending(we_id)
+            restApiControl.setExecutionStatusPending(we_id, True)
         else:
             pass
 

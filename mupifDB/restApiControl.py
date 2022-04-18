@@ -177,8 +177,11 @@ def setExecutionStatusScheduled(execution_id):
     return setExecutionParameter(execution_id, "Status", "Scheduled")
 
 
-def setExecutionStatusPending(execution_id):
-    setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
+def setExecutionStatusPending(execution_id, reverted=False):
+    if reverted:
+        setExecutionParameter(execution_id, "StartDate", "")
+    else:
+        setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Pending")
 
 
