@@ -5,10 +5,10 @@ import os
 # workflowscheduler sets PYTHONPATH env var, thus mupifDB should be normally importable
 # unlike mupif
 
-#sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-#sys.path.append("/var/lib/mupif/mupifDB/")
-#os.environ["MUPIF_LOG_LEVEL"] = "INFO"
-#os.environ["MUPIF_LOG_FILE"] = "mupif.log"
+# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# sys.path.append("/var/lib/mupif/mupifDB/")
+# os.environ["MUPIF_LOG_LEVEL"] = "INFO"
+# os.environ["MUPIF_LOG_FILE"] = "mupif.log"
 import logging
 import argparse
 import mupifDB
@@ -43,11 +43,20 @@ if __name__ == "__main__":
         #
 
         workflow = workflow_class()
-        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
+        ival = workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
+        if ival is False:
+            log.error('Not enough resources')
+            raise ResourceWarning("Not enough resources")
         mupifDB.workflowmanager.mapInputs(workflow, args.id)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())
         workflow.terminate()
+
+    except ResourceWarning as err:
+        log.exception(err)
+        # if workflow is not None:
+        #     workflow.terminate()
+        sys.exit(2)
 
     except Exception as err:
         log.exception(err)

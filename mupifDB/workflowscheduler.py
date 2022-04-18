@@ -131,22 +131,17 @@ def setupLogger(fileName, level=logging.DEBUG):
 
 
 def executeWorkflow(we_id):
-    # returns a tuple (we_id, result)
-    print("executeWorkflow invoked")
     log.info("executeWorkflow invoked")
     print("database connected")
     log.info("database connected")
     # get workflow execution record
     we_rec = restApiControl.getExecutionRecord(we_id)
     if we_rec is None:
-        print("Workflow Execution record %s not found" % we_id)
         log.error("Workflow Execution record %s not found" % we_id)
         raise KeyError("Workflow Execution record %s not found" % we_id)
     else:
-        print("Workflow Execution record %s found" % we_id)
         log.info("Workflow Execution record %s found" % we_id)
 
-    # get workflow record (needed to get workflow source to execute
     workflowVersion = int(we_rec['WorkflowVersion'])
     wid = we_rec['WorkflowID']
     workflow_record = restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
@@ -177,7 +172,6 @@ def executeWorkflow(we_id):
                 python_script_filename = workflow_record['modulename'] + ".py"
 
                 fn = restApiControl.getFileNameByID(workflow_record['GridFSID'])
-                # fn = 'workflowdemo01.py'
                 with open(tempDir + '/' + fn, "wb") as f:
                     f.write(restApiControl.getBinaryFileContentByID(workflow_record['GridFSID']))
                     f.close()
@@ -208,11 +202,11 @@ def executeWorkflow(we_id):
                 print("Copying executor script.")
 
                 execScript = Path(tempDir+'/workflow_execution_script.py')
-                shutil.copy(mupifDBModDir+'/workflow_execution_script.py',execScript)
+                shutil.copy(mupifDBModDir+'/workflow_execution_script.py', execScript)
             except Exception as e:
                 log.error(str(e))
                 # set execution code to failed ...yes or no?
-                return 1
+                return we_id, ExecutionResult.Failed
 
             # execute
             print("Executing we_id %s, tempdir %s" % (we_id, tempDir))
@@ -242,7 +236,8 @@ def executeWorkflow(we_id):
 {ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS'}) {ll}''')
 
             # print(tempDir)
-            print('command:' + str(cmd) + ' Return Code:'+str(completed))
+            log.info('command:' + str(cmd) + ' Return Code:'+str(completed))
+
             # store execution log
             logID = None
 
@@ -258,32 +253,32 @@ def executeWorkflow(we_id):
                     if logID is not None:
                         restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
                 log.info("Copying log files done")
-                print("Copying log files done")
             except:
                 log.info("Copying log files was not successful")
-                print("Copying log files was not successful")
 
             # update status
             updateStatFinished()
         log.info("Updating we_id %s status to %s" % (we_id, completed))
         # set execution code to completed
         if completed == 0:
-            print("Workflow execution %s Finished" % we_id)
-            log.info("Workflow execution %s Finished" % we_id)
+            log.warning("Workflow execution %s Finished" % we_id)
             restApiControl.setExecutionStatusFinished(we_id)
 
             my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Finished
-        else:
-            print("Workflow execution %s Failed" % we_id)
-            log.info("Workflow execution %s Failed" % we_id)
+        elif completed == 1:
+            log.warning("Workflow execution %s Failed" % we_id)
             restApiControl.setExecutionStatusFailed(we_id)
 
             my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Failed
+        elif completed == 2:
+            log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
+            restApiControl.setExecutionStatusPending(we_id)
+        else:
+            pass
 
     else:
-        print("WEID %s not scheduled for execution" % we_id)
         log.error("WEID %s not scheduled for execution" % we_id)
         raise KeyError("WEID %s not scheduled for execution" % we_id)
 
@@ -344,8 +339,6 @@ if __name__ == '__main__':
                         else:
                             print("Updated status of execution")
                         updateStatScheduled()  # update status
-                        # result1 = pool.apply_async(test)
-                        # log.info(result1.get())
                         result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                         # log.info(result.get())
                         log.info("WEID %s added to the execution pool" % weid)
