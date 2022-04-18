@@ -155,7 +155,7 @@ def executeWorkflow(we_id):
 
     # check if status is "Scheduled"
     if we_rec['Status'] == 'Scheduled':
-        completed = 1
+        completed = 1  # todo check
         print("we_rec status is Scheduled, processing")
         log.info("we_rec status is Scheduled, processing")
         # execute the selected workflow
@@ -214,6 +214,7 @@ def executeWorkflow(we_id):
             # update status
             updateStatRunning()
             restApiControl.setExecutionStatusRunning(we_id)
+            restApiControl.setExecutionAttemptsCount(we_id, int(we_rec['Attempts'])+1)
             # uses the same python interpreter as the current process
             cmd = [sys.executable, execScript, '-eid', str(we_id)]
             # print(cmd)
@@ -263,13 +264,11 @@ def executeWorkflow(we_id):
         if completed == 0:
             log.warning("Workflow execution %s Finished" % we_id)
             restApiControl.setExecutionStatusFinished(we_id)
-
             my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Finished
         elif completed == 1:
             log.warning("Workflow execution %s Failed" % we_id)
             restApiControl.setExecutionStatusFailed(we_id)
-
             my_email.sendEmailAboutExecutionStatus(we_id)
             return we_id, ExecutionResult.Failed
         elif completed == 2:
@@ -332,16 +331,24 @@ if __name__ == '__main__':
                     # retrieve weids with status "Scheduled" from DB
                     for wed in restApiControl.getPendingExecutions():
                         print(str(wed['_id']) + " found as pending")
-                        # add the correspoding weid to the pool, change status to scheduled
                         weid = wed['_id']
-                        if not restApiControl.setExecutionStatusScheduled(weid):
-                            print("Could not update execution status")
+
+                        # check number of attempts for execution
+                        if wed['Attempts'] > 60*10:
+                            restApiControl.setExecutionStatusCreated(weid)
+                            my_email.sendEmailAboutExecutionStatus(weid)
+
                         else:
-                            print("Updated status of execution")
-                        updateStatScheduled()  # update status
-                        result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
-                        # log.info(result.get())
-                        log.info("WEID %s added to the execution pool" % weid)
+                            # add the correspoding weid to the pool, change status to scheduled
+                            if not restApiControl.setExecutionStatusScheduled(weid):
+                                print("Could not update execution status")
+                            else:
+                                print("Updated status of execution")
+                            updateStatScheduled()  # update status
+                            result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
+                            # log.info(result.get())
+                            log.info("WEID %s added to the execution pool" % weid)
+
                     # ok, no more jobs to schedule for now, wait
 
                     # display progress (consider use of tqdm)

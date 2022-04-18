@@ -38,7 +38,8 @@ tableExecution = {
     'Inputs': None,
     'Outputs': None,
     'Task_ID': '',
-    'label': ''
+    'label': '',
+    'Attempts': 0
 }
 
 

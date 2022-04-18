@@ -168,13 +168,22 @@ def scheduleExecution(execution_id):
     return response.status_code == 200
 
 
-def setExecutionParameter(execution_id, param, value):
-    response = requests.get(RESTserver + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value))
+def setExecutionParameter(execution_id, param, value, val_type="str"):
+    response = requests.get(RESTserver + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value) + "&val_type=" + str(val_type))
     return response.status_code == 200
+
+
+def setExecutionAttemptsCount(execution_id, val):
+    return setExecutionParameter(execution_id, "Attempts", val, "int")
 
 
 def setExecutionStatusScheduled(execution_id):
     return setExecutionParameter(execution_id, "Status", "Scheduled")
+
+
+def setExecutionStatusCreated(execution_id):  # only reverted
+    setExecutionParameter(execution_id, "SubmittedDate", "")
+    return setExecutionParameter(execution_id, "Status", "Created")
 
 
 def setExecutionStatusPending(execution_id, reverted=False):
@@ -182,6 +191,7 @@ def setExecutionStatusPending(execution_id, reverted=False):
         setExecutionParameter(execution_id, "StartDate", "")
     else:
         setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
+        setExecutionAttemptsCount(execution_id, 0)
     return setExecutionParameter(execution_id, "Status", "Pending")
 
 

@@ -319,7 +319,9 @@ def insert_executionRecord(data):
     return jsonify({'result': res.inserted_id})
 
 
-def modifyWorkflowExecution(weid, key, value):
+def modifyWorkflowExecution(weid, key, value, val_type=""):
+    if val_type == 'int':
+        value = int(value)
     mongo.db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(weid)}, {"$set": {key: value}})
     return jsonify({'result': True})
 
@@ -714,7 +716,10 @@ def main():
 
         if action == "modify_execution":
             if "id" in args and "key" in args and "value" in args:
-                return modifyWorkflowExecution(args["id"], args["key"], args["value"])
+                if "val_type" in args:
+                    return modifyWorkflowExecution(args["id"], args["key"], args["value"], args["val_type"])
+                else:
+                    return modifyWorkflowExecution(args["id"], args["key"], args["value"])
             else:
                 return jsonify({'error': "Param 'id' or 'key' or 'value' not specified."})
 
