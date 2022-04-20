@@ -483,6 +483,17 @@ def get_execution_io_value_typearray(weid, name, obj_id, start, num, inout):
     return jsonify({'result': None, 'error': 'Something went wrong.'})
 
 
+def get_property_object_from_file(file_id):
+    pfile = mupifDB.restApiControl.getBinaryFileContentByID(file_id)
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+        full_path = tempDir + "/file.h5"
+        f = open(full_path, 'wb')
+        f.write(pfile)
+        f.close()
+        prop = mp.ConstantProperty.loadHdf5(full_path)
+        return jsonify({'result': prop.to_db_dict()})
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
@@ -863,7 +874,7 @@ def main():
                 return jsonify({'error': "Param 'key' or 'value' not specified."})
 
         # --------------------------------------------------
-        # No action
+        #
         # --------------------------------------------------
 
         if action == "get_execution_input_typearray":
@@ -878,8 +889,14 @@ def main():
             else:
                 return jsonify({'error': "Param 'id' or 'name' or 'value' or 'obj_id' or 'start' or 'num' not specified."})
 
+        if action == "get_property_object_from_file":
+            if "file_id" in args:
+                return get_property_object_from_file(args["file_id"])
+            else:
+                return jsonify({'error': "Param 'file_id' not specified."})
+
         # --------------------------------------------------
-        # Stat
+        # No action
         # --------------------------------------------------
 
         return jsonify({'error': "Action '%s' not found." % action})

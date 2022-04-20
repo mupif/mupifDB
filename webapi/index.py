@@ -676,7 +676,7 @@ def propertyArrayView(file_id, page):
             page = maxpage
 
         id_start = int((page - 1) * per_page)
-        id_end = int((page) * per_page)
+        id_end = int(page * per_page)
 
         if maxpage > 1:
             html += '<h4>'
