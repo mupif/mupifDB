@@ -312,6 +312,12 @@ def getExecutionOutputValue(weid, name, obj_id):
     return response_json['result']
 
 
+def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
+    response = requests.get(RESTserver + "main?action=get_property_array_data&file_id=" + str(file_id) + "&i_start=" + i_start + "&i_count=" + i_count)
+    response_json = response.json()
+    return response_json['result']
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------

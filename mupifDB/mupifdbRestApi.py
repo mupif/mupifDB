@@ -449,7 +449,7 @@ def get_execution_io_value(weid, name, obj_id, inout):
 
 #
 
-def get_execution_io_value_typearray(weid, name, obj_id, start, num, inout):
+def get_execution_io_value_typearray(weid, name, obj_id, start, num, inout):  # may not be used
     s = mongo.db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(weid)})
     if s is not None:
         execution_record = table_structures.extendRecord(s, table_structures.tableExecution)
@@ -492,6 +492,25 @@ def get_property_object_from_file(file_id):
         f.close()
         prop = mp.ConstantProperty.loadHdf5(full_path)
         return jsonify({'result': prop.to_db_dict()})
+
+
+def get_property_array_data(file_id, i_start, i_count):  # may not be used
+    pfile = mupifDB.restApiControl.getBinaryFileContentByID(file_id)
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+        full_path = tempDir + "/file.h5"
+        f = open(full_path, 'wb')
+        f.write(pfile)
+        f.close()
+        prop = mp.ConstantProperty.loadHdf5(full_path)
+        propval = prop.getValue()
+        tot_elems = propval.shape[0]
+        id_start = int(i_start)
+        id_num = int(i_count)
+        if id_num <= 0:
+            id_num = tot_elems
+        id_end = id_start + id_num
+        sub_propval = propval[id_start:id_end]
+        return jsonify({'result': sub_propval.tolist()})
 
 
 # --------------------------------------------------
@@ -876,6 +895,12 @@ def main():
         # --------------------------------------------------
         #
         # --------------------------------------------------
+
+        if action == "get_property_array_data":  # may not be used
+            if "file_id" in args and "i_start" in args and "i_count" in args:
+                return get_property_array_data(args["file_id"], args["i_start"], args["i_count"])
+            else:
+                return jsonify({'error': "Param 'file_id' or 'i_start' or 'i_count' not specified."})
 
         if action == "get_execution_input_typearray":
             if "id" in args and "name" in args and "obj_id" in args and "start" in args and "num" in args:
