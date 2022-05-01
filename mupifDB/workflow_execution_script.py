@@ -12,7 +12,7 @@ import os
 import logging
 import argparse
 import mupifDB
-# import mupif as mp
+import mupif as mp
 
 log = logging.getLogger()
 log.info('Execution script started')
@@ -29,11 +29,13 @@ if __name__ == "__main__":
         execution_record = mupifDB.restApiControl.getExecutionRecord(weid)
         if execution_record is None:
             print("Execution not found")
+            log.info("Execution not found")
             exit(1)
 
         workflow_record = mupifDB.restApiControl.getWorkflowRecord(execution_record["WorkflowID"])
         if workflow_record is None:
             print("Workflow not found")
+            log.info("Workflow not found")
             exit(1)
 
         #
@@ -43,25 +45,22 @@ if __name__ == "__main__":
         #
 
         workflow = workflow_class()
-        ival = workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
-        if ival is False:
-            log.error('Not enough resources')
-            raise ResourceWarning("Not enough resources")
+        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
         mupifDB.workflowmanager.mapInputs(workflow, args.id)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())
         workflow.terminate()
 
-    except ResourceWarning as err:
-        log.exception(err)
-        # if workflow is not None:
-        #     workflow.terminate()
-        sys.exit(2)
-
     except Exception as err:
         log.exception(err)
-        if workflow is not None:
+        try:
             workflow.terminate()
+        except:
+            pass
+        if type(err) == mp.JobManNoResourcesException:
+            print("Not enough resources")
+            log.error('Not enough resources')
+            sys.exit(2)
         sys.exit(1)
 
     except:
