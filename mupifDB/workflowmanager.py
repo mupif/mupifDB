@@ -13,7 +13,7 @@ import mupif
 import table_structures
 
 
-def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname):
+def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -37,7 +37,7 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
         sourceID = restApiControl.uploadBinaryFileContent(f)
         f.close()
 
-    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname}
+    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname, 'Models': models_md}
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i['ValueType'], 'Units': i['Units'], 'ObjID': i.get('Obj_ID', ""), 'Compulsory': i['Required']}

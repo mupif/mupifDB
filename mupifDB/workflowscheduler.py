@@ -20,6 +20,8 @@ from pathlib import Path
 import shutil
 import datetime
 
+import mupif as mp
+
 import logging
 # logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
 log = logging.getLogger()
@@ -290,6 +292,21 @@ def stop(var_pool):
     log.info("All tasks finished, exiting")
 
 
+def checkWorkflowResources(wid, version):
+    workflow = restApiControl.getWorkflowRecordGeneral(wid, version)
+    models_md = workflow.get('Models', [])
+    try:
+        res = mp.Workflow.checkModelRemoteResourcesByMetadata(models_md=models_md)
+        return res
+    except:
+        return False
+
+
+def checkExecutionResources(eid):
+    execution = restApiControl.getExecutionRecord(eid)
+    return checkWorkflowResources(execution['WorkflowID'], execution['WorkflowVersion'])
+
+
 if __name__ == '__main__':
     # for testing
     # restApiControl.setExecutionStatusPending('61a5854c97ac8ebf9887bbc1')
@@ -320,9 +337,15 @@ if __name__ == '__main__':
                     weid = wed['_id']
                     # result1 = pool.apply_async(test)
                     # log.info(result1.get())
-                    result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
-                    log.info(result)
-                    log.info("WEID %s added to the execution pool" % weid)
+                    if checkExecutionResources(weid):
+                        result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
+                        log.info(result)
+                        log.info("WEID %s added to the execution pool" % weid)
+                    else:
+                        log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+                        we_rec = restApiControl.getExecutionRecord(weid)
+                        restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
+
                 log.info("Done\n")
 
                 log.info("Entering loop to check for Pending executions")
@@ -339,15 +362,20 @@ if __name__ == '__main__':
                             my_email.sendEmailAboutExecutionStatus(weid)
 
                         else:
-                            # add the correspoding weid to the pool, change status to scheduled
-                            if not restApiControl.setExecutionStatusScheduled(weid):
-                                print("Could not update execution status")
+                            if checkExecutionResources(weid):
+                                # add the correspoding weid to the pool, change status to scheduled
+                                if not restApiControl.setExecutionStatusScheduled(weid):
+                                    print("Could not update execution status")
+                                else:
+                                    print("Updated status of execution")
+                                updateStatScheduled()  # update status
+                                result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
+                                # log.info(result.get())
+                                log.info("WEID %s added to the execution pool" % weid)
                             else:
-                                print("Updated status of execution")
-                            updateStatScheduled()  # update status
-                            result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
-                            # log.info(result.get())
-                            log.info("WEID %s added to the execution pool" % weid)
+                                log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+                                we_rec = restApiControl.getExecutionRecord(weid)
+                                restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
 
                     # ok, no more jobs to schedule for now, wait
 

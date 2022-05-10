@@ -309,6 +309,7 @@ def addWorkflow(usecaseid):
                                     workflowInputs = workflow_instance.getMetadata('Inputs')
                                     workflowOutputs = workflow_instance.getMetadata('Outputs')
                                     description = workflow_instance.getMetadata('Description')
+                                    models_md = workflow_instance.getMetadata('Models')
                                 else:
                                     print("File does not contain only one class")
                     else:
@@ -323,7 +324,8 @@ def addWorkflow(usecaseid):
                     workflowInputs=workflowInputs,
                     workflowOutputs=workflowOutputs,
                     modulename=modulename,
-                    classname=classname
+                    classname=classname,
+                    models_md=models_md
                 )
 
     if new_workflow_id is not None:
@@ -449,7 +451,11 @@ def executionStatus(weid):
     html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
     if data['Status'] == 'Created':
         if restApiControl.getExecutionInputsCheck(weid):
-            html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
+            _workflow = restApiControl.getWorkflowRecordGeneral(data['WorkflowID'], data['WorkflowVersion'])
+            if mp.Workflow.checkModelRemoteResourcesByMetadata(_workflow['Models']):
+                html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
+            else:
+                html += '<li>Some resources are not available. Cannot be scheduled.</li>'
         else:
             html += '<li>Some inputs are not defined propertly. Cannot be scheduled.</li>'
     if data['Status'] == 'Finished':

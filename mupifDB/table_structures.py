@@ -8,7 +8,7 @@ def extendRecord(record, structure):
 
 tableUseCase = {
     'ucid': None,
-    'Description': None
+    'Description': None,
 }
 
 
@@ -20,7 +20,8 @@ tableWorkflow = {
     'GridFSID': None,
     'modulename': None,
     'classname': None,
-    'IOCard': {'Inputs': [], 'Outputs': []}
+    'IOCard': {'Inputs': [], 'Outputs': []},
+    'Models': [],
 }
 
 
@@ -39,7 +40,7 @@ tableExecution = {
     'Outputs': None,
     'Task_ID': '',
     'label': '',
-    'Attempts': 0
+    'Attempts': 0,
 }
 
 
@@ -47,5 +48,5 @@ tableUser = {
     'IP': None,
     'Name': None,
     'Organization': None,
-    'Rights': None
+    'Rights': None,
 }
