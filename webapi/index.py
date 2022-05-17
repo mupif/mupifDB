@@ -247,6 +247,10 @@ def workflow(wid, version):
 
     html += '<br><br><a href="/workflowexecutions?filter_workflow_id='+str(wdata['wid'])+'&filter_workflow_version='+str(wdata['Version'])+'">Executions of this workflow</a>'
 
+    admin_rights = getUserHasAdminRights()
+    if admin_rights:
+        html += '<br><br><a href="'+RESTserver+'main?action=get_file&id='+str(wdata['GridFSID'])+'" target="_blank">Download file</a>'
+
     return my_render_template('basic.html', body=Markup(html))
 
 
