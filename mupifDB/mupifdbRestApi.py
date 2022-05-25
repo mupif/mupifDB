@@ -105,9 +105,7 @@ def printHelp():
     <tr><td>/main?action=set_execution_input&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Sets input parameter for workflow execution with id WEID. The input is specified by its NAME and OBJ_ID. The VALUE is string with format depending on input type. If type is mupif.Property and ValueType is Scalar then value should be a float such as "5.0".</td></tr>
     <!--<tr><td style="color:red;">/main?action=get_execution_output&id=WEID&name=NAME&value=VALUE&obj_id=OBJ_ID</td><td>Gets output parameter for workflow execution with id WEID, NAME is string in the form "Name{obj_ID}", where curly brackes are optional and are used to set object_id</td></tr>-->
     <tr><td>/main?action=schedule_execution&id=WEID</td><td>Schedule workflow execution specified by id WEID. Note that workflow execution can be scheduled only once from "Created" state to state "Pending", for another computation one has to create a new execution and set inputs.</td></tr>
-    <tr><td style="color:red;">/uploads/filenamepath</td><td>Uploads file where filenamepath is file URL into gridfs</td></tr>
-    <tr><td style="color:red;">/uploads/filenamepath", methods=["POST"]</td><td></td></tr>
-    <tr><td style="color:red;">/gridfs/ID</td><td>Show stored file with given ID</td></tr>
+    <tr><td>/main?action=get_file&id=FILEID</td><td>Downloads file with given FILEID</td></tr>
     </table>
 
     <br><b><u>Demo - uses an existing workflow record in the database</u></b><br>
