@@ -86,25 +86,28 @@ def procError(r):
 
 
 def updateStatRunning():
-    with statusLock:
-        print("updateStatRunning called")
-        restApiControl.updateStatScheduler(scheduledTasks=-1, runningTasks=+1)
-        stats_temp = restApiControl.getStatScheduler()
-        restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
+    if api_type != 'granta':
+        with statusLock:
+            print("updateStatRunning called")
+            restApiControl.updateStatScheduler(scheduledTasks=-1, runningTasks=+1)
+            stats_temp = restApiControl.getStatScheduler()
+            restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
 
 
 def updateStatScheduled():
-    with statusLock:
-        print("updateStatScheduled called")
-        restApiControl.updateStatScheduler(scheduledTasks=+1)
+    if api_type != 'granta':
+        with statusLock:
+            print("updateStatScheduled called")
+            restApiControl.updateStatScheduler(scheduledTasks=+1)
 
 
 def updateStatFinished():
-    with statusLock:
-        print("updateStatFinished called")
-        restApiControl.updateStatScheduler(runningTasks=-1, processedTasks=+1)
-        stats_temp = restApiControl.getStatScheduler()
-        restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
+    if api_type != 'granta':
+        with statusLock:
+            print("updateStatFinished called")
+            restApiControl.updateStatScheduler(runningTasks=-1, processedTasks=+1)
+            stats_temp = restApiControl.getStatScheduler()
+            restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
 
 
 def setupLogger(fileName, level=logging.DEBUG):
@@ -134,9 +137,7 @@ def setupLogger(fileName, level=logging.DEBUG):
 
 def executeWorkflow(we_id):
     log.info("executeWorkflow invoked")
-    print("database connected")
-    log.info("database connected")
-    # get workflow execution record
+
     we_rec = restApiControl.getExecutionRecord(we_id)
     if we_rec is None:
         log.error("Workflow Execution record %s not found" % we_id)
@@ -156,7 +157,7 @@ def executeWorkflow(we_id):
         log.info("Workflow document with wid %s, id %s, version %s found" % (wid, we_rec['_id'], workflowVersion))
 
     # check if status is "Scheduled"
-    if we_rec['Status'] == 'Scheduled':
+    if we_rec['Status'] == 'Scheduled' or api_type == 'granta':  # todo remove granta
         completed = 1  # todo check
         print("we_rec status is Scheduled, processing")
         log.info("we_rec status is Scheduled, processing")
@@ -173,9 +174,9 @@ def executeWorkflow(we_id):
             try:
                 python_script_filename = workflow_record['modulename'] + ".py"
 
-                fn = restApiControl.getFileNameByID(workflow_record['GridFSID'])
+                fc, fn = restApiControl.getBinaryFileByID(workflow_record['GridFSID'])
                 with open(tempDir + '/' + fn, "wb") as f:
-                    f.write(restApiControl.getBinaryFileContentByID(workflow_record['GridFSID']))
+                    f.write(fc)
                     f.close()
 
                 if fn.split('.')[-1] == 'py':
@@ -251,8 +252,17 @@ def executeWorkflow(we_id):
             try:
                 log.info("Copying log files to database")
                 # if os.path.exists(tempDir+'/mupif.log'):
+
+                # temp
                 with open(workflowLogName, 'rb') as f:
-                    logID = restApiControl.uploadBinaryFileContent(f)
+                    d = f.read()
+                    f.close()
+                    f = open('./temp_log.log', 'wb')
+                    f.write(d)
+                    f.close()
+
+                with open(workflowLogName, 'rb') as f:
+                    logID = restApiControl.uploadBinaryFile(f)
                     if logID is not None:
                         restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
                 log.info("Copying log files done")
@@ -303,6 +313,9 @@ def checkWorkflowResources(wid, version):
 
 
 def checkExecutionResources(eid):
+    print("Checking execution resources")
+    if api_type == 'granta':
+        return True  # todo granta temporary
     execution = restApiControl.getExecutionRecord(eid)
     return checkWorkflowResources(execution['WorkflowID'], execution['WorkflowVersion'])
 
@@ -310,6 +323,7 @@ def checkExecutionResources(eid):
 if __name__ == '__main__':
     # for testing
     # restApiControl.setExecutionStatusPending('61a5854c97ac8ebf9887bbc1')
+    restApiControl.setExecutionStatusPending('a6e623e7-12a5-4da3-8d40-fc1e7ec00811')
 
     setupLogger(fileName="scheduler.log")
 
@@ -359,7 +373,8 @@ if __name__ == '__main__':
                         # check number of attempts for execution
                         if wed['Attempts'] > 60*10:
                             restApiControl.setExecutionStatusCreated(weid)
-                            my_email.sendEmailAboutExecutionStatus(weid)
+                            if api_type != 'granta':
+                                my_email.sendEmailAboutExecutionStatus(weid)
 
                         else:
                             if checkExecutionResources(weid):
@@ -374,17 +389,21 @@ if __name__ == '__main__':
                                 log.info("WEID %s added to the execution pool" % weid)
                             else:
                                 log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
-                                we_rec = restApiControl.getExecutionRecord(weid)
-                                restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
+                                if api_type != 'granta':
+                                    we_rec = restApiControl.getExecutionRecord(weid)
+                                    restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
 
+                        break
                     # ok, no more jobs to schedule for now, wait
 
                     # display progress (consider use of tqdm)
                     lt = time.localtime(time.time())
-                    stats = restApiControl.getStatScheduler()
-                    print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                          str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
-                    time.sleep(30)
+                    if api_type != 'granta':
+                        stats = restApiControl.getStatScheduler()
+                        print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
+                              str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
+                    print("waiting..")
+                    time.sleep(60)
             except Exception as err:
                 log.info("Error: " + repr(err))
                 stop(pool)

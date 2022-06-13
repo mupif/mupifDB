@@ -32,7 +32,7 @@ if __name__ == "__main__":
             log.info("Execution not found")
             exit(1)
 
-        workflow_record = mupifDB.restApiControl.getWorkflowRecord(execution_record["WorkflowID"])
+        workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(execution_record["WorkflowID"], execution_record["WorkflowVersion"])
         if workflow_record is None:
             print("Workflow not found")
             log.info("Workflow not found")

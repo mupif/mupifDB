@@ -458,7 +458,7 @@ def get_execution_io_value_typearray(weid, name, obj_id, start, num, inout):  # 
                     if str(dt['ObjID']) == str(obj_id):
                         file_id = dt.get('FileID', None)
                         if file_id is not None:
-                            pfile = mupifDB.restApiControl.getBinaryFileContentByID(file_id)
+                            pfile, fn = mupifDB.restApiControl.getBinaryFileByID(file_id)
                             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                                 full_path = tempDir + "/file.h5"
                                 f = open(full_path, 'wb')
@@ -482,7 +482,7 @@ def get_execution_io_value_typearray(weid, name, obj_id, start, num, inout):  # 
 
 
 def get_property_object_from_file(file_id):
-    pfile = mupifDB.restApiControl.getBinaryFileContentByID(file_id)
+    pfile, fn = mupifDB.restApiControl.getBinaryFileByID(file_id)
     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
         full_path = tempDir + "/file.h5"
         f = open(full_path, 'wb')
@@ -493,7 +493,7 @@ def get_property_object_from_file(file_id):
 
 
 def get_property_array_data(file_id, i_start, i_count):  # may not be used
-    pfile = mupifDB.restApiControl.getBinaryFileContentByID(file_id)
+    pfile, fn = mupifDB.restApiControl.getBinaryFileByID(file_id)
     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
         full_path = tempDir + "/file.h5"
         f = open(full_path, 'wb')
