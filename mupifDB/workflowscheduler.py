@@ -55,6 +55,8 @@ class index(enum.IntEnum):
     load = 4
 
 
+api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
+
 poolsize = 3
 statusLock = multiprocessing.Lock()
 
@@ -322,8 +324,7 @@ def checkExecutionResources(eid):
 
 if __name__ == '__main__':
     # for testing
-    # restApiControl.setExecutionStatusPending('61a5854c97ac8ebf9887bbc1')
-    restApiControl.setExecutionStatusPending('a6e623e7-12a5-4da3-8d40-fc1e7ec00811')
+    # restApiControl.setExecutionStatusPending('a6e623e7-12a5-4da3-8d40-fc1e7ec00811')
 
     setupLogger(fileName="scheduler.log")
 
