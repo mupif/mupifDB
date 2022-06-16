@@ -415,6 +415,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                         f.write(pfile)
                         f.close()
                         hs = mupif.HeavyStruct(h5path=full_path, mode='readonly', id=mupif.DataID[data_id])
+                        hs = hs.deepcopy()
                         app.set(hs, app_obj_id)
             else:
                 raise ValueError('Handling of io param of type %s is not implemented' % object_type)
