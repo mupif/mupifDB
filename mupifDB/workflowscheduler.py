@@ -20,12 +20,20 @@ from pathlib import Path
 import shutil
 import datetime
 
+import Pyro5
 import mupif as mp
 
 import logging
 # logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
 log = logging.getLogger()
 
+# try to import schedulerconfig.py
+authToken = None
+try:
+    import schedulerConfig
+    authKey = schedulerConfig.authToken
+except ImportError:
+    print("schedulerConfig import failed")
 # WorkflowScheduler is a daemon, which
 # will try to execute pending workflow executions in DB (those with status "Scheduled")
 # internally uses a multiprocessing pool to handle workflow execution requests
@@ -54,15 +62,45 @@ class index(enum.IntEnum):
     processedTasks = 3
     load = 4
 
+# global vars 
+runningTasks = 0
+scheduledTasks = 0
+processedTasks = 0
+finishedTasks = 0 # with success
+failedTasks = 0
+runningJobs = {} # dict, we-id key
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
+ns = mp.pyroutil.connectNameserver()
+#ns = mp.pyroutil.connectNameserver(nshost='127.0.0.1', nsport=10000)
 
 poolsize = 3
 statusLock = multiprocessing.Lock()
+stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
 buf = None
 
+@Pyro5.api.expose
+class SchedulerMonitor (object):
+    def __init__(self, ns):
+        self.ns = ns
+    def runServer(self):
+        return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata="type:scheduler")
+    def getStatistics(self):
+        return {
+            'runningTaks':runningTasks, 
+            'scheduledTasks':scheduledTasks,
+            'processedTasks': processedTasks,
+            'finishedTasks': finishedTasks,
+            'failedTasks': failedTasks,
+            'runningJobs': runningJobs } 
+    def stop (self):
+        stopFlag=True
+        self.ns.remove("mupif.cheduler")
+
+
+monitor = SchedulerMonitor(ns)
 
 def procInit():
     global fd
@@ -94,6 +132,9 @@ def updateStatRunning():
             restApiControl.updateStatScheduler(scheduledTasks=-1, runningTasks=+1)
             stats_temp = restApiControl.getStatScheduler()
             restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
+            #
+            scheduledTasks =-1
+            runningTasks=+1
 
 
 def updateStatScheduled():
@@ -101,15 +142,24 @@ def updateStatScheduled():
         with statusLock:
             print("updateStatScheduled called")
             restApiControl.updateStatScheduler(scheduledTasks=+1)
+            #
+            scheduledTasks=+1
 
-
-def updateStatFinished():
+def updateStatFinished(retCode):
     if api_type != 'granta':
         with statusLock:
             print("updateStatFinished called")
             restApiControl.updateStatScheduler(runningTasks=-1, processedTasks=+1)
             stats_temp = restApiControl.getStatScheduler()
             restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
+            #
+            runningTasks=-1
+            if (retCode == 0):
+                processedTasks=+1
+                finishedTasks=+1
+            elif (retCode == 1):
+                processedTasks=+1
+                failedTasks =+1
 
 
 def setupLogger(fileName, level=logging.DEBUG):
@@ -135,6 +185,23 @@ def setupLogger(fileName, level=logging.DEBUG):
     logger.addHandler(streamHandler)
 
     return logger
+
+def copyLogToDB (we_id, workflowLogName):
+    log.info("Copying log files to database")
+    # if os.path.exists(tempDir+'/mupif.log'):
+    # temp
+    with open(workflowLogName, 'rb') as f:
+        d = f.read()
+        f.close()
+        f = open('./temp_log.log', 'wb')
+        f.write(d)
+        f.close()
+
+    with open(workflowLogName, 'rb') as f:
+        logID = restApiControl.uploadBinaryFile(f)
+        if logID is not None:
+            restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
+        log.info("Copying log files done")
 
 
 def executeWorkflow(we_id):
@@ -198,11 +265,13 @@ def executeWorkflow(we_id):
                     zf.extractall(path=tempDir)
                     if python_script_filename in filenames:
                         print("Filename check OK")
+                        log.info("Filename check OK")
                     else:
-                        print("Filename check FAILED")
+                        print ("Filename check FAILED")
+                        log.error("Filename check FAILED")
 
                 else:
-                    print("Unsupported file extension")
+                    log.error("Unsupported file extension")
 
                 print("Copying executor script.")
 
@@ -211,6 +280,13 @@ def executeWorkflow(we_id):
             except Exception as e:
                 log.error(str(e))
                 # set execution code to failed ...yes or no?
+                restApiControl.setExecutionStatusFailed(we_id)
+                my_email.sendEmailAboutExecutionStatus(we_id)
+                try:
+                    copyLogToDB(we_id, workflowLogName)
+                except:
+                    log.info("Copying log files was not successful")
+
                 return we_id, ExecutionResult.Failed
 
             # execute
@@ -218,6 +294,7 @@ def executeWorkflow(we_id):
             log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
             # update status
             updateStatRunning()
+            runningJobs[we_id]=wid # for runtime monitoring
             restApiControl.setExecutionStatusRunning(we_id)
             restApiControl.setExecutionAttemptsCount(we_id, int(we_rec['Attempts'])+1)
             # uses the same python interpreter as the current process
@@ -252,27 +329,13 @@ def executeWorkflow(we_id):
                 print(it)
 
             try:
-                log.info("Copying log files to database")
-                # if os.path.exists(tempDir+'/mupif.log'):
-
-                # temp
-                with open(workflowLogName, 'rb') as f:
-                    d = f.read()
-                    f.close()
-                    f = open('./temp_log.log', 'wb')
-                    f.write(d)
-                    f.close()
-
-                with open(workflowLogName, 'rb') as f:
-                    logID = restApiControl.uploadBinaryFile(f)
-                    if logID is not None:
-                        restApiControl.setExecutionParameter(we_id, 'ExecutionLog', logID)
-                log.info("Copying log files done")
+                copyLogToDB(we_id, workflowLogName)
             except:
                 log.info("Copying log files was not successful")
 
             # update status
-            updateStatFinished()
+            updateStatFinished(completed)
+            del runningJobs[we_id] # remove we_id from running jobs; for monitoring
         log.info("Updating we_id %s status to %s" % (we_id, completed))
         # set execution code to completed
         if completed == 0:
@@ -298,6 +361,7 @@ def executeWorkflow(we_id):
 
 def stop(var_pool):
     log.info("Stopping the scheduler, waiting for workers to terminate")
+    # @TODO: do not reset processedTasks, continue conting
     restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0)
     var_pool.close()  # close pool
     var_pool.join()  # wait for completion
@@ -335,7 +399,13 @@ if __name__ == '__main__':
         session = requests.Session()
         for proto in ('http://', 'https://'):
             session.mount(proto, adapter)
+        #
+        # @bp: do we want to reset processedTasks to zero? Perhaps keeping it ?
+        #
         restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
+
+    #run scheduler monitor 
+    monitor.runServer()
 
     pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
     atexit.register(stop, pool)
@@ -363,9 +433,9 @@ if __name__ == '__main__':
 
                 log.info("Done\n")
 
-                log.info("Entering loop to check for Pending executions")
+                log.info("Entering main loop to check for Pending executions")
                 # add new execution (Pending)
-                while True:
+                while stopFlag is not True:
                     # retrieve weids with status "Scheduled" from DB
                     for wed in restApiControl.getPendingExecutions():
                         print(str(wed['_id']) + " found as pending")
