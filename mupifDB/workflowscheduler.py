@@ -68,7 +68,7 @@ scheduledTasks = 0
 processedTasks = 0
 finishedTasks = 0 # with success
 failedTasks = 0
-runningJobs = {} # dict, we-id key
+lastJobs = {} # dict, we-id key
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
@@ -77,7 +77,6 @@ ns_uri=str(ns._pyroUri)
 
 
 poolsize = 3
-statusLock = multiprocessing.Lock()
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
@@ -85,18 +84,26 @@ buf = None
 
 @Pyro5.api.expose
 class SchedulerMonitor (object):
-    def __init__(self, ns):
+    def __init__(self, ns, schedulerStat):
         self.ns = ns
+        self.stat = schedulerStat
     def runServer(self):
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata=set("type:scheduler"))
     def getStatistics(self):
+        runningTaks=self.stat['runningTasks']
+        scheduledTasks=self.stat['scheduledTasks']
+        processedTasks = self.stat['processedTasks']
+        finishedTasks=self.stat['finishedTasks']
+        failedTasks=self.stat['failedTasks']
+        lastJobs=self.stat['lastJobs']
         return {
             'runningTaks':runningTasks, 
             'scheduledTasks':scheduledTasks,
             'processedTasks': processedTasks,
             'finishedTasks': finishedTasks,
             'failedTasks': failedTasks,
-            'runningJobs': runningJobs } 
+            'lastJobs': lastJobs 
+            } 
     def stop (self):
         stopFlag=True
         self.ns.remove("mupif.cheduler")
@@ -104,7 +111,7 @@ class SchedulerMonitor (object):
     def registerPyro(self,daemon,ns,uri,appName,externalDaemon): pass
 
 
-monitor = SchedulerMonitor(ns)
+
 
 def procInit():
     global fd
@@ -126,44 +133,73 @@ def procFinish(r):
 
 
 def procError(r):
-    print("procError called")
+    print("procError called:"+r)
 
 
-def updateStatRunning():
+def updateStatRunning(lock, schedulerStat, we_id, wid):
     if api_type != 'granta':
-        with statusLock:
+        with lock:
             print("updateStatRunning called")
+            print (schedulerStat)
+            print ('------------------')
             restApiControl.updateStatScheduler(scheduledTasks=-1, runningTasks=+1)
             stats_temp = restApiControl.getStatScheduler()
             restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
             #
-            scheduledTasks =-1
-            runningTasks=+1
+            schedulerStat['scheduledTasks'] =  schedulerStat['scheduledTasks']-1
+            schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
+            #schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
+            #Modifications to mutable values or items in dict and list proxies will not be propagated through the manager, 
+            #because the proxy has no way of knowing when its values or items are modified. 
+            #To modify such an item, you can re-assign the modified object to the container proxy.
+            jobs = [(we_id, wid, 'Running', datetime.datetime.now().isoformat(timespec='seconds'), '-')]
+            for i in range(min(4,len(schedulerStat['lastJobs']))):
+                jobs.append(schedulerStat['lastJobs'][i])
+            schedulerStat['lastJobs'] = jobs
+
+            print (we_id, wid)
+            print (schedulerStat)
+            print ('=======================')
 
 
-def updateStatScheduled():
+def updateStatScheduled(lock, schedulerStat):
     if api_type != 'granta':
-        with statusLock:
+        with lock:
             print("updateStatScheduled called")
             restApiControl.updateStatScheduler(scheduledTasks=+1)
             #
-            scheduledTasks=+1
+            schedulerStat['scheduledTasks']=schedulerStat['scheduledTasks']+1
 
-def updateStatFinished(retCode):
+def updateStatFinished(lock, schedulerStat, retCode, we_id):
     if api_type != 'granta':
-        with statusLock:
+        with lock:
             print("updateStatFinished called")
+            
             restApiControl.updateStatScheduler(runningTasks=-1, processedTasks=+1)
             stats_temp = restApiControl.getStatScheduler()
             restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
             #
-            runningTasks=-1
+            schedulerStat['runningTasks']=schedulerStat['runningTasks']-1
             if (retCode == 0):
-                processedTasks=+1
-                finishedTasks=+1
+                schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
+                schedulerStat['finishedTasks']=schedulerStat['finishedTasks']+1
             elif (retCode == 1):
-                processedTasks=+1
-                failedTasks =+1
+                schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
+                schedulerStat['failedTasks'] =schedulerStat['failedTasks']+1
+            jobs = []
+            for i in range(len(schedulerStat['lastJobs'])):
+                if (schedulerStat['lastJobs'][i][0] == we_id):
+                    if (retCode == 0):
+                        jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Finished", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
+                    else:
+                        jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Failed", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
+                else:
+                    jobs.append(schedulerStat['lastJobs'][i])
+            schedulerStat['lastJobs'] = jobs
+
+            print (schedulerStat)
+            print ('FFFFFFFFFFFFFFFFFFFF')
+
 
 
 def setupLogger(fileName, level=logging.DEBUG):
@@ -208,7 +244,7 @@ def copyLogToDB (we_id, workflowLogName):
         log.info("Copying log files done")
 
 
-def executeWorkflow(we_id):
+def executeWorkflow(lock, schedulerStat, we_id):
     log.info("executeWorkflow invoked")
 
     we_rec = restApiControl.getExecutionRecord(we_id)
@@ -297,8 +333,8 @@ def executeWorkflow(we_id):
             print("Executing we_id %s, tempdir %s" % (we_id, tempDir))
             log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
             # update status
-            updateStatRunning()
-            runningJobs[we_id]=wid # for runtime monitoring
+            updateStatRunning(lock, schedulerStat, we_id, wid)
+            #runningJobs[we_id]=wid # for runtime monitoring
             restApiControl.setExecutionStatusRunning(we_id)
             restApiControl.setExecutionAttemptsCount(we_id, int(we_rec['Attempts'])+1)
             # uses the same python interpreter as the current process
@@ -340,8 +376,8 @@ def executeWorkflow(we_id):
                 log.info("Copying log files was not successful")
 
             # update status
-            updateStatFinished(completed)
-            del runningJobs[we_id] # remove we_id from running jobs; for monitoring
+            updateStatFinished(lock, schedulerStat, completed, we_id)
+            #del runningJobs[we_id] # remove we_id from running jobs; for monitoring
         log.info("Updating we_id %s status to %s" % (we_id, completed))
         # set execution code to completed
         if completed == 0:
@@ -397,97 +433,113 @@ if __name__ == '__main__':
     # restApiControl.setExecutionStatusPending('a6e623e7-12a5-4da3-8d40-fc1e7ec00811')
 
     setupLogger(fileName="scheduler.log")
+    #statusLock = multiprocessing.Lock()
 
-    with statusLock:
-        import requests.adapters
-        import urllib3
-        adapter = requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8, backoff_factor=.05))
-        session = requests.Session()
-        for proto in ('http://', 'https://'):
-            session.mount(proto, adapter)
-        #
-        # @bp: do we want to reset processedTasks to zero? Perhaps keeping it ?
-        #
-        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
 
-    #run scheduler monitor 
-    monitor.runServer()
+    import requests.adapters
+    import urllib3
+    adapter = requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8, backoff_factor=.05))
+    session = requests.Session()
+    for proto in ('http://', 'https://'):
+        session.mount(proto, adapter)
+    #
+    # @bp: do we want to reset processedTasks to zero? Perhaps keeping it ?
+    #
+    restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
 
-    pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
-    atexit.register(stop, pool)
-    try:
-        with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
-            log.info("Starting MupifDB Workflow Scheduler\n")
+    
 
-            try:
-                # import first already scheduled executions
-                log.info("Importing already scheduled executions")
-                for wed in restApiControl.getScheduledExecutions():
-                    print(str(wed['_id']) + " found as Scheduled")
-                    # add the correspoding weid to the pool, change status to scheduled
-                    weid = wed['_id']
-                    # result1 = pool.apply_async(test)
-                    # log.info(result1.get())
-                    if checkExecutionResources(weid):
-                        result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
-                        log.info(result)
-                        log.info("WEID %s added to the execution pool" % weid)
-                    else:
-                        log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
-                        we_rec = restApiControl.getExecutionRecord(weid)
-                        restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
+    with multiprocessing.Manager() as manager:
+        schedulerStat=manager.dict()
+        schedulerStat['runningTasks'] = 0
+        schedulerStat['scheduledTasks'] = 0
+        schedulerStat['load'] = 0
+        schedulerStat['processedTasks'] = 0
+        schedulerStat['finishedTasks'] = 0
+        schedulerStat['failedTasks'] = 0
+        schedulerStat['lastJobs'] = [] #manager.list()
+        statusLock = manager.Lock()
 
-                log.info("Done\n")
+        monitor = SchedulerMonitor(ns, schedulerStat)
+        #run scheduler monitor 
+        monitor.runServer()
 
-                log.info("Entering main loop to check for Pending executions")
-                # add new execution (Pending)
-                while stopFlag is not True:
-                    # retrieve weids with status "Scheduled" from DB
-                    for wed in restApiControl.getPendingExecutions():
-                        print(str(wed['_id']) + " found as pending")
+        
+        pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
+        atexit.register(stop, pool)
+        try:
+            with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
+                log.info("Starting MupifDB Workflow Scheduler\n")
+
+                try:
+                    # import first already scheduled executions
+                    log.info("Importing already scheduled executions")
+                    for wed in restApiControl.getScheduledExecutions():
+                        print(str(wed['_id']) + " found as Scheduled")
+                        # add the correspoding weid to the pool, change status to scheduled
                         weid = wed['_id']
-
-                        # check number of attempts for execution
-                        if wed['Attempts'] > 60*10:
-                            restApiControl.setExecutionStatusCreated(weid)
-                            if api_type != 'granta':
-                                my_email.sendEmailAboutExecutionStatus(weid)
-
+                        # result1 = pool.apply_async(test)
+                        # log.info(result1.get())
+                        if checkExecutionResources(weid):
+                            result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat,weid), callback=procFinish, error_callback=procError)
+                            log.info(result)
+                            log.info("WEID %s added to the execution pool" % weid)
                         else:
-                            if checkExecutionResources(weid):
-                                # add the correspoding weid to the pool, change status to scheduled
-                                if not restApiControl.setExecutionStatusScheduled(weid):
-                                    print("Could not update execution status")
-                                else:
-                                    print("Updated status of execution")
-                                updateStatScheduled()  # update status
-                                result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
-                                # log.info(result.get())
-                                log.info("WEID %s added to the execution pool" % weid)
-                            else:
-                                log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+                            log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+                            we_rec = restApiControl.getExecutionRecord(weid)
+                            restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
+
+                    log.info("Done\n")
+
+                    log.info("Entering main loop to check for Pending executions")
+                    # add new execution (Pending)
+                    while stopFlag is not True:
+                        # retrieve weids with status "Scheduled" from DB
+                        for wed in restApiControl.getPendingExecutions():
+                            print(str(wed['_id']) + " found as pending")
+                            weid = wed['_id']
+
+                            # check number of attempts for execution
+                            if wed['Attempts'] > 60*10:
+                                restApiControl.setExecutionStatusCreated(weid)
                                 if api_type != 'granta':
-                                    we_rec = restApiControl.getExecutionRecord(weid)
-                                    restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
+                                    my_email.sendEmailAboutExecutionStatus(weid)
 
-                        break
-                    # ok, no more jobs to schedule for now, wait
+                            else:
+                                if checkExecutionResources(weid):
+                                    # add the correspoding weid to the pool, change status to scheduled
+                                    if not restApiControl.setExecutionStatusScheduled(weid):
+                                        print("Could not update execution status")
+                                    else:
+                                        print("Updated status of execution")
+                                    updateStatScheduled(statusLock, schedulerStat)  # update status
+                                    result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat, weid), callback=procFinish, error_callback=procError)
+                                    # log.info(result.get())
+                                    log.info("WEID %s added to the execution pool" % weid)
+                                else:
+                                    log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+                                    if api_type != 'granta':
+                                        we_rec = restApiControl.getExecutionRecord(weid)
+                                        restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
 
-                    # display progress (consider use of tqdm)
-                    lt = time.localtime(time.time())
-                    if api_type != 'granta':
-                        stats = restApiControl.getStatScheduler()
-                        print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                              str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
-                    print("waiting..")
-                    time.sleep(60)
-            except Exception as err:
-                log.info("Error: " + repr(err))
-                stop(pool)
-            except:
-                log.info("Unknown error encountered")
-                stop(pool)
-    except pidfile.AlreadyRunningError:
-        log.error('Already running.')
+                            break
+                        # ok, no more jobs to schedule for now, wait
+
+                        # display progress (consider use of tqdm)
+                        lt = time.localtime(time.time())
+                        if api_type != 'granta':
+                            stats = restApiControl.getStatScheduler()
+                            print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
+                                str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
+                        print("waiting..")
+                        time.sleep(60)
+                except Exception as err:
+                    log.info("Error: " + repr(err))
+                    stop(pool)
+                except:
+                    log.info("Unknown error encountered")
+                    stop(pool)
+        except pidfile.AlreadyRunningError:
+            log.error('Already running.')
 
     log.info("Exiting MupifDB Workflow Scheduler\n")
