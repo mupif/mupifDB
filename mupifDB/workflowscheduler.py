@@ -56,6 +56,7 @@ class index(enum.IntEnum):
 
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
+mupif_ns = os.environ.get('MUPIF_NS', "http://127.0.0.1:9090")
 
 poolsize = 3
 statusLock = multiprocessing.Lock()
@@ -234,6 +235,8 @@ def executeWorkflow(we_id):
                     env['PYTHONPATH'] += f'{os.pathsep}{mupifDBSrcDir}'
                 else:
                     env['PYTHONPATH'] = mupifDBSrcDir
+                env['MUPIF_NS'] = mupif_ns
+                env['MUPIFDB_REST_SERVER_TYPE'] = api_type
 
                 completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
                 workflowLog.write(f'''

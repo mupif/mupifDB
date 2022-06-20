@@ -133,6 +133,14 @@ def updateWorkflow(data):
     return response_json['result']
 
 
+def fix_json(val):
+    import re
+    val = re.sub(",[ \t\r\n]+}", "}", val)
+    val = re.sub(",[ \t\r\n]+\]", "]", val)
+    val
+    return val
+
+
 def getWorkflowRecordGeneral(wid, version):  # todo granta
     if api_type == 'granta':
         url = RESTserver + 'templates/' + str(wid)
@@ -143,12 +151,33 @@ def getWorkflowRecordGeneral(wid, version):  # todo granta
         workflow['_id'] = r_json['guid']
         workflow['wid'] = r_json['guid']
         workflow['WorkflowVersion'] = 1
-        workflow['modulename'] = 'workflow_homolumo2'  # todo
-        workflow['classname'] = 'WorkflowHomoLumo'  # todo
-        workflow['GridFSID'] = 'unknown'  # todo
-        workflow['Status'] = 'Pending'  # todo
+
+        workflow['modulename'] = 'unknown'
+        workflow['classname'] = 'unknown'
+        workflow['GridFSID'] = 'unknown'
         workflow['UseCase'] = ''
+        workflow['metadata'] = ''
+
+        fid = None
+        gmds = r_json['metadata']
+
+        for gmd in gmds:
+            if gmd['name'] == 'muPIF metadata':
+                md = json.loads(fix_json(gmd['value']))
+                workflow['metadata'] = md
+                workflow['classname'] = md['ClassName']
+                workflow['modulename'] = md['ModuleName']
+
+            if gmd['name'] == 'workflow python file':
+                fid = gmd['value'].split('/')[-1]
+
+        if fid:
+            file, filename = getBinaryFileByID(fid)
+            workflow['GridFSID'] = fid
+            workflow['modulename'] = filename.replace('.py', '')
+
         return workflow
+
     workflow_newest = getWorkflowRecord(wid)
     if workflow_newest is not None:
         if workflow_newest['Version'] == version or version == -1 or version == None:
@@ -156,9 +185,14 @@ def getWorkflowRecordGeneral(wid, version):  # todo granta
     return getWorkflowRecordFromHistory(wid, version)
 
 
+def _getGrantaWorkflowMetadataFromDatabase(wid):
+    workflow_record = getWorkflowRecordGeneral(wid, -1)
+    return workflow_record.get('metadata', {})
+
+
 def _getGrantaWorkflowMetadataFromFile(wid, key=None):
     workflow_record = getWorkflowRecordGeneral(wid, -1)
-    if workflow_record.get('GridFSID', None) is not None:  # todo remove or True
+    if workflow_record.get('GridFSID', None) is not None:
         with tempfile.TemporaryDirectory(dir='/tmp', prefix='mupifDB') as tempDir:
             try:
                 fc, fn = getBinaryFileByID(workflow_record['GridFSID'])
@@ -198,7 +232,7 @@ def _getGrantaExecutionInputItem(eid, name):
             if inp['type'] == 'float':
                 # fint units first :(
                 execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromFile(execution_record['WorkflowID'], 'Inputs')
+                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
@@ -290,7 +324,9 @@ def getExecutionRecord(weid):  # todo granta
         execution['_id'] = r_json['guid']
         execution['WorkflowID'] = r_json['template_guid']
         execution['WorkflowVersion'] = -1
-        execution['Status'] = 'Pending'
+        execution['Status'] = 'unknown'
+        if r_json['status'] == 'Ready':
+            execution['Status'] = 'Pending'
         execution['Task_ID'] = ''
         return execution
     response = requests.get(RESTserver + "main?action=get_execution&id=" + str(weid))
@@ -401,7 +437,7 @@ def setExecutionStatusFinished(execution_id):
 
 def setExecutionStatusFailed(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Failed')  # todo granta
+        return _setGrantaExecutionStatus(execution_id, 'Cancelled')  # todo granta
 
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
@@ -556,11 +592,6 @@ def getBinaryFileByID(fid):
         url = RESTserver.replace('/api/', '/filestore/')
         response = requests.get(url + str(fid), auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), allow_redirects=True)
         return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
-
-        f = open('./workflow_homolumo2.py', 'rb')
-        data = f.read()
-        f.close()
-        return data
 
     # name
     response = requests.get(RESTserver + "main?action=get_filename&id=" + str(fid), allow_redirects=True)
