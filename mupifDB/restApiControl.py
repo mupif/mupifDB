@@ -399,7 +399,7 @@ def _setGrantaExecutionStatus(eid, val):
 
 def setExecutionStatusScheduled(execution_id):
     if api_type == 'granta':
-        return None
+        return _setGrantaExecutionStatus(execution_id, 'Planned')
     return setExecutionParameter(execution_id, "Status", "Scheduled")
 
 
@@ -423,7 +423,7 @@ def setExecutionStatusPending(execution_id, reverted=False):
 
 def setExecutionStatusRunning(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Running')  # todo granta
+        return _setGrantaExecutionStatus(execution_id, 'On-going')
     setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Running")
 
@@ -437,7 +437,7 @@ def setExecutionStatusFinished(execution_id):
 
 def setExecutionStatusFailed(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Cancelled')  # todo granta
+        return _setGrantaExecutionStatus(execution_id, 'Cancelled')
 
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
