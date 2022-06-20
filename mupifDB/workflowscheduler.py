@@ -88,7 +88,7 @@ class SchedulerMonitor (object):
     def __init__(self, ns):
         self.ns = ns
     def runServer(self):
-        return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata="type:scheduler")
+        return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata=set("type:scheduler"))
     def getStatistics(self):
         return {
             'runningTaks':runningTasks, 
@@ -100,6 +100,8 @@ class SchedulerMonitor (object):
     def stop (self):
         stopFlag=True
         self.ns.remove("mupif.cheduler")
+    # no-op: runServer wants  this for some reason?
+    def registerPyro(self,daemon,ns,uri,appName,externalDaemon): pass
 
 
 monitor = SchedulerMonitor(ns)
