@@ -426,7 +426,7 @@ def mapInputs(app, eid):
     workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
     workflow_input_templates = workflow['IOCard']['Inputs']
     if api_type == 'granta':
-        workflow_input_templates = restApiControl._getGrantaWorkflowMetadataFromFile(execution['WorkflowID'], 'Inputs')
+        workflow_input_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Inputs', [])
 
     for input_template in workflow_input_templates:
         name = input_template['Name']
@@ -513,7 +513,7 @@ def mapOutputs(app, eid, time):
     workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
     workflow_output_templates = workflow['IOCard']['Outputs']
     if api_type == 'granta':
-        workflow_output_templates = restApiControl._getGrantaWorkflowMetadataFromFile(execution['WorkflowID'], 'Outputs')
+        workflow_output_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Outputs', [])
 
     granta_output_data = []
 

@@ -14,6 +14,10 @@ import argparse
 import mupifDB
 import mupif as mp
 
+
+api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
+print(api_type)
+
 log = logging.getLogger()
 log.info('Execution script started')
 
