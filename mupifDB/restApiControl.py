@@ -260,6 +260,30 @@ def _getGrantaExecutionInputItem(eid, name):
 
                     }
                 }
+            if inp['type'] == 'hyperlink':
+                execution_record = getExecutionRecord(eid)
+                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
+                units = ''
+                for w_i in w_inputs:
+                    if w_i['Name'] == name:
+                        units = w_i['Units']
+
+                return {
+                    'Compulsory': True,
+                    'Description': '',
+                    'Name': inp['name'],
+                    'ObjID': inp['name'],
+                    'Type': 'mupif.HeavyStruct',
+                    'TypeID': 'mupif.DataID.ID_None',
+                    'Units': '',
+                    'ValueType': 'Scalar',
+                    'Value': None,
+                    'FileID': None,
+                    'Link': {},
+                    'Object': {
+                        'FileID': inp['value'].split('/')[-1]
+                    }
+                }
     return None
 
 

@@ -505,6 +505,25 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                 "value": prop.quantity.value.tolist(),
                 "type": "float"
             }
+    if object_type == 'mupif.HeavyStruct':
+        hs = app.get(mupif.DataID[data_id], time, obj_id)
+
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            full_path = tempDir + "/file.h5"
+            hs_copy = hs.deepcopy()
+            hs.moveStorage(full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFile(f)
+                f.close()
+            if fileID is None:
+                print("hdf5 file was not saved")
+            return {
+                "name": str(name),
+                "value": 'https://musicode.grantami.com/musicode/filestore/' + fileID,
+                "type": "hyperlink"
+            }
+
     return None
 
 
