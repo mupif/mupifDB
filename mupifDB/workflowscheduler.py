@@ -94,7 +94,7 @@ class SchedulerMonitor (object):
     def runServer(self):
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata=set("type:scheduler"))
     def getStatistics(self):
-        runningTaks=self.stat['runningTasks']
+        runningTasks=self.stat['runningTasks']
         scheduledTasks=self.stat['scheduledTasks']
         processedTasks = self.stat['processedTasks']
         finishedTasks=self.stat['finishedTasks']
