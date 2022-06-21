@@ -52,7 +52,7 @@ def processor(win, scheduler, schedulerURI):
     while True:
         stat = scheduler.getStatistics()
         win.addstr(0, 70, timeTime.strftime("%H:%M:%S", timeTime.gmtime()))
-        win.addstr(22, 0, "TotalStat: Running:"+str(stat['runningTaks']))
+        win.addstr(22, 0, "TotalStat: Running:"+str(stat['runningTasks']))
         win.addstr(22, 25, "Processed:"+str(stat['processedTasks']))
         win.addstr(22, 45, "Finished:"+str(stat['finishedTasks']))
         win.addstr(22, 65, "Failed:"+str(stat['failedTasks']))

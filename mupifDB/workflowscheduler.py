@@ -12,6 +12,7 @@ import enum
 import pidfile
 import zipfile
 import ctypes
+import json
 
 import restApiControl
 import my_email
@@ -69,6 +70,9 @@ processedTasks = 0
 finishedTasks = 0 # with success
 failedTasks = 0
 lastJobs = {} # dict, we-id key
+
+
+schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
@@ -142,9 +146,8 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
             print("updateStatRunning called")
             print (schedulerStat)
             print ('------------------')
-            restApiControl.updateStatScheduler(scheduledTasks=-1, runningTasks=+1)
-            stats_temp = restApiControl.getStatScheduler()
-            restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
+            updateStatPersistent(scheduledTasks=-1, runningTasks=+1)
+            #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
             #
             schedulerStat['scheduledTasks'] =  schedulerStat['scheduledTasks']-1
             schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
@@ -166,7 +169,7 @@ def updateStatScheduled(lock, schedulerStat):
     if api_type != 'granta':
         with lock:
             print("updateStatScheduled called")
-            restApiControl.updateStatScheduler(scheduledTasks=+1)
+            updateStatPersistent(scheduledTasks=+1)
             #
             schedulerStat['scheduledTasks']=schedulerStat['scheduledTasks']+1
 
@@ -175,7 +178,7 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
         with lock:
             print("updateStatFinished called")
             
-            restApiControl.updateStatScheduler(runningTasks=-1, processedTasks=+1)
+            updateStatPersistent(runningTasks=-1, processedTasks=+1, finishedTasks=int(retCode==0), failedTasks=int(retCode==1))
             stats_temp = restApiControl.getStatScheduler()
             restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
             #
@@ -200,6 +203,28 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
             print (schedulerStat)
             print ('FFFFFFFFFFFFFFFFFFFF')
 
+
+def updateStatPersistent (runningTasks=0, processedTasks=0, scheduledTasks=0, finishedTasks=0, failedTasks=0):
+    #print("updateStatPersistent called")
+    with open(schedulerStatFile, 'r+') as jsonFile:
+        stat = json.load(jsonFile)
+        #print(stat)
+        if (runningTasks):
+            stat['runningTasks'] = stat['runningTasks']+runningTasks
+        if (processedTasks):
+            stat['processedTasks'] = stat['processedTasks']+ processedTasks
+        if (scheduledTasks):
+            stat['scheduledTasks'] = stat['scheduledTasks']+ scheduledTasks
+        if (finishedTasks):
+            stat['finishedTasks'] = stat['finishedTasks']+ finishedTasks
+        if (failedTasks):
+            stat['failedTasks'] = stat['failedTasks']+failedTasks
+        jsonFile.seek(0)
+        #print(stat)
+        json.dump(stat, jsonFile)
+        #print("Update:", stat)
+    #print("updateStatPersistent finished")
+  
 
 
 def setupLogger(fileName, level=logging.DEBUG):
@@ -435,6 +460,14 @@ if __name__ == '__main__':
     setupLogger(fileName="scheduler.log")
     #statusLock = multiprocessing.Lock()
 
+    if (Path(schedulerStatFile).is_file()):
+        with open(schedulerStatFile,'r') as f:
+            stat=json.load(f)
+    else:
+        # create empty stat
+        stat={'runningTasks':0, 'scheduledTasks': 0, 'load':0, 'processedTasks':0, 'finishedTasks':0, 'failedTasks':0}
+        with open(schedulerStatFile,'w') as f:
+            json.dump(stat, f)
 
     import requests.adapters
     import urllib3
@@ -454,9 +487,9 @@ if __name__ == '__main__':
         schedulerStat['runningTasks'] = 0
         schedulerStat['scheduledTasks'] = 0
         schedulerStat['load'] = 0
-        schedulerStat['processedTasks'] = 0
-        schedulerStat['finishedTasks'] = 0
-        schedulerStat['failedTasks'] = 0
+        schedulerStat['processedTasks'] = stat['processedTasks']
+        schedulerStat['finishedTasks'] = stat['finishedTasks']
+        schedulerStat['failedTasks'] = stat['failedTasks']
         schedulerStat['lastJobs'] = [] #manager.list()
         statusLock = manager.Lock()
 
