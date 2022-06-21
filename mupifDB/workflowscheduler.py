@@ -88,18 +88,21 @@ buf = None
 
 @Pyro5.api.expose
 class SchedulerMonitor (object):
-    def __init__(self, ns, schedulerStat):
+    def __init__(self, ns, schedulerStat,lock):
         self.ns = ns
         self.stat = schedulerStat
+        self.lock = lock
     def runServer(self):
+        print("SchedulerMonitor: runingServer")
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata=set("type:scheduler"))
     def getStatistics(self):
-        runningTasks=self.stat['runningTasks']
-        scheduledTasks=self.stat['scheduledTasks']
-        processedTasks = self.stat['processedTasks']
-        finishedTasks=self.stat['finishedTasks']
-        failedTasks=self.stat['failedTasks']
-        lastJobs=self.stat['lastJobs']
+        with self.lock:
+            runningTasks=self.stat['runningTasks']
+            scheduledTasks=self.stat['scheduledTasks']
+            processedTasks = self.stat['processedTasks']
+            finishedTasks=self.stat['finishedTasks']
+            failedTasks=self.stat['failedTasks']
+            lastJobs=self.stat['lastJobs']
         return {
             'runningTasks':runningTasks, 
             'scheduledTasks':scheduledTasks,
@@ -112,7 +115,8 @@ class SchedulerMonitor (object):
         stopFlag=True
         self.ns.remove("mupif.scheduler")
     # no-op: runServer wants  this for some reason?
-    def registerPyro(self,daemon,ns,uri,appName,externalDaemon): pass
+    def registerPyro(self,daemon,ns,uri,appName,externalDaemon): 
+        pass
 
 
 
@@ -146,7 +150,9 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
             print("updateStatRunning called")
             print (schedulerStat)
             print ('------------------')
+            
             updateStatPersistent(scheduledTasks=-1, runningTasks=1)
+            
             #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
             #
             schedulerStat['scheduledTasks'] =  schedulerStat['scheduledTasks']-1
@@ -206,7 +212,10 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
 
 def updateStatPersistent (runningTasks=0, processedTasks=0, scheduledTasks=0, finishedTasks=0, failedTasks=0):
     #print("updateStatPersistent called")
-    with open(schedulerStatFile, 'r+') as jsonFile:
+    if (True):
+        return
+    else:
+        jsonFile= open(schedulerStatFile, 'r+')
         stat = json.load(jsonFile)
         #print(stat)
         if (runningTasks):
@@ -222,8 +231,9 @@ def updateStatPersistent (runningTasks=0, processedTasks=0, scheduledTasks=0, fi
         jsonFile.seek(0)
         #print(stat)
         json.dump(stat, jsonFile)
+        jsonFile.close()
         #print("Update:", stat)
-    #print("updateStatPersistent finished")
+        #print("updateStatPersistent finished")
   
 
 
@@ -493,7 +503,7 @@ if __name__ == '__main__':
         schedulerStat['lastJobs'] = [] #manager.list()
         statusLock = manager.Lock()
 
-        monitor = SchedulerMonitor(ns, schedulerStat)
+        monitor = SchedulerMonitor(ns, schedulerStat, statusLock)
         #run scheduler monitor 
         monitor.runServer()
 
