@@ -101,7 +101,7 @@ class SchedulerMonitor (object):
         failedTasks=self.stat['failedTasks']
         lastJobs=self.stat['lastJobs']
         return {
-            'runningTaks':runningTasks, 
+            'runningTasks':runningTasks, 
             'scheduledTasks':scheduledTasks,
             'processedTasks': processedTasks,
             'finishedTasks': finishedTasks,
