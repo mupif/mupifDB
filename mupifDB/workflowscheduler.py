@@ -110,7 +110,7 @@ class SchedulerMonitor (object):
             } 
     def stop (self):
         stopFlag=True
-        self.ns.remove("mupif.cheduler")
+        self.ns.remove("mupif.scheduler")
     # no-op: runServer wants  this for some reason?
     def registerPyro(self,daemon,ns,uri,appName,externalDaemon): pass
 
@@ -146,7 +146,7 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
             print("updateStatRunning called")
             print (schedulerStat)
             print ('------------------')
-            updateStatPersistent(scheduledTasks=-1, runningTasks=+1)
+            updateStatPersistent(scheduledTasks=-1, runningTasks=1)
             #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
             #
             schedulerStat['scheduledTasks'] =  schedulerStat['scheduledTasks']-1
