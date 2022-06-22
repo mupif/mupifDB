@@ -141,7 +141,7 @@ def procFinish(r):
 
 
 def procError(r):
-    print("procError called:"+r)
+    print("procError called:"+str(r))
 
 
 def updateStatRunning(lock, schedulerStat, we_id, wid):
