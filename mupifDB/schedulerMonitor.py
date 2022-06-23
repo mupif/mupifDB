@@ -20,28 +20,24 @@ processed_col = 35
 finished_col = 41
 failed_col = 70
 
+
 def usage():
     print("Usage: SchedulerStatus [-r refreshRateInSeconds]")
 
 
 def processor(win, scheduler, schedulerURI):
     global ns
-    
 
     win.erase()
 
     win.addstr(0, 0, "MuPIF Scheduler Status MONITOR")
     win.addstr(1, 0, "Scheduler URI:      "+str(schedulerURI))
-   
 
     win.addstr(3, 0, "WEid")
     win.addstr(3, 26, "Wid")
     win.addstr(3, 40, "Status")
     win.addstr(3, 50, "Start/Finish Date")
     win.hline(4, 0, '-', 80)
-
-
-
 
     win.addstr(23, 0, "Press [q] to quit")
     win.refresh()
@@ -62,12 +58,12 @@ def processor(win, scheduler, schedulerURI):
         c = win.getch()
         if c == ord('q'):
             break
-        i=0
+        i = 0
         for rec in stat['lastJobs']:
             win1.addstr(i, 0, rec[0])
-            win1.addstr(i,26, rec[1])
-            win1.addstr(i,40, rec[2])
-            win1.addstr(i,50, rec[3])
+            win1.addstr(i, 26, rec[1])
+            win1.addstr(i, 40, rec[2])
+            win1.addstr(i, 50, rec[3])
             i = i+1
         win1.refresh()
         timeTime.sleep(1)
@@ -80,15 +76,15 @@ def processor(win, scheduler, schedulerURI):
 def main():
     global ns
     global scheduler
-    ns=mp.pyroutil.connectNameserver()
-    ns_uri=str(ns._pyroUri)
+    ns = mp.pyroutil.connectNameserver()
+    ns_uri = str(ns._pyroUri)
    
     try:
         opts, args = getopt.getopt(sys.argv[1:], "r:")
         # print(opts, args)
     except getopt.GetoptError as err: 
         # print help information and exit: 
-        print(str(err)) # will print something like "option -a not recognized"
+        print(str(err))  # will print something like "option -a not recognized"
         usage()
         sys.exit(2)
     
@@ -107,12 +103,9 @@ def main():
     # locate scheduler, request remote proxy
     schedulerURI = ns.lookup('mupif.scheduler')
     # get local port of jobmanager (from uri)
-    scheduler=Pyro5.api.Proxy(schedulerURI)
-    
+    scheduler = Pyro5.api.Proxy(schedulerURI)
 
     curses.wrapper(processor, scheduler, schedulerURI)
-    
-      
 
     ###########################################################
 

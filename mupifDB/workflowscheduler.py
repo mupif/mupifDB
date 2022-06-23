@@ -145,69 +145,66 @@ def procError(r):
 
 
 def updateStatRunning(lock, schedulerStat, we_id, wid):
-    if api_type != 'granta':
-        with lock:
-            print("updateStatRunning called")
-            print (schedulerStat)
-            print ('------------------')
-            
-            updateStatPersistent(scheduledTasks=-1, runningTasks=1)
-            
-            #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
-            #
-            schedulerStat['scheduledTasks'] =  schedulerStat['scheduledTasks']-1
-            schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
-            #schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
-            #Modifications to mutable values or items in dict and list proxies will not be propagated through the manager, 
-            #because the proxy has no way of knowing when its values or items are modified. 
-            #To modify such an item, you can re-assign the modified object to the container proxy.
-            jobs = [(we_id, wid, 'Running', datetime.datetime.now().isoformat(timespec='seconds'), '-')]
-            for i in range(min(4,len(schedulerStat['lastJobs']))):
-                jobs.append(schedulerStat['lastJobs'][i])
-            schedulerStat['lastJobs'] = jobs
+    with lock:
+        print("updateStatRunning called")
+        print (schedulerStat)
+        print ('------------------')
 
-            print (we_id, wid)
-            print (schedulerStat)
-            print ('=======================')
+        updateStatPersistent(scheduledTasks=-1, runningTasks=1)
+
+        #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
+        #
+        schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks']-1
+        schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
+        #schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
+        #Modifications to mutable values or items in dict and list proxies will not be propagated through the manager,
+        #because the proxy has no way of knowing when its values or items are modified.
+        #To modify such an item, you can re-assign the modified object to the container proxy.
+        jobs = [(we_id, wid, 'Running', datetime.datetime.now().isoformat(timespec='seconds'), '-')]
+        for i in range(min(4,len(schedulerStat['lastJobs']))):
+            jobs.append(schedulerStat['lastJobs'][i])
+        schedulerStat['lastJobs'] = jobs
+
+        print (we_id, wid)
+        print (schedulerStat)
+        print ('=======================')
 
 
 def updateStatScheduled(lock, schedulerStat):
-    if api_type != 'granta':
-        with lock:
-            print("updateStatScheduled called")
-            updateStatPersistent(scheduledTasks=+1)
-            #
-            schedulerStat['scheduledTasks']=schedulerStat['scheduledTasks']+1
+    with lock:
+        print("updateStatScheduled called")
+        updateStatPersistent(scheduledTasks=+1)
+        #
+        schedulerStat['scheduledTasks']=schedulerStat['scheduledTasks']+1
 
 def updateStatFinished(lock, schedulerStat, retCode, we_id):
-    if api_type != 'granta':
-        with lock:
-            print("updateStatFinished called")
-            
-            updateStatPersistent(runningTasks=-1, processedTasks=+1, finishedTasks=int(retCode==0), failedTasks=int(retCode==1))
-            stats_temp = restApiControl.getStatScheduler()
-            restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
-            #
-            schedulerStat['runningTasks']=schedulerStat['runningTasks']-1
-            if (retCode == 0):
-                schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
-                schedulerStat['finishedTasks']=schedulerStat['finishedTasks']+1
-            elif (retCode == 1):
-                schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
-                schedulerStat['failedTasks'] =schedulerStat['failedTasks']+1
-            jobs = []
-            for i in range(len(schedulerStat['lastJobs'])):
-                if (schedulerStat['lastJobs'][i][0] == we_id):
-                    if (retCode == 0):
-                        jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Finished", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
-                    else:
-                        jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Failed", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
-                else:
-                    jobs.append(schedulerStat['lastJobs'][i])
-            schedulerStat['lastJobs'] = jobs
+    with lock:
+        print("updateStatFinished called")
 
-            print (schedulerStat)
-            print ('FFFFFFFFFFFFFFFFFFFF')
+        updateStatPersistent(runningTasks=-1, processedTasks=+1, finishedTasks=int(retCode==0), failedTasks=int(retCode==1))
+        stats_temp = restApiControl.getStatScheduler()
+        restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
+        #
+        schedulerStat['runningTasks']=schedulerStat['runningTasks']-1
+        if (retCode == 0):
+            schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
+            schedulerStat['finishedTasks']=schedulerStat['finishedTasks']+1
+        elif (retCode == 1):
+            schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
+            schedulerStat['failedTasks'] =schedulerStat['failedTasks']+1
+        jobs = []
+        for i in range(len(schedulerStat['lastJobs'])):
+            if (schedulerStat['lastJobs'][i][0] == we_id):
+                if (retCode == 0):
+                    jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Finished", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
+                else:
+                    jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Failed", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
+            else:
+                jobs.append(schedulerStat['lastJobs'][i])
+        schedulerStat['lastJobs'] = jobs
+
+        print (schedulerStat)
+        print ('FFFFFFFFFFFFFFFFFFFF')
 
 
 def updateStatPersistent (runningTasks=0, processedTasks=0, scheduledTasks=0, finishedTasks=0, failedTasks=0):
