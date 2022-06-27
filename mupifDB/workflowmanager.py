@@ -14,6 +14,9 @@ import table_structures
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
+ns = mupif.pyroutil.connectNameServer()
+daemon = mupif.pyroutil.getDaemon(ns)
+
 
 def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md):
     """
@@ -404,6 +407,21 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 prop = mupif.String.from_db_dict(inp_record['Object'])
                 app.set(prop, app_obj_id)
 
+            elif object_type == 'mupif.PyroFile':
+                file_id = inp_record['Object'].get('FileID', None)
+                if file_id is not None:
+                    # load from hdf5 file
+                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        # full_path = "/home/stanislav/tmp/" + fn  # tempDir
+                        full_path = tempDir + "/" + fn
+                        f = open(full_path, 'wb')
+                        f.write(pfile)
+                        f.close()
+                        pf = mupif.PyroFile(filename=full_path, mode='rb')
+                        daemon.register(pf)
+                        app.set(pf, app_obj_id)
+
             elif object_type == 'mupif.HeavyStruct':
                 file_id = inp_record['Object'].get('FileID', None)
                 if file_id is not None:
@@ -414,8 +432,10 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                         f = open(full_path, 'wb')
                         f.write(pfile)
                         f.close()
-                        hs = mupif.HeavyStruct(h5path=full_path, mode='readonly', id=mupif.DataID[data_id])
-                        hs = hs.deepcopy()
+                        hs = mupif.HeavyStruct(h5path=full_path, mode='copy-readwrite', id=mupif.DataID[data_id])
+                        # hs = hs.deepcopy()
+                        daemon.register(hs)
+                        hs.exposeData()
                         app.set(hs, app_obj_id)
             else:
                 raise ValueError('Handling of io param of type %s is not implemented' % object_type)

@@ -238,6 +238,10 @@ def _getGrantaExecutionInputItem(eid, name):
                     if w_i['Name'] == name:
                         units = w_i['Units']
 
+                        # todo delete this temporary fix
+                        if units == 'degK':
+                            units = 'K'
+
                 return {
                     'Compulsory': True,
                     'Description': '',
@@ -264,26 +268,47 @@ def _getGrantaExecutionInputItem(eid, name):
                 execution_record = getExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
+                obj_type = ''
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
                         units = w_i['Units']
+                        obj_type = w_i['Type']
 
-                return {
-                    'Compulsory': True,
-                    'Description': '',
-                    'Name': inp['name'],
-                    'ObjID': inp['name'],
-                    'Type': 'mupif.HeavyStruct',
-                    'TypeID': 'mupif.DataID.ID_None',
-                    'Units': '',
-                    'ValueType': 'Scalar',
-                    'Value': None,
-                    'FileID': None,
-                    'Link': {},
-                    'Object': {
-                        'FileID': inp['value'].split('/')[-1]
+                if obj_type == 'mupif.HeavyStruct':
+                    return {
+                        'Compulsory': True,
+                        'Description': '',
+                        'Name': inp['name'],
+                        'ObjID': inp['name'],
+                        'Type': 'mupif.HeavyStruct',
+                        'TypeID': 'mupif.DataID.ID_None',
+                        'Units': '',
+                        'ValueType': 'Scalar',
+                        'Value': None,
+                        'FileID': None,
+                        'Link': {},
+                        'Object': {
+                            'FileID': inp['value'].split('/')[-1]
+                        }
                     }
-                }
+
+                if obj_type == 'mupif.PyroFile':
+                    return {
+                        'Compulsory': True,
+                        'Description': '',
+                        'Name': inp['name'],
+                        'ObjID': inp['name'],
+                        'Type': 'mupif.PyroFile',
+                        'TypeID': 'mupif.DataID.ID_None',
+                        'Units': '',
+                        'ValueType': 'Scalar',
+                        'Value': None,
+                        'FileID': None,
+                        'Link': {},
+                        'Object': {
+                            'FileID': inp['value'].split('/')[-1]
+                        }
+                    }
     return None
 
 
@@ -418,7 +443,7 @@ def _setGrantaExecutionStatus(eid, val):
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8'}
     newdata = {"status": str(val)}
     r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata))
-    return None
+    return True
 
 
 def setExecutionStatusScheduled(execution_id):
