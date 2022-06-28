@@ -34,9 +34,9 @@ def processor(win, scheduler, schedulerURI):
     win.addstr(1, 0, "Scheduler URI:      "+str(schedulerURI))
 
     win.addstr(3, 0, "WEid")
-    win.addstr(3, 26, "Wid")
-    win.addstr(3, 40, "Status")
-    win.addstr(3, 50, "Start/Finish Date")
+    win.addstr(3, 30, "Wid")
+    win.addstr(3, 50, "Status")
+    win.addstr(3, 60, "Start/Finish Date")
     win.hline(4, 0, '-', 80)
 
     win.addstr(23, 0, "Press [q] to quit")
@@ -60,10 +60,10 @@ def processor(win, scheduler, schedulerURI):
             break
         i = 0
         for rec in stat['lastJobs']:
-            win1.addstr(i, 0, rec[0])
-            win1.addstr(i, 26, rec[1])
-            win1.addstr(i, 40, rec[2])
-            win1.addstr(i, 50, rec[3])
+            win1.addstr(i, 0, '{:30.29}'.format(rec[0]))
+            win1.addstr(i, 30, '{:20.19}'.format(rec[1]))
+            win1.addstr(i, 50, rec[2])
+            win1.addstr(i, 60, rec[3])
             i = i+1
         win1.refresh()
         timeTime.sleep(1)
