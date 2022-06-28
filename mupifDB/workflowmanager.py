@@ -540,7 +540,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                 print("hdf5 file was not saved")
             return {
                 "name": str(name),
-                "value": 'https://musicode.grantami.com/musicode/filestore/' + fileID,
+                "value": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
                 "type": "hyperlink"
             }
 
