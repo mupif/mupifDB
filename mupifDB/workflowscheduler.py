@@ -147,8 +147,8 @@ def procError(r):
 def updateStatRunning(lock, schedulerStat, we_id, wid):
     with lock:
         print("updateStatRunning called")
-        print (schedulerStat)
-        print ('------------------')
+        #print (schedulerStat)
+        #print ('------------------')
 
         #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
         #
@@ -163,9 +163,9 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
             jobs.append(schedulerStat['lastJobs'][i])
         schedulerStat['lastJobs'] = jobs
 
-        print (we_id, wid)
-        print (schedulerStat)
-        print ('=======================')
+        #print (we_id, wid)
+        #print (schedulerStat)
+        #print ('=======================')
 
 
 def updateStatScheduled(lock, schedulerStat):
@@ -199,8 +199,8 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
                 jobs.append(schedulerStat['lastJobs'][i])
         schedulerStat['lastJobs'] = jobs
 
-        print (schedulerStat)
-        print ('FFFFFFFFFFFFFFFFFFFF')
+        #print (schedulerStat)
+        #print ('FFFFFFFFFFFFFFFFFFFF')
 
 
 def updateStatPersistent (schedulerStat):
@@ -452,7 +452,7 @@ if __name__ == '__main__':
     if (Path(schedulerStatFile).is_file()):
         with open(schedulerStatFile,'r') as f:
             stat=json.load(f)
-            print (stat)
+            #print (stat)
     else:
         # create empty stat
         stat={'runningTasks':0, 'scheduledTasks': 0, 'load':0, 'processedTasks':0, 'finishedTasks':0, 'failedTasks':0}

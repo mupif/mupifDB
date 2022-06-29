@@ -63,7 +63,10 @@ def processor(win, scheduler, schedulerURI):
             win1.addstr(i, 0, '{:30.29}'.format(rec[0]))
             win1.addstr(i, 30, '{:20.19}'.format(rec[1]))
             win1.addstr(i, 50, rec[2])
-            win1.addstr(i, 60, rec[3])
+            if (rec[2] == 'Finished' or rec[2]=='Failed'):
+                win1.addstr(i, 60, rec[4]) #end time
+            else:
+                win1.addstr(i, 60, rec[3]) #start time
             i = i+1
         win1.refresh()
         timeTime.sleep(1)
