@@ -150,8 +150,6 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
         print (schedulerStat)
         print ('------------------')
 
-        updateStatPersistent(scheduledTasks=-1, runningTasks=1)
-
         #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
         #
         schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks']-1
@@ -173,7 +171,6 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
 def updateStatScheduled(lock, schedulerStat):
     with lock:
         print("updateStatScheduled called")
-        updateStatPersistent(scheduledTasks=+1)
         #
         schedulerStat['scheduledTasks']=schedulerStat['scheduledTasks']+1
 
@@ -181,7 +178,6 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
     with lock:
         print("updateStatFinished called")
 
-        updateStatPersistent(runningTasks=-1, processedTasks=+1, finishedTasks=int(retCode==0), failedTasks=int(retCode==1))
         stats_temp = restApiControl.getStatScheduler()
         restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
         #
@@ -207,27 +203,13 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
         print ('FFFFFFFFFFFFFFFFFFFF')
 
 
-def updateStatPersistent (runningTasks=0, processedTasks=0, scheduledTasks=0, finishedTasks=0, failedTasks=0):
+def updateStatPersistent (schedulerStat):
     #print("updateStatPersistent called")
-    if (True):
+    if (False):
         return
     else:
-        jsonFile= open(schedulerStatFile, 'r+')
-        stat = json.load(jsonFile)
-        #print(stat)
-        if (runningTasks):
-            stat['runningTasks'] = stat['runningTasks']+runningTasks
-        if (processedTasks):
-            stat['processedTasks'] = stat['processedTasks']+ processedTasks
-        if (scheduledTasks):
-            stat['scheduledTasks'] = stat['scheduledTasks']+ scheduledTasks
-        if (finishedTasks):
-            stat['finishedTasks'] = stat['finishedTasks']+ finishedTasks
-        if (failedTasks):
-            stat['failedTasks'] = stat['failedTasks']+failedTasks
-        jsonFile.seek(0)
-        #print(stat)
-        json.dump(stat, jsonFile)
+        jsonFile= open(schedulerStatFile, 'w')
+        json.dump(schedulerStat.copy(), jsonFile)
         jsonFile.close()
         #print("Update:", stat)
         #print("updateStatPersistent finished")
@@ -470,6 +452,7 @@ if __name__ == '__main__':
     if (Path(schedulerStatFile).is_file()):
         with open(schedulerStatFile,'r') as f:
             stat=json.load(f)
+            print (stat)
     else:
         # create empty stat
         stat={'runningTasks':0, 'scheduledTasks': 0, 'load':0, 'processedTasks':0, 'finishedTasks':0, 'failedTasks':0}
@@ -494,9 +477,9 @@ if __name__ == '__main__':
         schedulerStat['runningTasks'] = 0
         schedulerStat['scheduledTasks'] = 0
         schedulerStat['load'] = 0
-        schedulerStat['processedTasks'] = stat['processedTasks']
-        schedulerStat['finishedTasks'] = stat['finishedTasks']
-        schedulerStat['failedTasks'] = stat['failedTasks']
+        schedulerStat['processedTasks'] = stat.get('processedTasks', 0)
+        schedulerStat['finishedTasks'] = stat.get('finishedTasks',0)
+        schedulerStat['failedTasks'] = stat.get('failedTasks',0)
         schedulerStat['lastJobs'] = [] #manager.list()
         statusLock = manager.Lock()
 
@@ -564,13 +547,15 @@ if __name__ == '__main__':
 
                             break
                         # ok, no more jobs to schedule for now, wait
-
                         # display progress (consider use of tqdm)
                         lt = time.localtime(time.time())
                         if api_type != 'granta':
                             stats = restApiControl.getStatScheduler()
                             print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
                                 str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
+                        #lazy update of persistent statistics, done in main thread thus thread safe
+                        with statusLock:
+                            updateStatPersistent (schedulerStat)
                         print("waiting..")
                         time.sleep(60)
                 except Exception as err:
