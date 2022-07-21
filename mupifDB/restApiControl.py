@@ -146,37 +146,39 @@ def getWorkflowRecordGeneral(wid, version):  # todo granta
         url = RESTserver + 'templates/' + str(wid)
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
         r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
-        r_json = r.json()
-        workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
-        workflow['_id'] = r_json['guid']
-        workflow['wid'] = r_json['guid']
-        workflow['WorkflowVersion'] = 1
+        if r.status_code == 200:
+            r_json = r.json()
+            workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
+            workflow['_id'] = r_json['guid']
+            workflow['wid'] = r_json['guid']
+            workflow['WorkflowVersion'] = 1
 
-        workflow['modulename'] = 'unknown'
-        workflow['classname'] = 'unknown'
-        workflow['GridFSID'] = 'unknown'
-        workflow['UseCase'] = ''
-        workflow['metadata'] = ''
+            workflow['modulename'] = 'unknown'
+            workflow['classname'] = 'unknown'
+            workflow['GridFSID'] = 'unknown'
+            workflow['UseCase'] = ''
+            workflow['metadata'] = ''
 
-        fid = None
-        gmds = r_json['metadata']
+            fid = None
+            gmds = r_json['metadata']
 
-        for gmd in gmds:
-            if gmd['name'] == 'muPIF metadata':
-                md = json.loads(fix_json(gmd['value']))
-                workflow['metadata'] = md
-                workflow['classname'] = md['ClassName']
-                workflow['modulename'] = md['ModuleName']
+            for gmd in gmds:
+                if gmd['name'] == 'muPIF metadata':
+                    md = json.loads(fix_json(gmd['value']))
+                    workflow['metadata'] = md
+                    workflow['classname'] = md['ClassName']
+                    workflow['modulename'] = md['ModuleName']
 
-            if gmd['name'] == 'workflow python file':
-                fid = gmd['value'].split('/')[-1]
+                if gmd['name'] == 'workflow python file':
+                    fid = gmd['value'].split('/')[-1]
 
-        if fid:
-            file, filename = getBinaryFileByID(fid)
-            workflow['GridFSID'] = fid
-            workflow['modulename'] = filename.replace('.py', '')
+            if fid:
+                file, filename = getBinaryFileByID(fid)
+                workflow['GridFSID'] = fid
+                workflow['modulename'] = filename.replace('.py', '')
 
-        return workflow
+            return workflow
+        return None
 
     workflow_newest = getWorkflowRecord(wid)
     if workflow_newest is not None:
@@ -368,16 +370,18 @@ def getExecutionRecord(weid):  # todo granta
         url = RESTserver + 'executions/' + str(weid)
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
         r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
-        r_json = r.json()
-        execution = table_structures.extendRecord({}, table_structures.tableExecution)
-        execution['_id'] = r_json['guid']
-        execution['WorkflowID'] = r_json['template_guid']
-        execution['WorkflowVersion'] = -1
-        execution['Status'] = 'unknown'
-        if r_json['status'] == 'Ready':
-            execution['Status'] = 'Pending'
-        execution['Task_ID'] = ''
-        return execution
+        if r.status_code == 200:
+            r_json = r.json()
+            execution = table_structures.extendRecord({}, table_structures.tableExecution)
+            execution['_id'] = r_json['guid']
+            execution['WorkflowID'] = r_json['template_guid']
+            execution['WorkflowVersion'] = -1
+            execution['Status'] = 'unknown'
+            if r_json['status'] == 'Ready':
+                execution['Status'] = 'Pending'
+            execution['Task_ID'] = ''
+            return execution
+        return None
     response = requests.get(RESTserver + "main?action=get_execution&id=" + str(weid))
     response_json = response.json()
     return response_json['result']
@@ -394,17 +398,19 @@ def getPendingExecutions():  # todo granta
         url = RESTserver + 'executions/?status=Ready'
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
         r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
-        r_json = r.json()
-        res = []
-        for ex in r_json:
-            execution = table_structures.extendRecord({}, table_structures.tableExecution)
-            execution['_id'] = ex['guid']
-            execution['WorkflowID'] = ex['template_guid']
-            execution['WorkflowVersion'] = -1
-            execution['Status'] = 'Pending'
-            execution['Task_ID'] = ''
-            res.append(execution)
-        return res
+        if r.status_code == 200:
+            r_json = r.json()
+            res = []
+            for ex in r_json:
+                execution = table_structures.extendRecord({}, table_structures.tableExecution)
+                execution['_id'] = ex['guid']
+                execution['WorkflowID'] = ex['template_guid']
+                execution['WorkflowVersion'] = -1
+                execution['Status'] = 'Pending'
+                execution['Task_ID'] = ''
+                res.append(execution)
+            return res
+        return []
     return getExecutionRecords(status="Pending")
 
 
