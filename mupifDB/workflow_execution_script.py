@@ -2,17 +2,15 @@ import importlib
 import sys
 import os
 
-# workflowscheduler sets PYTHONPATH env var, thus mupifDB should be normally importable
-# unlike mupif
-
-# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-# sys.path.append("/var/lib/mupif/mupifDB/")
 # os.environ["MUPIF_LOG_LEVEL"] = "INFO"
 # os.environ["MUPIF_LOG_FILE"] = "mupif.log"
+
 import logging
 import argparse
 import mupifDB
 import mupif as mp
+
+
 
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
@@ -20,6 +18,9 @@ print(api_type)
 
 log = logging.getLogger()
 log.info('Execution script started')
+
+daemon=mp.pyroutil.getDaemon()
+logUri=str(daemon.register(mp.pyrolog.PyroLogReceiver()))
 
 if __name__ == "__main__":
     workflow = None
@@ -49,7 +50,7 @@ if __name__ == "__main__":
         #
 
         workflow = workflow_class()
-        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
+        workflow.initialize(remoteLogUri=logUri,metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"]}})
         mupifDB.workflowmanager.mapInputs(workflow, args.id)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())
