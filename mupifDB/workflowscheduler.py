@@ -115,7 +115,7 @@ class SchedulerMonitor (object):
         stopFlag=True
         self.ns.remove("mupif.scheduler")
     # no-op: runServer wants  this for some reason?
-    def registerPyro(self,daemon,ns,uri,appName,externalDaemon): 
+    def registerPyro(self,*,daemon,ns,uri,appName,exclusiveDaemon): 
         pass
 
 
