@@ -7,3 +7,5 @@ flask_cors
 isodate
 flask
 psutil
+fastapi
+uvicorn[standard]
