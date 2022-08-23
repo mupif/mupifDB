@@ -9,3 +9,4 @@ flask
 psutil
 fastapi
 uvicorn[standard]
+python-multipart

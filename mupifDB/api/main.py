@@ -1,5 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, Depends
+from fastapi.responses import FileResponse
 from pymongo import MongoClient
+import tempfile
+import gridfs
+import io
+import bson
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
@@ -114,13 +119,33 @@ def get_execution(uid: str):
 # Files
 # --------------------------------------------------
 
+async def get_temp_dir():
+    tdir = tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB')
+    try:
+        yield tdir.name
+    finally:
+        del tdir
+
+
 @app.get("/file/{uid}")
-def get_file(uid: str):
-    return None
+def get_file(uid: str, tdir=Depends(get_temp_dir)):
+    fs = gridfs.GridFS(db)
+    foundfile = fs.get(bson.objectid.ObjectId(uid))
+    wfile = io.BytesIO(foundfile.read())
+    fn = foundfile.filename
+    fullpath = tdir + '/' + fn
+    with open(fullpath, "wb") as f:
+        f.write(wfile.read())
+        f.close()
+        return FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
 
 
-@app.post("/file_upload/")
-def upload_file():
+@app.post("/file/")
+def upload_file(file: UploadFile):
+    if file:
+        fs = gridfs.GridFS(db)
+        sourceID = fs.put(file.file, filename=file.filename)
+        return str(sourceID)
     return None
 
 
