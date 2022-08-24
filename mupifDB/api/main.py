@@ -5,6 +5,8 @@ import tempfile
 import gridfs
 import io
 import bson
+from typing import Union
+from pydantic import BaseModel
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
@@ -37,8 +39,7 @@ def read_root():
 
 @app.get("/user/{user_ip}")
 def get_user(user_ip: str):
-    table = db.Users
-    res = table.find_one({'IP': user_ip})
+    res = db.Users.find_one({'IP': user_ip})
     if res:
         return res
     return None
@@ -50,9 +51,8 @@ def get_user(user_ip: str):
 
 @app.get("/usecases/")
 def get_usecases():
-    table = db.UseCases
     output = []
-    res = table.find()
+    res = db.UseCases.find()
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableUseCase))
@@ -60,9 +60,23 @@ def get_usecases():
     return []
 
 
-@app.get("/usecase/{uid}")
+@app.get("/usecases/{uid}")
 def get_usecase(uid: str):
-    return {"result": uid}
+    res = db.UseCases.find_one({"ucid": uid})
+    if res is not None:
+        return table_structures.extendRecord(res, table_structures.tableUseCase)
+    return None
+
+
+class M_UseCase(BaseModel):
+    ucid: str
+    description: str
+
+
+@app.post("/usecases/")
+def post_usecase(data: M_UseCase):
+    res = db.UseCases.insert_one({"ucid": data.ucid, "Description": data.description})
+    return str(res.inserted_id)
 
 
 # --------------------------------------------------
@@ -71,9 +85,8 @@ def get_usecase(uid: str):
 
 @app.get("/workflows/")
 def get_workflows():
-    table = db.Workflows
     output = []
-    res = table.find()
+    res = db.Workflows.find()
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableWorkflow))
@@ -81,10 +94,9 @@ def get_workflows():
     return []
 
 
-@app.get("/workflow/{workflow_id}")
+@app.get("/workflows/{workflow_id}")
 def get_workflow(workflow_id: str):
-    table = db.Workflows
-    res = table.find_one({"wid": workflow_id})
+    res = db.Workflows.find_one({"wid": workflow_id})
     if res:
         return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
     return None
@@ -96,9 +108,8 @@ def get_workflow(workflow_id: str):
 
 @app.get("/executions/")
 def get_executions():
-    table = db.WorkflowExecutions
     output = []
-    res = table.find()
+    res = db.WorkflowExecutions.find()
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
@@ -106,11 +117,32 @@ def get_executions():
     return []
 
 
-@app.get("/execution/{uid}")
+@app.get("/executions/{uid}")
 def get_execution(uid: str):
-    table = db.WorkflowExecutions
-    res = table.find_one({"_id": uid})
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res:
+        return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
+    return None
+
+
+@app.get("/executions/{uid}/inputs/")
+def get_execution_inputs(uid: str):
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res:
+        if res.get('Inputs', None) is not None:
+            inp = db.IOData.find_one({'_id': bson.objectid.ObjectId(res['Inputs'])})
+            return inp.get('DataSet', None)
+        return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
+    return None
+
+
+@app.get("/executions/{uid}/outputs/")
+def get_execution_outputs(uid: str):
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res:
+        if res.get('Outputs', None) is not None:
+            inp = db.IOData.find_one({'_id': bson.objectid.ObjectId(res['Outputs'])})
+            return inp.get('DataSet', None)
         return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
     return None
 
