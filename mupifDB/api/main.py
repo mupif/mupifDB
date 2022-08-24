@@ -147,6 +147,26 @@ def get_execution_outputs(uid: str):
     return None
 
 
+def get_execution_io_item(uid, name, obj_id, inout):
+    table = db.WorkflowExecutions
+    wi = table.find_one({"_id": bson.objectid.ObjectId(uid)})
+    data = db.IOData.find_one({'_id': bson.objectid.ObjectId(wi[inout])})
+    for elem in data['DataSet']:
+        if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
+            return elem
+    return None
+
+
+@app.get("/executions/{uid}/input_item/{name}/{obj_id}/")
+def get_execution_input_item(uid: str, name: str, obj_id: str):
+    return get_execution_io_item(uid, name, obj_id, 'Inputs')
+
+
+@app.get("/executions/{uid}/output_item/{name}/{obj_id}/")
+def get_execution_output_item(uid: str, name: str, obj_id: str):
+    return get_execution_io_item(uid, name, obj_id, 'Outputs')
+
+
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
