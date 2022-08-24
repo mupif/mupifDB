@@ -18,7 +18,27 @@ import table_structures
 client = MongoClient()
 db = client.MuPIF
 
-app = FastAPI()
+
+tags_metadata = [
+    {
+        "name": "Users",
+    },
+    {
+        "name": "Usecases",
+    },
+    {
+        "name": "Workflows",
+    },
+    {
+        "name": "Executions",
+    },
+    {
+        "name": "Files",
+    },
+]
+
+
+app = FastAPI(openapi_tags=tags_metadata)
 
 
 def fix_id(record):
@@ -37,7 +57,7 @@ def read_root():
 # Users
 # --------------------------------------------------
 
-@app.get("/user/{user_ip}")
+@app.get("/users/{user_ip}", tags=["Users"])
 def get_user(user_ip: str):
     res = db.Users.find_one({'IP': user_ip})
     if res:
@@ -49,7 +69,7 @@ def get_user(user_ip: str):
 # Usecases
 # --------------------------------------------------
 
-@app.get("/usecases/")
+@app.get("/usecases/", tags=["Usecases"])
 def get_usecases():
     output = []
     res = db.UseCases.find()
@@ -60,7 +80,7 @@ def get_usecases():
     return []
 
 
-@app.get("/usecases/{uid}")
+@app.get("/usecases/{uid}", tags=["Usecases"])
 def get_usecase(uid: str):
     res = db.UseCases.find_one({"ucid": uid})
     if res is not None:
@@ -73,7 +93,7 @@ class M_UseCase(BaseModel):
     description: str
 
 
-@app.post("/usecases/")
+@app.post("/usecases/", tags=["Usecases"])
 def post_usecase(data: M_UseCase):
     res = db.UseCases.insert_one({"ucid": data.ucid, "Description": data.description})
     return str(res.inserted_id)
@@ -83,7 +103,7 @@ def post_usecase(data: M_UseCase):
 # Workflows
 # --------------------------------------------------
 
-@app.get("/workflows/")
+@app.get("/workflows/", tags=["Workflows"])
 def get_workflows():
     output = []
     res = db.Workflows.find()
@@ -94,7 +114,7 @@ def get_workflows():
     return []
 
 
-@app.get("/workflows/{workflow_id}")
+@app.get("/workflows/{workflow_id}", tags=["Workflows"])
 def get_workflow(workflow_id: str):
     res = db.Workflows.find_one({"wid": workflow_id})
     if res:
@@ -106,7 +126,7 @@ def get_workflow(workflow_id: str):
 # Executions
 # --------------------------------------------------
 
-@app.get("/executions/")
+@app.get("/executions/", tags=["Executions"])
 def get_executions():
     output = []
     res = db.WorkflowExecutions.find()
@@ -117,7 +137,7 @@ def get_executions():
     return []
 
 
-@app.get("/executions/{uid}")
+@app.get("/executions/{uid}", tags=["Executions"])
 def get_execution(uid: str):
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res:
@@ -125,7 +145,7 @@ def get_execution(uid: str):
     return None
 
 
-@app.get("/executions/{uid}/inputs/")
+@app.get("/executions/{uid}/inputs/", tags=["Executions"])
 def get_execution_inputs(uid: str):
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res:
@@ -136,7 +156,7 @@ def get_execution_inputs(uid: str):
     return None
 
 
-@app.get("/executions/{uid}/outputs/")
+@app.get("/executions/{uid}/outputs/", tags=["Executions"])
 def get_execution_outputs(uid: str):
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res:
@@ -157,14 +177,23 @@ def get_execution_io_item(uid, name, obj_id, inout):
     return None
 
 
-@app.get("/executions/{uid}/input_item/{name}/{obj_id}/")
+@app.get("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
 def get_execution_input_item(uid: str, name: str, obj_id: str):
     return get_execution_io_item(uid, name, obj_id, 'Inputs')
 
 
-@app.get("/executions/{uid}/output_item/{name}/{obj_id}/")
+@app.get("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
 def get_execution_output_item(uid: str, name: str, obj_id: str):
     return get_execution_io_item(uid, name, obj_id, 'Outputs')
+
+
+# @app.get("/executions/{uid}/schedule/", tags=["Executions"])
+# def get_execution_output_item(uid: str):
+#     execution_record = get_execution(uid)
+#     if execution_record['Status'] == 'Created':
+#         if restApiControl.setExecutionStatusPending(uid):
+#             return "OK"
+#     return "Fail"
 
 
 # --------------------------------------------------
@@ -179,7 +208,7 @@ async def get_temp_dir():
         del tdir
 
 
-@app.get("/file/{uid}")
+@app.get("/file/{uid}", tags=["Files"])
 def get_file(uid: str, tdir=Depends(get_temp_dir)):
     fs = gridfs.GridFS(db)
     foundfile = fs.get(bson.objectid.ObjectId(uid))
@@ -192,7 +221,7 @@ def get_file(uid: str, tdir=Depends(get_temp_dir)):
         return FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
 
 
-@app.post("/file/")
+@app.post("/file/", tags=["Files"])
 def upload_file(file: UploadFile):
     if file:
         fs = gridfs.GridFS(db)
