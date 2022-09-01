@@ -21,8 +21,9 @@ log.info(f'Execution script started with args: {sys.argv}')
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 log.info(f'Database API type is {api_type}')
 
-
-daemon=mp.pyroutil.getDaemon()
+# connect to nameserver (uses MUPIF_NS env var) so that getDaemon binds the correct network address
+ns=mp.pyroutil.connectNameserver()
+daemon=mp.pyroutil.getDaemon(proxy=ns)
 logUri=str(daemon.register(mp.pyrolog.PyroLogReceiver(tailHandler=tailHandler)))
 
 if __name__ == "__main__":
