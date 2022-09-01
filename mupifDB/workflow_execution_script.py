@@ -11,16 +11,19 @@ import mupifDB
 import mupif as mp
 
 
+log = logging.getLogger()
+log.setLevel(logging.DEBUG)
+tailHandler=mp.pyrolog.TailLogHandler(capacity=10000)
+log.addHandler(tailHandler)
+log.info(f'Execution script started with args: {sys.argv}')
 
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
-print(api_type)
+log.info(f'Database API type is {api_type}')
 
-log = logging.getLogger()
-log.info('Execution script started')
 
 daemon=mp.pyroutil.getDaemon()
-logUri=str(daemon.register(mp.pyrolog.PyroLogReceiver()))
+logUri=str(daemon.register(mp.pyrolog.PyroLogReceiver(tailHandler=tailHandler)))
 
 if __name__ == "__main__":
     workflow = None
@@ -33,19 +36,17 @@ if __name__ == "__main__":
 
         execution_record = mupifDB.restApiControl.getExecutionRecord(weid)
         if execution_record is None:
-            print("Execution not found")
-            log.info("Execution not found")
+            log.error("Execution not found")
             exit(1)
 
         workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(execution_record["WorkflowID"], execution_record["WorkflowVersion"])
         if workflow_record is None:
-            print("Workflow not found")
-            log.info("Workflow not found")
+            log.error("Workflow not found")
             exit(1)
 
         #
         moduleImport = importlib.import_module(workflow_record["modulename"])
-        print(moduleImport)
+        log.info(f'Imported workflow module {moduleImport}')
         workflow_class = getattr(moduleImport, workflow_record["classname"])
         #
 
@@ -63,13 +64,11 @@ if __name__ == "__main__":
         except:
             pass
         if type(err) == mp.JobManNoResourcesException:
-            print("Not enough resources")
             log.error('Not enough resources')
             sys.exit(2)
         sys.exit(1)
 
     except:
-        print("Unknown error")
         log.info("Unknown error")
         if workflow is not None:
             workflow.terminate()
