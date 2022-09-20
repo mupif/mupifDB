@@ -10,12 +10,15 @@ import importlib
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
+new_api_development = False
 
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
 
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
     RESTserver += '/'
+
+RESTserver_new = RESTserver.replace('5000', '6005')
 
 
 granta_credentials = {'username': '', 'password': ''}
@@ -51,16 +54,29 @@ def getUsecaseRecords():
     if api_type == 'granta':
         return []
     data = []
-    response = requests.get(RESTserver + "main?action=get_usecases")
-    response_json = response.json()
-    for record in response_json['result']:
-        data.append(record)
+    if new_api_development:
+        response = requests.get(RESTserver_new + "usecases/")
+        response_json = response.json()
+        if response_json:
+            print(response)
+            for record in response_json:
+                data.append(record)
+    else:
+        response = requests.get(RESTserver + "main?action=get_usecases")
+        response_json = response.json()
+        for record in response_json['result']:
+            data.append(record)
     return data
 
 
 def getUsecaseRecord(ucid):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "usecases/" + ucid)
+        response_json = response.json()
+        return response_json
+
     response = requests.get(RESTserver + "main?action=get_usecase&id=" + ucid)
     response_json = response.json()
     return response_json['result']
@@ -69,6 +85,10 @@ def getUsecaseRecord(ucid):
 def insertUsecaseRecord(ucid, description):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.post(RESTserver_new + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
+        return response.json()
+
     response = requests.get(RESTserver + "main?action=insert_usecase&ucid=" + ucid + "&description=" + description)
     response_json = response.json()
     print(response_json)
@@ -85,10 +105,16 @@ def getWorkflowRecords():
     if api_type == 'granta':
         return []
     data = []
-    response = requests.get(RESTserver + "main?action=get_workflows")
-    response_json = response.json()
-    for record in response_json['result']:
-        data.append(record)
+    if new_api_development:
+        response = requests.get(RESTserver_new + "workflows/")
+        response_json = response.json()
+        for record in response_json:
+            data.append(record)
+    else:
+        response = requests.get(RESTserver + "main?action=get_workflows")
+        response_json = response.json()
+        for record in response_json['result']:
+            data.append(record)
     return data
 
 
@@ -96,16 +122,27 @@ def getWorkflowRecordsWithUsecase(usecase):
     if api_type == 'granta':
         return []
     data = []
-    response = requests.get(RESTserver + "main?action=get_workflows_for_usecase&usecase=" + str(usecase))
-    response_json = response.json()
-    for record in response_json['result']:
-        data.append(record)
+    if new_api_development:
+        response = requests.get(RESTserver_new + "usecases/" + str(usecase) + "/workflows")
+        response_json = response.json()
+        for record in response_json:
+            data.append(record)
+    else:
+        response = requests.get(RESTserver + "main?action=get_workflows_for_usecase&usecase=" + str(usecase))
+        response_json = response.json()
+        for record in response_json['result']:
+            data.append(record)
     return data
 
 
 def getWorkflowRecord(wid):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "workflows/" + wid)
+        response_json = response.json()
+        return response_json
+
     response = requests.get(RESTserver + "main?action=get_workflow&wid=" + wid)
     response_json = response.json()
     return response_json['result']
@@ -321,6 +358,10 @@ def _getGrantaExecutionInputItem(eid, name):
 def getWorkflowRecordFromHistory(wid, version):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "workflows_history/" + wid + "/" + str(version))
+        response_json = response.json()
+        return response_json
     response = requests.get(RESTserver + "main?action=get_workflow_from_history&wid=" + str(wid) + "&version=" + str(version))
     response_json = response.json()
     print(response_json)
@@ -341,8 +382,41 @@ def insertWorkflowHistory(data):
 # Executions
 # --------------------------------------------------
 
+status_transcript = {
+    'Created': '-',
+    'Pending': 'Ready',
+    'Running': 'On-going',
+    'Finished': 'Completed',
+    'Failed': 'Canceled'
+}
+
 def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None):
     if api_type == 'granta':
+        url = RESTserver + 'executions/'
+        headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
+        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
+        if r.status_code == 200:
+            r_json = r.json()
+            res = []
+            for ex in r_json:
+                execution = table_structures.extendRecord({}, table_structures.tableExecution)
+                execution['_id'] = ex['guid']
+                execution['WorkflowID'] = ex['template_guid']
+                execution['WorkflowVersion'] = -1
+                st = 'unknown'
+                if ex['status'] == 'Ready':
+                    st = 'Pending'
+                if ex['status'] == 'On-going':
+                    st = 'Running'
+                if ex['status'] == 'Completed':
+                    st = 'Finished'
+                if ex['status'] == 'Canceled':
+                    st = 'Failed'
+
+                execution['Status'] = st
+                execution['Task_ID'] = ''
+                res.append(execution)
+            return res
         return []
     data = []
     endpoint_address = RESTserver + "main?action=get_executions"

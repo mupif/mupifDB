@@ -88,6 +88,17 @@ def get_usecase(uid: str):
     return None
 
 
+@app.get("/usecases/{uid}/workflows", tags=["Usecases"])
+def get_usecase(uid: str):
+    output = []
+    res = db.Workflows.find({"UseCase": uid})
+    if res:
+        for s in res:
+            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableWorkflow))
+        return output
+    return []
+
+
 class M_UseCase(BaseModel):
     ucid: str
     description: str
@@ -117,6 +128,18 @@ def get_workflows():
 @app.get("/workflows/{workflow_id}", tags=["Workflows"])
 def get_workflow(workflow_id: str):
     res = db.Workflows.find_one({"wid": workflow_id})
+    if res:
+        return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
+    return None
+
+
+# --------------------------------------------------
+# Workflows history
+# --------------------------------------------------
+
+@app.get("/workflows_history/{workflow_id}/{workflow_version}", tags=["Workflows"])
+def get_workflow(workflow_id: str, workflow_version: int):
+    res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
     if res:
         return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
     return None

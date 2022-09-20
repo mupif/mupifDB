@@ -130,8 +130,8 @@ def usecases():
     html = '<h3>UseCases:</h3>'
     html += '<table>'
     html += '<tr><th>ID</th><th>Description</th><th></th><th></th></tr>'
-    html += '<tr>'
     for uc in data:
+        html += '<tr>'
         html += '<td>' + uc['ucid'] + '</td>'
         html += '<td>' + uc['Description'] + '</td>'
         html += '<td><a href="/usecases/' + uc['ucid'] + '/workflows">List of workflows</a></td>'
@@ -139,7 +139,7 @@ def usecases():
         if admin_rights:
             html += '<a href="/workflow_add/' + uc['ucid'] + '">Register new workflow</a>'
         html += '</td>'
-    html += '</tr>'
+        html += '</tr>'
     html += '</table>'
     if admin_rights:
         html += '<br><a href="/usecase_add">Register new UseCase</a>'
