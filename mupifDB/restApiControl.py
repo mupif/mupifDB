@@ -178,7 +178,7 @@ def fix_json(val):
     return val
 
 
-def getWorkflowRecordGeneral(wid, version):  # todo granta
+def getWorkflowRecordGeneral(wid, version):
     if api_type == 'granta':
         url = RESTserver + 'templates/' + str(wid)
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
@@ -419,6 +419,25 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
             return res
         return []
     data = []
+
+    if new_api_development:
+        endpoint_address = RESTserver_new + "executions/?noparam"
+        if num_limit is not None:
+            endpoint_address += "&num_limit=" + str(num_limit)
+        if label is not None:
+            endpoint_address += "&label=" + str(label)
+        if workflow_id is not None:
+            endpoint_address += "&workflow_id=" + str(workflow_id)
+        if workflow_version is not None:
+            endpoint_address += "&workflow_version=" + str(workflow_version)
+        if status:
+            endpoint_address += "&status=" + str(status)
+        response = requests.get(endpoint_address)
+        response_json = response.json()
+        for record in response_json:
+            data.append(record)
+        return data
+
     endpoint_address = RESTserver + "main?action=get_executions"
     if num_limit is not None:
         endpoint_address += "&num_limit=" + str(num_limit)
@@ -430,8 +449,6 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
         endpoint_address += "&workflow_version=" + str(workflow_version)
     if status is not None:
         endpoint_address += "&status=" + str(status)
-
-    print(endpoint_address)
     response = requests.get(endpoint_address)
     response_json = response.json()
     for record in response_json['result']:
@@ -439,7 +456,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
     return data
 
 
-def getExecutionRecord(weid):  # todo granta
+def getExecutionRecord(weid):
     if api_type == 'granta':
         url = RESTserver + 'executions/' + str(weid)
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
@@ -456,18 +473,22 @@ def getExecutionRecord(weid):  # todo granta
             execution['Task_ID'] = ''
             return execution
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "executions/" + str(weid))
+        response_json = response.json()
+        return response_json
     response = requests.get(RESTserver + "main?action=get_execution&id=" + str(weid))
     response_json = response.json()
     return response_json['result']
 
 
-def getScheduledExecutions():  # todo granta
+def getScheduledExecutions():
     if api_type == 'granta':
         return []
     return getExecutionRecords(status="Scheduled")
 
 
-def getPendingExecutions():  # todo granta
+def getPendingExecutions():
     if api_type == 'granta':
         url = RESTserver + 'executions/?status=Ready'
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
@@ -491,18 +512,26 @@ def getPendingExecutions():  # todo granta
 def scheduleExecution(execution_id):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/schedule")
+        response_json = response.json()
+        return response_json
     response = requests.get(RESTserver + "main?action=schedule_execution&id=" + str(execution_id))
     return response.status_code == 200
 
 
-def setExecutionParameter(execution_id, param, value, val_type="str"):  # todo granta
+def setExecutionParameter(execution_id, param, value, val_type="str"):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/modify", data=json.dumps({str(param): value}))
+        response_json = response.json()
+        return response_json
     response = requests.get(RESTserver + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value) + "&val_type=" + str(val_type))
     return response.status_code == 200
 
 
-def setExecutionAttemptsCount(execution_id, val):  # todo granta
+def setExecutionAttemptsCount(execution_id, val):
     if api_type == 'granta':
         return None
     return setExecutionParameter(execution_id, "Attempts", val, "int")
@@ -567,7 +596,6 @@ def setExecutionStatusFinished(execution_id):
 def setExecutionStatusFailed(execution_id):
     if api_type == 'granta':
         return _setGrantaExecutionStatus(execution_id, 'Cancelled')
-
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
 

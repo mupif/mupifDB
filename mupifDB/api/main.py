@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Depends
+from fastapi import FastAPI, File, UploadFile, Depends, Body
 from fastapi.responses import FileResponse
 from pymongo import MongoClient
 import tempfile
@@ -89,7 +89,7 @@ def get_usecase(uid: str):
 
 
 @app.get("/usecases/{uid}/workflows", tags=["Usecases"])
-def get_usecase(uid: str):
+def get_usecase_workflows(uid: str):
     output = []
     res = db.Workflows.find({"UseCase": uid})
     if res:
@@ -138,7 +138,7 @@ def get_workflow(workflow_id: str):
 # --------------------------------------------------
 
 @app.get("/workflows_history/{workflow_id}/{workflow_version}", tags=["Workflows"])
-def get_workflow(workflow_id: str, workflow_version: int):
+def get_workflow_history(workflow_id: str, workflow_version: int):
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
     if res:
         return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
@@ -150,9 +150,20 @@ def get_workflow(workflow_id: str, workflow_version: int):
 # --------------------------------------------------
 
 @app.get("/executions/", tags=["Executions"])
-def get_executions():
+def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str = "", num_limit: int = 0, label: str = ""):
     output = []
-    res = db.WorkflowExecutions.find()
+    filtering = {}
+    if status:
+        filtering["Status"] = status
+    if workflow_version:
+        filtering["WorkflowVersion"] = workflow_version
+    if workflow_id:
+        filtering["WorkflowID"] = workflow_id
+    if label:
+        filtering["label"] = label
+    if num_limit == 0:
+        num_limit = 999999
+    res = db.WorkflowExecutions.find(filtering).sort('CreatedDate', 1).limit(num_limit)
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
@@ -210,13 +221,26 @@ def get_execution_output_item(uid: str, name: str, obj_id: str):
     return get_execution_io_item(uid, name, obj_id, 'Outputs')
 
 
-# @app.get("/executions/{uid}/schedule/", tags=["Executions"])
-# def get_execution_output_item(uid: str):
-#     execution_record = get_execution(uid)
-#     if execution_record['Status'] == 'Created':
-#         if restApiControl.setExecutionStatusPending(uid):
-#             return "OK"
-#     return "Fail"
+class M_ModifyExecution(BaseModel):
+    key: str
+    value: str
+
+
+@app.patch("/executions/{uid}/modify", tags=["Executions"])
+def modify_execution(uid: str, data: M_ModifyExecution):
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid)}, {"$set": {data.key: data.value}})
+    return get_execution(uid)
+
+
+@app.patch("/executions/{uid}/schedule", tags=["Executions"])
+def schedule_execution(uid: str):
+    execution_record = get_execution(uid)
+    if execution_record['Status'] == 'Created':
+        data = type('', (), {})()
+        data.key = "Status"
+        data.value = "Pending"
+        return modify_execution(uid, data)
+    return None
 
 
 # --------------------------------------------------
