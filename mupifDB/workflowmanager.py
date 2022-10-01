@@ -70,7 +70,7 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
         # update the latest document
         version = (1+int(w_rec.get('Version', 1)))
         rec['Version'] = version
-        res_id = restApiControl.updateWorkflow(rec)
+        res_id = restApiControl.updateWorkflow(rec)['_id']
         if res_id:
             return res_id
         else:

@@ -5,6 +5,7 @@ import tempfile
 import gridfs
 import io
 import bson
+from pymongo import ReturnDocument
 from pydantic import BaseModel
 import sys
 import os
@@ -68,7 +69,7 @@ def read_root():
 def get_user(user_ip: str):
     res = db.Users.find_one({'IP': user_ip})
     if res:
-        return res
+        return fix_id(res)
     return None
 
 
@@ -138,6 +139,28 @@ def get_workflow(workflow_id: str):
     if res:
         return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
     return None
+
+
+class M_Workflow(BaseModel):
+    workflow: dict
+
+
+@app.patch("/workflows/", tags=["Workflows"])
+def update_workflow(data: M_Workflow):
+    res = db.Workflows.find_one_and_update({'wid': data.workflow['wid']}, {'$set': data.workflow}, return_document=ReturnDocument.AFTER)
+    return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
+
+
+@app.post("/workflows/", tags=["Workflows"])
+def insert_workflow(data: M_Workflow):
+    res = db.Workflows.insert_one(data.workflow)
+    return str(res.inserted_id)
+
+
+@app.post("/workflows_history/", tags=["Workflows"])
+def insert_workflow_history(data: M_Workflow):
+    res = db.WorkflowsHistory.insert_one(data.workflow)
+    return str(res.inserted_id)
 
 
 # --------------------------------------------------

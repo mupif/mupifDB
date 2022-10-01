@@ -211,7 +211,7 @@ def insert_workflow(data):
 def update_workflow(data):
     table = mongo.db.Workflows
     res = table.find_one_and_update({'wid': data['wid']}, {'$set': data}, return_document=ReturnDocument.AFTER)
-    return jsonify({'result': res['_id']})
+    return jsonify({'result': table_structures.extendRecord(s, table_structures.tableWorkflow)})
 
 
 # --------------------------------------------------
@@ -680,12 +680,6 @@ def main():
                 return get_workflows_with_usecase(args["usecase"])
             else:
                 return jsonify({'error': "Param 'wid' not specified."})
-
-        if action == "modify_workflow":
-            if "wid" in args and "key" in args and "value" in args:
-                return modifyWorkflow(args["wid"], args["key"], args["value"])
-            else:
-                return jsonify({'error': "Param 'wid' or 'key' or 'value' not specified."})
 
         if action == "insert_workflow":
             return insert_workflow(json.loads(request.get_data()))

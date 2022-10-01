@@ -149,23 +149,23 @@ def getWorkflowRecord(wid):
     return response_json['result']
 
 
-def setWorkflowParameter(workflow_id, param, value):  # todo newapi
+def insertWorkflow(data):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "main?action=modify_workflow&wid=" + str(workflow_id) + "&key=" + str(param) + "&value=" + str(value))
-
-
-def insertWorkflow(data):  # todo newapi
-    if api_type == 'granta':
-        return None
+    if new_api_development:
+        response = requests.post(RESTserver_new + "workflows/", data=json.dumps({"workflow": data}))
+        return response.json()
     response = requests.post(RESTserver + "main?action=insert_workflow", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
 
 
-def updateWorkflow(data):  # todo newapi
+def updateWorkflow(data):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "workflows/", data=json.dumps({"workflow": data}))
+        return response.json()
     response = requests.post(RESTserver + "main?action=update_workflow", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
@@ -365,9 +365,12 @@ def getWorkflowRecordFromHistory(wid, version):
     return None
 
 
-def insertWorkflowHistory(data):  # todo newapi
+def insertWorkflowHistory(data):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.post(RESTserver_new + "workflows_history/", data=json.dumps({"workflow": data}))
+        return response.json()
     response = requests.post(RESTserver + "main?action=insert_workflow_history", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
