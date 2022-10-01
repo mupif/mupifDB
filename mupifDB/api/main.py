@@ -13,6 +13,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import mupifDB
+import mupif as mp
 
 import table_structures
 
@@ -40,6 +41,9 @@ tags_metadata = [
     },
     {
         "name": "Files",
+    },
+    {
+        "name": "Additional",
     },
 ]
 
@@ -386,3 +390,23 @@ def upload_file(file: UploadFile):
         sourceID = fs.put(file.file, filename=file.filename)
         return str(sourceID)
     return None
+
+
+@app.get("/property_array_data/{fid}/{i_start}/{i_count}/", tags=["Additional"])
+def get_property_array_data(fid: str, i_start: int, i_count: int):
+    pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+        full_path = tempDir + "/file.h5"
+        f = open(full_path, 'wb')
+        f.write(pfile)
+        f.close()
+        prop = mp.ConstantProperty.loadHdf5(full_path)
+        propval = prop.getValue()
+        tot_elems = propval.shape[0]
+        id_start = int(i_start)
+        id_num = int(i_count)
+        if id_num <= 0:
+            id_num = tot_elems
+        id_end = id_start + id_num
+        sub_propval = propval[id_start:id_end]
+        return sub_propval.tolist()

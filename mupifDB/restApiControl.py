@@ -721,12 +721,14 @@ def setExecutionOutputFileID(weid, name, fileID, obj_id):
     return response.status_code == 200
 
 
-def getPropertyArrayData(file_id, i_start, i_count):  # may not be used  # todo newapi
+def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/")
+        return response.json()
     response = requests.get(RESTserver + "main?action=get_property_array_data&file_id=" + str(file_id) + "&i_start=" + i_start + "&i_count=" + i_count)
-    response_json = response.json()
-    return response_json['result']
+    return response.json()['result']
 
 
 # --------------------------------------------------
