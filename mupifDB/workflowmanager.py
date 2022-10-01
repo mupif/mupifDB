@@ -157,17 +157,17 @@ class WorkflowExecutionIODataSet:
         """
         return self.getRec(name, obj_id)['Value']
     
-    def set(self, name, value, obj_id=""):
-        """
-        Sets the value of output parameter identified by name to given value
-        @param: name parameter name
-        @param: value associated value
-        @throws: KeyError if input parameter name not found
-        """
-        if self.wec.getStatus() == 'Created':
-            restApiControl.setExecutionInputValue(self.weid, name, value, obj_id)
-        else:
-            raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
+    # def set(self, name, value, obj_id=""):
+    #     """
+    #     Sets the value of output parameter identified by name to given value
+    #     @param: name parameter name
+    #     @param: value associated value
+    #     @throws: KeyError if input parameter name not found
+    #     """
+    #     if self.wec.getStatus() == 'Created':
+    #         restApiControl.setExecutionInputValue(self.weid, name, value, obj_id)
+    #     else:
+    #         raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
 
 
 class WorkflowExecutionContext:

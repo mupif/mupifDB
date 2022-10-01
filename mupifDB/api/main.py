@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from pymongo import MongoClient
 import tempfile
 import gridfs
+import typing
 import io
 import bson
 from pymongo import ReturnDocument
@@ -267,6 +268,47 @@ def get_execution_output_item(uid: str, name: str, obj_id: str):
     return get_execution_io_item(uid, name, obj_id, 'Outputs')
 
 
+class M_IOData_link(BaseModel):
+    ExecID: str
+    Name: str
+    ObjID: str
+
+
+class M_IODataSetContainer(BaseModel):
+    # value: typing.Optional[typing.Any] = None
+    link: typing.Optional[dict] = None
+    object: typing.Optional[dict] = None
+    file_id: typing.Optional[str] = None
+
+
+def set_execution_io_item(uid, name, obj_id, inout, data_container):
+    # todo checks for status
+    we = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    id_condition = {'_id': bson.objectid.ObjectId(we[inout])}
+
+    # if data_container.value is not None:
+    #     pass
+    if data_container.link is not None and inout == 'Inputs':
+        res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Link": data_container.link}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        return res.matched_count > 0
+    if data_container.object is not None:
+        res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Object": data_container.object}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        return res.matched_count > 0
+    if data_container.file_id is not None:
+        res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].FileID": data_container.file_id}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+        return res.matched_count > 0
+
+
+@app.patch("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
+def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, obj_id, 'Inputs', data)
+
+
+@app.patch("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
+def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, obj_id, 'Outputs', data)
+
+
 class M_ModifyExecution(BaseModel):
     key: str
     value: str
@@ -298,6 +340,18 @@ def get_execution_iodata(uid: str):
     res = db.IOData.find_one({'_id': bson.objectid.ObjectId(uid)})
     return fix_id(res)
     # return res.get('DataSet', None)
+
+
+@app.post("/iodata/", tags=["IOData"])
+def insert_execution_iodata(data: M_Dict):
+    res = db.IOData.insert_one(data.entity)
+    return str(res.inserted_id)
+
+
+# @app.patch("/iodata/", tags=["IOData"])
+# def set_execution_iodata(data: M_Dict):
+#     res = db.IOData.insert_one(data.entity)
+#     return str(res.inserted_id)
 
 
 # --------------------------------------------------

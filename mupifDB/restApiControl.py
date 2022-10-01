@@ -600,6 +600,7 @@ def createExecution(wid, version, ip):
         return None
     if new_api_development:
         response = requests.post(RESTserver_new + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip)}))
+        return response.json()
     response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(wid) + "&version=" + str(version) + "&ip=" + str(ip))
     response_json = response.json()
     return response_json['result']
@@ -669,50 +670,53 @@ def getIODataRecord(iod_id):
     return response_json['result']
 
 
-def insertIODataRecord(data):  # todo newapi
+def insertIODataRecord(data):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.post(RESTserver_new + "iodata/", data=json.dumps({"entity": data}))
+        return response.json()
     response = requests.post(RESTserver + "main?action=insert_iodata", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']
 
 
-def setExecutionInputValue(execution_id, name, value, obj_id):  # todo newapi
+def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "main?action=set_execution_input&id=" + str(execution_id) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
-    return response.status_code == 200
-
-
-def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):  # todo newapi
-    if api_type == 'granta':
-        return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}))
+        return response.json()
     response = requests.get(RESTserver + "main?action=set_execution_input_link&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id) + "&link_eid=" + str(link_eid) + "&link_name=" + str(link_name) + "&link_obj_id=" + str(link_obj_id))
     return response.status_code == 200
 
 
-def setExecutionInputObject(weid, name, obj_id, object_dict):  # todo newapi
+def setExecutionInputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
+        return response.json()
     response = requests.put(RESTserver + "main?action=set_execution_input_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
     return response.status_code == 200
 
 
-def setExecutionOutputObject(weid, name, obj_id, object_dict):  # todo newapi
+def setExecutionOutputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
+        return response.json()
     response = requests.put(RESTserver + "main?action=set_execution_output_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
     return response.status_code == 200
 
 
-def setExecutionOutputValue(weid, name, value, obj_id):  # todo newapi
-    response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
-    return response.status_code == 200
-
-
-def setExecutionOutputFileID(weid, name, fileID, obj_id):  # todo newapi
+def setExecutionOutputFileID(weid, name, fileID, obj_id):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"file_id": fileID}))
+        return response.json()
     response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&file_id=" + str(fileID) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
 
