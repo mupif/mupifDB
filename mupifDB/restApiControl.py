@@ -7,6 +7,7 @@ import os
 import table_structures
 import tempfile
 import importlib
+import re
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
@@ -148,13 +149,13 @@ def getWorkflowRecord(wid):
     return response_json['result']
 
 
-def setWorkflowParameter(workflow_id, param, value):
+def setWorkflowParameter(workflow_id, param, value):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=modify_workflow&wid=" + str(workflow_id) + "&key=" + str(param) + "&value=" + str(value))
 
 
-def insertWorkflow(data):
+def insertWorkflow(data):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "main?action=insert_workflow", data=json.dumps(data))
@@ -162,7 +163,7 @@ def insertWorkflow(data):
     return response_json['result']
 
 
-def updateWorkflow(data):
+def updateWorkflow(data):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "main?action=update_workflow", data=json.dumps(data))
@@ -276,11 +277,6 @@ def _getGrantaExecutionInputItem(eid, name):
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
                         units = w_i['Units']
-
-                        # todo delete this temporary fix
-                        if units == 'degK':
-                            units = 'K'
-
                 return {
                     'Compulsory': True,
                     'Description': '',
@@ -300,7 +296,6 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Unit': units,  # todo
                         'Value': inp['value'],
                         'Time': None
-
                     }
                 }
             if inp['type'] == 'hyperlink':
@@ -370,7 +365,7 @@ def getWorkflowRecordFromHistory(wid, version):
     return None
 
 
-def insertWorkflowHistory(data):
+def insertWorkflowHistory(data):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "main?action=insert_workflow_history", data=json.dumps(data))
@@ -524,9 +519,8 @@ def setExecutionParameter(execution_id, param, value, val_type="str"):
     if api_type == 'granta':
         return None
     if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/modify", data=json.dumps({str(param): value}))
-        response_json = response.json()
-        return response_json
+        response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/modify", data=json.dumps({"key": str(param), "value": value}))
+        return response.json()
     response = requests.get(RESTserver + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value) + "&val_type=" + str(val_type))
     return response.status_code == 200
 
@@ -542,8 +536,6 @@ def _setGrantaExecutionResults(eid, val_list):
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8'}
     newdata = {"results": val_list}
     r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata))
-    # print(r)
-    # print(r.text)
     return None
 
 
@@ -600,7 +592,7 @@ def setExecutionStatusFailed(execution_id):
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
-def insertExecution(workflow_wid, version, ip):
+def insertExecution(workflow_wid, version, ip):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(workflow_wid) + "&version=" + str(version) + "&ip=" + str(ip))
@@ -608,7 +600,7 @@ def insertExecution(workflow_wid, version, ip):
     return response_json['result']
 
 
-def insertExecutionRecord(data):
+def insertExecutionRecord(data):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=insert_execution_data", data=json.dumps(data))
@@ -619,6 +611,9 @@ def insertExecutionRecord(data):
 def getExecutionInputRecord(weid):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "executions/" + str(weid) + "/inputs/")
+        return response.json()
     response = requests.get(RESTserver + "main?action=get_execution_inputs&id=" + str(weid))
     response_json = response.json()
     return response_json['result']
@@ -627,6 +622,9 @@ def getExecutionInputRecord(weid):
 def getExecutionOutputRecord(weid):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "executions/" + str(weid) + "/outputs/")
+        return response.json()
     response = requests.get(RESTserver + "main?action=get_execution_outputs&id=" + str(weid))
     response_json = response.json()
     return response_json['result']
@@ -648,14 +646,6 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
             return elem
 
 
-def getExecutionInputsCheck(weid):
-    if api_type == 'granta':
-        return None
-    response = requests.get(RESTserver + "main?action=get_execution_inputs_check&id=" + str(weid))
-    response_json = response.json()
-    return response_json['result'] == 'OK'
-
-
 # --------------------------------------------------
 # IO Data
 # --------------------------------------------------
@@ -663,12 +653,15 @@ def getExecutionInputsCheck(weid):
 def getIODataRecord(iod_id):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "iodata/" + str(iod_id))
+        return response.json()
     response = requests.get(RESTserver + "main?action=get_iodata&id=" + str(iod_id))
     response_json = response.json()
     return response_json['result']
 
 
-def insertIODataRecord(data):
+def insertIODataRecord(data):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "main?action=insert_iodata", data=json.dumps(data))
@@ -676,63 +669,47 @@ def insertIODataRecord(data):
     return response_json['result']
 
 
-def setExecutionInputValue(execution_id, name, value, obj_id):
+def setExecutionInputValue(execution_id, name, value, obj_id):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=set_execution_input&id=" + str(execution_id) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
 
 
-def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
+def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=set_execution_input_link&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id) + "&link_eid=" + str(link_eid) + "&link_name=" + str(link_name) + "&link_obj_id=" + str(link_obj_id))
     return response.status_code == 200
 
 
-def setExecutionInputObject(weid, name, obj_id, object_dict):
+def setExecutionInputObject(weid, name, obj_id, object_dict):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.put(RESTserver + "main?action=set_execution_input_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
     return response.status_code == 200
 
 
-def setExecutionOutputObject(weid, name, obj_id, object_dict):
+def setExecutionOutputObject(weid, name, obj_id, object_dict):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.put(RESTserver + "main?action=set_execution_output_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
     return response.status_code == 200
 
 
-def setExecutionOutputValue(weid, name, value, obj_id):
+def setExecutionOutputValue(weid, name, value, obj_id):  # todo newapi
     response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&value=" + str(value) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
 
 
-def setExecutionOutputFileID(weid, name, fileID, obj_id):
+def setExecutionOutputFileID(weid, name, fileID, obj_id):  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&file_id=" + str(fileID) + "&obj_id=" + str(obj_id))
     return response.status_code == 200
 
 
-def getExecutionInputValue(weid, name, obj_id):
-    if api_type == 'granta':
-        return None
-    response = requests.get(RESTserver + "main?action=get_execution_input&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id))
-    response_json = response.json()
-    return response_json['result']
-
-
-def getExecutionOutputValue(weid, name, obj_id):
-    if api_type == 'granta':
-        return None
-    response = requests.get(RESTserver + "main?action=get_execution_output&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id))
-    response_json = response.json()
-    return response_json['result']
-
-
-def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
+def getPropertyArrayData(file_id, i_start, i_count):  # may not be used  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=get_property_array_data&file_id=" + str(file_id) + "&i_start=" + i_start + "&i_count=" + i_count)
@@ -750,6 +727,12 @@ def getBinaryFileByID(fid):
         response = requests.get(url + str(fid), auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), allow_redirects=True)
         return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
 
+    if new_api_development:
+        response = requests.get(RESTserver_new + "file/" + str(fid))
+        d = response.headers['Content-Disposition']
+        filename = re.findall("filename=(.+)", d)[0]
+        return response.content, filename
+
     # name
     response = requests.get(RESTserver + "main?action=get_filename&id=" + str(fid), allow_redirects=True)
     response_json = response.json()
@@ -765,6 +748,11 @@ def uploadBinaryFile(binary_data):
         response = requests.post(url, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), files={"file": binary_data})
         response_json = response.json()
         return response_json['guid']
+
+    if new_api_development:
+        response = requests.post(RESTserver_new + "file/", files={"file": binary_data})
+        return response.json()
+
     response = requests.post(RESTserver + "upload", files={"myfile": binary_data})
     response_json = response.json()
     return response_json['result']
@@ -774,7 +762,7 @@ def uploadBinaryFile(binary_data):
 # Stat
 # --------------------------------------------------
 
-def getStatus():
+def getStatus():  # todo newapi
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "main?action=get_status")
@@ -782,7 +770,7 @@ def getStatus():
     return response_json['result']
 
 
-def getStatScheduler():
+def getStatScheduler():  # todo newapi
     if api_type == 'granta':
         return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
     response = requests.get(RESTserver + "main?action=get_scheduler_stat")
@@ -796,7 +784,7 @@ def getStatScheduler():
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.
 # This feature is implemented only for setStatsScheduler to cleanly handle scheduler startup.
-def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):
+def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):  # todo newapi
     if api_type == 'granta':
         return None
     if runningTasks is not None:
@@ -809,7 +797,7 @@ def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processe
         response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
 
 
-def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
+def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):  # todo newapi
     if api_type == 'granta':
         return None
     if runningTasks is not None:

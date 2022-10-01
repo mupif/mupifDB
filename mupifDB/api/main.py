@@ -1,11 +1,10 @@
-from fastapi import FastAPI, File, UploadFile, Depends, Body
+from fastapi import FastAPI, UploadFile, Depends
 from fastapi.responses import FileResponse
 from pymongo import MongoClient
 import tempfile
 import gridfs
 import io
 import bson
-from typing import Union
 from pydantic import BaseModel
 import sys
 import os
@@ -15,9 +14,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import table_structures
 
 
-client = MongoClient()
+client = MongoClient("mongodb://localhost:27017")
 db = client.MuPIF
 
+clientDMS = MongoClient("mongodb://localhost:27024")
 
 tags_metadata = [
     {
@@ -31,6 +31,9 @@ tags_metadata = [
     },
     {
         "name": "Executions",
+    },
+    {
+        "name": "IOData",
     },
     {
         "name": "Files",
@@ -47,6 +50,10 @@ def fix_id(record):
             record['_id'] = str(record['_id'])
     return record
 
+
+# --------------------------------------------------
+# Default
+# --------------------------------------------------
 
 @app.get("/")
 def read_root():
@@ -186,7 +193,6 @@ def get_execution_inputs(uid: str):
         if res.get('Inputs', None) is not None:
             inp = db.IOData.find_one({'_id': bson.objectid.ObjectId(res['Inputs'])})
             return inp.get('DataSet', None)
-        return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
     return None
 
 
@@ -197,14 +203,12 @@ def get_execution_outputs(uid: str):
         if res.get('Outputs', None) is not None:
             inp = db.IOData.find_one({'_id': bson.objectid.ObjectId(res['Outputs'])})
             return inp.get('DataSet', None)
-        return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
     return None
 
 
 def get_execution_io_item(uid, name, obj_id, inout):
-    table = db.WorkflowExecutions
-    wi = table.find_one({"_id": bson.objectid.ObjectId(uid)})
-    data = db.IOData.find_one({'_id': bson.objectid.ObjectId(wi[inout])})
+    we = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    data = db.IOData.find_one({'_id': bson.objectid.ObjectId(we[inout])})
     for elem in data['DataSet']:
         if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
             return elem
@@ -241,6 +245,17 @@ def schedule_execution(uid: str):
         data.value = "Pending"
         return modify_execution(uid, data)
     return None
+
+
+# --------------------------------------------------
+# IOData
+# --------------------------------------------------
+
+@app.get("/iodata/{uid}", tags=["IOData"])
+def get_execution_iodata(uid: str):
+    res = db.IOData.find_one({'_id': bson.objectid.ObjectId(uid)})
+    return fix_id(res)
+    # return res.get('DataSet', None)
 
 
 # --------------------------------------------------

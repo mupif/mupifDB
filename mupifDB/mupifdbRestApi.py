@@ -270,12 +270,6 @@ def get_workflowexecution(weid):
     return jsonify({'result': None, 'error': 'Record was not found.'})
 
 
-def get_execution_inputs_check(weid):  # todo
-    if mupifDB.workflowmanager.checkInputs(weid):
-        return jsonify({'result': 'OK'})
-    return jsonify({'result': 'Fail'})
-
-
 def get_workflowexecutionInputs(weid):  # todo
     table = mongo.db.WorkflowExecutions
     wi = table.find_one({"_id": bson.objectid.ObjectId(weid)})
@@ -733,12 +727,6 @@ def main():
         if action == "get_execution":
             if "id" in args:
                 return get_workflowexecution(args["id"])
-            else:
-                return jsonify({'error': "Param 'id' not specified."})
-
-        if action == "get_execution_inputs_check":
-            if "id" in args:
-                return get_execution_inputs_check(args["id"])
             else:
                 return jsonify({'error': "Param 'id' not specified."})
 

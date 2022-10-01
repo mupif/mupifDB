@@ -50,6 +50,15 @@ def statusColor(val):
 # server (that is, our URL) is obtained within request handlers as flask.request.host_url+'/'
 
 
+@app.after_request
+def add_header(r):
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    r.headers['Cache-Control'] = 'public, max-age=0'
+    return r
+
+
 def getUserIPAddress():
     return request.remote_addr
 
@@ -454,7 +463,7 @@ def executionStatus(weid):
     html += '<ul>'
     html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
     if data['Status'] == 'Created':
-        if restApiControl.getExecutionInputsCheck(weid):
+        if mupifDB.workflowmanager.checkInputs(weid):
             _workflow = restApiControl.getWorkflowRecordGeneral(data['WorkflowID'], data['WorkflowVersion'])
             if mp.Workflow.checkModelRemoteResourcesByMetadata(_workflow['Models']):
                 html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
