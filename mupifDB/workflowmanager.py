@@ -191,7 +191,7 @@ class WorkflowExecutionContext:
             rec['CreatedDate'] = str(datetime.datetime.now())
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
-            new_id = restApiControl.insertExecutionRecord(rec)
+            new_id = restApiControl.insertExecution(rec)
             return WorkflowExecutionContext(new_id)
 
         else:
@@ -496,6 +496,10 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type):
         prop = app.get(mupif.DataID[data_id], time, obj_id)
         restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
+    # elif object_type == 'mupif.PyroFile':
+    #     prop = app.get(mupif.DataID[data_id], time, obj_id)
+    #     restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+
     elif object_type == 'mupif.HeavyStruct':
         hs = app.get(mupif.DataID[data_id], time, obj_id)
 
@@ -594,5 +598,8 @@ def mapOutputs(app, eid, time):
                 )
 
     if api_type == 'granta':
+        # f = open("/home/stanislav/Projects/mupifDB/mupifDB/outputs.txt", "w")
+        # f.write(str(granta_output_data))
+        # f.close()
         restApiControl._setGrantaExecutionResults(eid, granta_output_data)
 

@@ -153,7 +153,7 @@ def insertWorkflow(data):
     if api_type == 'granta':
         return None
     if new_api_development:
-        response = requests.post(RESTserver_new + "workflows/", data=json.dumps({"workflow": data}))
+        response = requests.post(RESTserver_new + "workflows/", data=json.dumps({"entity": data}))
         return response.json()
     response = requests.post(RESTserver + "main?action=insert_workflow", data=json.dumps(data))
     response_json = response.json()
@@ -369,7 +369,7 @@ def insertWorkflowHistory(data):
     if api_type == 'granta':
         return None
     if new_api_development:
-        response = requests.post(RESTserver_new + "workflows_history/", data=json.dumps({"workflow": data}))
+        response = requests.post(RESTserver_new + "workflows_history/", data=json.dumps({"entity": data}))
         return response.json()
     response = requests.post(RESTserver + "main?action=insert_workflow_history", data=json.dumps(data))
     response_json = response.json()
@@ -595,17 +595,22 @@ def setExecutionStatusFailed(execution_id):
     return setExecutionParameter(execution_id, "Status", "Failed")
 
 
-def insertExecution(workflow_wid, version, ip):  # todo newapi
+def createExecution(wid, version, ip):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(workflow_wid) + "&version=" + str(version) + "&ip=" + str(ip))
+    if new_api_development:
+        response = requests.post(RESTserver_new + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip)}))
+    response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(wid) + "&version=" + str(version) + "&ip=" + str(ip))
     response_json = response.json()
     return response_json['result']
 
 
-def insertExecutionRecord(data):  # todo newapi
+def insertExecution(data):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.post(RESTserver_new + "executions/", data=json.dumps({"entity": data}))
+        return response.json()
     response = requests.get(RESTserver + "main?action=insert_execution_data", data=json.dumps(data))
     response_json = response.json()
     return response_json['result']

@@ -11,6 +11,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
+import mupifDB
 
 import table_structures
 
@@ -141,25 +142,25 @@ def get_workflow(workflow_id: str):
     return None
 
 
-class M_Workflow(BaseModel):
-    workflow: dict
+class M_Dict(BaseModel):
+    entity: dict
 
 
 @app.patch("/workflows/", tags=["Workflows"])
-def update_workflow(data: M_Workflow):
-    res = db.Workflows.find_one_and_update({'wid': data.workflow['wid']}, {'$set': data.workflow}, return_document=ReturnDocument.AFTER)
+def update_workflow(data: M_Dict):
+    res = db.Workflows.find_one_and_update({'wid': data.entity['wid']}, {'$set': data.entity}, return_document=ReturnDocument.AFTER)
     return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
 
 
 @app.post("/workflows/", tags=["Workflows"])
-def insert_workflow(data: M_Workflow):
-    res = db.Workflows.insert_one(data.workflow)
+def insert_workflow(data: M_Dict):
+    res = db.Workflows.insert_one(data.entity)
     return str(res.inserted_id)
 
 
 @app.post("/workflows_history/", tags=["Workflows"])
-def insert_workflow_history(data: M_Workflow):
-    res = db.WorkflowsHistory.insert_one(data.workflow)
+def insert_workflow_history(data: M_Dict):
+    res = db.WorkflowsHistory.insert_one(data.entity)
     return str(res.inserted_id)
 
 
@@ -207,6 +208,24 @@ def get_execution(uid: str):
     if res:
         return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
     return None
+
+
+class M_WorkflowExecutionAddSpec(BaseModel):
+    wid: str
+    version: str
+    ip: str
+
+
+@app.post("/executions/create/", tags=["Executions"])
+def create_execution(data: M_WorkflowExecutionAddSpec):
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip)
+    return str(c.executionID)
+
+
+@app.post("/executions/", tags=["Executions"])
+def insert_execution(data: M_Dict):
+    res = db.WorkflowExecutions.insert_one(data.entity)
+    return str(res.inserted_id)
 
 
 @app.get("/executions/{uid}/inputs/", tags=["Executions"])
@@ -313,16 +332,3 @@ def upload_file(file: UploadFile):
         sourceID = fs.put(file.file, filename=file.filename)
         return str(sourceID)
     return None
-
-
-
-
-
-
-
-
-
-
-
-
-

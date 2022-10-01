@@ -197,11 +197,6 @@ def get_workflow(wid):
     return jsonify({'result': None, 'error': 'Record was not found.'})
 
 
-def modifyWorkflow(wid, key, value):
-    mongo.db.Workflows.update_one({'wid': wid}, {"$set": {key: value}})
-    return jsonify({'result': True})
-
-
 def insert_workflow(data):
     table = mongo.db.Workflows
     res = table.insert_one(data)

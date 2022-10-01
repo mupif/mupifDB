@@ -429,7 +429,7 @@ def executions():
 def initexecution(wid, version):
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
     if we_record is not None:
-        weid = restApiControl.insertExecution(wid, int(version), ip=getUserIPAddress())
+        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress())
         return redirect(url_for("executionStatus", weid=weid))
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'))
