@@ -522,7 +522,7 @@ def setExecutionParameter(execution_id, param, value, val_type="str"):
     if api_type == 'granta':
         return None
     if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/modify", data=json.dumps({"key": str(param), "value": value}))
+        response = requests.patch(RESTserver_new + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}))
         return response.json()
     response = requests.get(RESTserver + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value) + "&val_type=" + str(val_type))
     return response.status_code == 200
@@ -776,17 +776,28 @@ def uploadBinaryFile(binary_data):
 # Stat
 # --------------------------------------------------
 
-def getStatus():  # todo newapi
+def getStatus():
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "status/")
+        return response.json()
     response = requests.get(RESTserver + "main?action=get_status")
     response_json = response.json()
     return response_json['result']
 
 
-def getStatScheduler():  # todo newapi
+def getStatScheduler():
     if api_type == 'granta':
         return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
+    if new_api_development:
+        response = requests.get(RESTserver_new + "scheduler_statistics/")
+        response_json = response.json()
+        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
+        for k in keys:
+            if k not in response_json:
+                response_json[k] = None
+        return response_json
     response = requests.get(RESTserver + "main?action=get_scheduler_stat")
     response_json = response.json()
     keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
@@ -798,9 +809,19 @@ def getStatScheduler():  # todo newapi
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.
 # This feature is implemented only for setStatsScheduler to cleanly handle scheduler startup.
-def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):  # todo newapi
+def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        if runningTasks is not None:
+            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
+        if scheduledTasks is not None:
+            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
+        if load is not None:
+            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
+        if processedTasks is not None:
+            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+        return
     if runningTasks is not None:
         response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.runningTasks&value=" + str(runningTasks))
     if scheduledTasks is not None:
@@ -811,9 +832,19 @@ def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processe
         response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
 
 
-def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):  # todo newapi
+def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        if runningTasks is not None:
+            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
+        if scheduledTasks is not None:
+            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
+        if load is not None:
+            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
+        if processedTasks is not None:
+            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+        return
     if runningTasks is not None:
         response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.runningTasks&value=" + str(runningTasks))
     if scheduledTasks is not None:

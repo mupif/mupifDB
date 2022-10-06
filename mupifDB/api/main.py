@@ -6,6 +6,7 @@ import gridfs
 import typing
 import io
 import bson
+import psutil
 from pymongo import ReturnDocument
 from pydantic import BaseModel
 import sys
@@ -41,6 +42,9 @@ tags_metadata = [
     },
     {
         "name": "Files",
+    },
+    {
+        "name": "Stats",
     },
     {
         "name": "Additional",
@@ -318,7 +322,7 @@ class M_ModifyExecution(BaseModel):
     value: str
 
 
-@app.patch("/executions/{uid}/modify", tags=["Executions"])
+@app.patch("/executions/{uid}", tags=["Executions"])
 def modify_execution(uid: str, data: M_ModifyExecution):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid)}, {"$set": {data.key: data.value}})
     return get_execution(uid)
@@ -410,3 +414,57 @@ def get_property_array_data(fid: str, i_start: int, i_count: int):
         id_end = id_start + id_num
         sub_propval = propval[id_start:id_end]
         return sub_propval.tolist()
+
+
+# --------------------------------------------------
+# Stats
+# --------------------------------------------------
+
+@app.get("/status/", tags=["Stats"])
+def get_status():
+    mupifDBStatus = 'OK'
+    schedulerStatus = 'OK'
+
+    pidfile = 'mupifDB_scheduler_pidfile'
+    if not os.path.exists(pidfile):
+        schedulerStatus = 'Failed'
+    else:
+        with open(pidfile, "r") as f:
+            try:
+                pid = int(f.read())
+            except (OSError, ValueError):
+                schedulerStatus = 'Failed'
+
+        if not psutil.pid_exists(pid):
+            schedulerStatus = 'Failed'
+
+    # get some scheduler stats
+    stat = mupifDB.schedulerstat.getGlobalStat()
+    schedulerstat = db.Stat.find_one()['scheduler']
+    return {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
+
+
+@app.get("/scheduler_statistics/", tags=["Stats"])
+def get_scheduler_statistics():
+    table = db.Stat
+    output = {}
+    for s in table.find():
+        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
+        for k in keys:
+            if k in s["scheduler"]:
+                output[k] = s["scheduler"][k]
+        break
+    return output
+
+
+class M_ModifyStatistics(BaseModel):
+    key: str
+    value: int
+
+
+@app.patch("/scheduler_statistics/", tags=["Stats"])
+def set_scheduler_statistics(data: M_ModifyStatistics):
+    if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
+        res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
+        return True
+    return False
