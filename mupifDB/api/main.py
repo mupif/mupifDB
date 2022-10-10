@@ -276,6 +276,16 @@ def get_execution_output_item(uid: str, name: str, obj_id: str):
     return get_execution_io_item(uid, name, obj_id, 'Outputs')
 
 
+@app.get("/executions/{uid}/input_item/{name}//", tags=["Executions"])
+def _get_execution_input_item(uid: str, name: str):
+    return get_execution_io_item(uid, name, '', 'Inputs')
+
+
+@app.get("/executions/{uid}/output_item/{name}//", tags=["Executions"])
+def _get_execution_output_item(uid: str, name: str):
+    return get_execution_io_item(uid, name, '', 'Outputs')
+
+
 class M_IOData_link(BaseModel):
     ExecID: str
     Name: str
@@ -315,6 +325,16 @@ def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSet
 @app.patch("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
 def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
     return set_execution_io_item(uid, name, obj_id, 'Outputs', data)
+
+
+@app.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"])
+def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, '', 'Inputs', data)
+
+
+@app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"])
+def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, '', 'Outputs', data)
 
 
 class M_ModifyExecution(BaseModel):

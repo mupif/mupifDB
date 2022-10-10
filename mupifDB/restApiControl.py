@@ -42,6 +42,9 @@ if api_type == 'granta':
 def getUserByIP(ip):
     if api_type == 'granta':
         return None
+    if new_api_development:
+        response = requests.get(RESTserver_new + "users/" + str(ip))
+        return response.json()
     response = requests.get(RESTserver + "main?action=get_user_by_ip&ip=" + str(ip))
     response_json = response.json()
     return response_json['result']
