@@ -19,7 +19,7 @@ RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
 if not RESTserver[-1] == '/':
     RESTserver += '/'
 
-RESTserver_new = RESTserver.replace('5000', '6005')
+RESTserver_new = RESTserver.replace('5000', '8005')
 
 
 granta_credentials = {'username': '', 'password': ''}
