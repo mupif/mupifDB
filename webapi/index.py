@@ -607,7 +607,8 @@ def setExecutionInputs(weid):
                         ival = None
                     form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
                 else:
-                    form += str(i['Object']['Value'])
+                    if i['Object'].get('Value', None) is not None:
+                        form += str(i['Object']['Value'])
                 form += "</td>"
                 form += '<td>' + str(i.get('Units')) + '</td>'
 
