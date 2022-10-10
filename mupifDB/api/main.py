@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, Depends
 from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from pymongo import MongoClient
 import tempfile
 import gridfs
@@ -102,7 +103,7 @@ def get_usecases():
 def get_usecase(uid: str):
     res = db.UseCases.find_one({"ucid": uid})
     if res is not None:
-        return table_structures.extendRecord(res, table_structures.tableUseCase)
+        return table_structures.extendRecord(fix_id(res), table_structures.tableUseCase)
     return None
 
 
