@@ -69,15 +69,15 @@ scheduledTasks = 0
 processedTasks = 0
 finishedTasks = 0 # with success
 failedTasks = 0
-lastJobs = {} # dict, we-id key
+lastJobs = {}  # dict, we-id key
 
 
 schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
-ns=mp.pyroutil.connectNameserver()
-ns_uri=str(ns._pyroUri)
+ns = mp.pyroutil.connectNameserver()
+ns_uri = str(ns._pyroUri)
 
 
 poolsize = 3
@@ -119,8 +119,6 @@ class SchedulerMonitor (object):
         pass
 
 
-
-
 def procInit():
     global fd
     global buf
@@ -147,25 +145,25 @@ def procError(r):
 def updateStatRunning(lock, schedulerStat, we_id, wid):
     with lock:
         print("updateStatRunning called")
-        #print (schedulerStat)
-        #print ('------------------')
+        # print (schedulerStat)
+        # print ('------------------')
 
-        #restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
+        # restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
         #
         schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks']-1
         schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
-        #schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
-        #Modifications to mutable values or items in dict and list proxies will not be propagated through the manager,
-        #because the proxy has no way of knowing when its values or items are modified.
-        #To modify such an item, you can re-assign the modified object to the container proxy.
+        # schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
+        # Modifications to mutable values or items in dict and list proxies will not be propagated through the manager,
+        # because the proxy has no way of knowing when its values or items are modified.
+        # To modify such an item, you can re-assign the modified object to the container proxy.
         jobs = [(we_id, wid, 'Running', datetime.datetime.now().isoformat(timespec='seconds'), '-')]
         for i in range(min(4,len(schedulerStat['lastJobs']))):
             jobs.append(schedulerStat['lastJobs'][i])
         schedulerStat['lastJobs'] = jobs
 
-        #print (we_id, wid)
-        #print (schedulerStat)
-        #print ('=======================')
+        # print (we_id, wid)
+        # print (schedulerStat)
+        # print ('=======================')
 
 
 def updateStatScheduled(lock, schedulerStat):
@@ -199,20 +197,19 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
                 jobs.append(schedulerStat['lastJobs'][i])
         schedulerStat['lastJobs'] = jobs
 
-        #print (schedulerStat)
-        #print ('FFFFFFFFFFFFFFFFFFFF')
+        # print (schedulerStat)
 
 
 def updateStatPersistent (schedulerStat):
-    #print("updateStatPersistent called")
+    # print("updateStatPersistent called")
     if (False):
         return
     else:
         jsonFile= open(schedulerStatFile, 'w')
         json.dump(schedulerStat.copy(), jsonFile)
         jsonFile.close()
-        #print("Update:", stat)
-        #print("updateStatPersistent finished")
+        # print("Update:", stat)
+        # print("updateStatPersistent finished")
   
 
 
@@ -391,7 +388,7 @@ def executeWorkflow(lock, schedulerStat, we_id):
 
             # update status
             updateStatFinished(lock, schedulerStat, completed, we_id)
-            #del runningJobs[we_id] # remove we_id from running jobs; for monitoring
+            # del runningJobs[we_id] # remove we_id from running jobs; for monitoring
         log.info("Updating we_id %s status to %s" % (we_id, completed))
         # set execution code to completed
         if completed == 0:
@@ -447,12 +444,12 @@ if __name__ == '__main__':
     # restApiControl.setExecutionStatusPending('a6e623e7-12a5-4da3-8d40-fc1e7ec00811')
 
     setupLogger(fileName="scheduler.log")
-    #statusLock = multiprocessing.Lock()
+    # statusLock = multiprocessing.Lock()
 
     if (Path(schedulerStatFile).is_file()):
         with open(schedulerStatFile,'r') as f:
             stat=json.load(f)
-            #print (stat)
+            # print (stat)
     else:
         # create empty stat
         stat={'runningTasks':0, 'scheduledTasks': 0, 'load':0, 'processedTasks':0, 'finishedTasks':0, 'failedTasks':0}
@@ -478,13 +475,13 @@ if __name__ == '__main__':
         schedulerStat['scheduledTasks'] = 0
         schedulerStat['load'] = 0
         schedulerStat['processedTasks'] = stat.get('processedTasks', 0)
-        schedulerStat['finishedTasks'] = stat.get('finishedTasks',0)
-        schedulerStat['failedTasks'] = stat.get('failedTasks',0)
-        schedulerStat['lastJobs'] = [] #manager.list()
+        schedulerStat['finishedTasks'] = stat.get('finishedTasks', 0)
+        schedulerStat['failedTasks'] = stat.get('failedTasks', 0)
+        schedulerStat['lastJobs'] = []  # manager.list()
         statusLock = manager.Lock()
 
         monitor = SchedulerMonitor(ns, schedulerStat, statusLock)
-        #run scheduler monitor 
+        # run scheduler monitor
         monitor.runServer()
 
         
@@ -523,7 +520,7 @@ if __name__ == '__main__':
                             weid = wed['_id']
 
                             # check number of attempts for execution
-                            if wed['Attempts'] > 60*10:
+                            if int(wed['Attempts']) > 60*10:
                                 restApiControl.setExecutionStatusCreated(weid)
                                 if api_type != 'granta':
                                     my_email.sendEmailAboutExecutionStatus(weid)
@@ -553,7 +550,7 @@ if __name__ == '__main__':
                             stats = restApiControl.getStatScheduler()
                             print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
                                 str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
-                        #lazy update of persistent statistics, done in main thread thus thread safe
+                        # lazy update of persistent statistics, done in main thread thus thread safe
                         with statusLock:
                             updateStatPersistent (schedulerStat)
                         print("waiting..")
