@@ -55,7 +55,7 @@ if __name__ == "__main__":
         workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"], 'Log_URI': logUri}})
         wfUri=str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid,'workflowURI',wfUri)
-        mupifDB.restApiControl.setExecutionParameter(weid,'loggerURI',wfUri)
+        mupifDB.restApiControl.setExecutionParameter(weid,'loggerURI',logUri)
         mupifDB.workflowmanager.mapInputs(workflow, args.id)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())
