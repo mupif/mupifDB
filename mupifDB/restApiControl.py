@@ -251,6 +251,35 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Time': None
                     }
                 }
+
+
+            if inp['type'] == 'str':
+                # fint units first :(
+                execution_record = getExecutionRecord(eid)
+                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
+                units = ''
+                for w_i in w_inputs:
+                    if w_i['Name'] == name:
+                        units = w_i['Units']
+                return {
+                    'Compulsory': True,
+                    'Description': '',
+                    'Name': inp['name'],
+                    'ObjID': inp['name'],
+                    'Type': 'mupif.String',
+                    'TypeID': 'mupif.DataID.ID_None',
+                    'Units': units,  # todo
+                    'ValueType': 'Scalar',
+                    'Value': None,
+                    'FileID': None,
+                    'Link': {},
+                    'Object': {
+                        'ClassName': 'String',
+                        'DataID': 'ID_None',
+                        'Value': inp['value']
+                    }
+                }
+
             if inp['type'] == 'hyperlink':
                 execution_record = getExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
@@ -286,6 +315,24 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.PyroFile',
+                        'TypeID': 'mupif.DataID.ID_None',
+                        'Units': '',
+                        'ValueType': 'Scalar',
+                        'Value': None,
+                        'FileID': None,
+                        'Link': {},
+                        'Object': {
+                            'FileID': inp['value'].split('/')[-1]
+                        }
+                    }
+
+                if obj_type == 'mupif.Field':
+                    return {
+                        'Compulsory': True,
+                        'Description': '',
+                        'Name': inp['name'],
+                        'ObjID': inp['name'],
+                        'Type': 'mupif.Field',
                         'TypeID': 'mupif.DataID.ID_None',
                         'Units': '',
                         'ValueType': 'Scalar',

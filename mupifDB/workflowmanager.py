@@ -403,7 +403,6 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                         app.set(prop, app_obj_id)
 
             elif object_type == 'mupif.String':
-                # property from dict
                 prop = mupif.String.from_db_dict(inp_record['Object'])
                 app.set(prop, app_obj_id)
 
@@ -437,6 +436,19 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                         daemon.register(hs)
                         hs.exposeData()
                         app.set(hs, app_obj_id)
+
+            elif object_type == 'mupif.Field':
+                file_id = inp_record['Object'].get('FileID', None)
+                if file_id is not None:
+                    # load from hdf5 file
+                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                        full_path = tempDir + "/file.h5"
+                        f = open(full_path, 'wb')
+                        f.write(pfile)
+                        f.close()
+                        field = mupif.Field.makeFromHdf5(full_path)[0]
+                        app.set(field, app_obj_id)
             else:
                 raise ValueError('Handling of io param of type %s is not implemented' % object_type)
 
@@ -502,11 +514,24 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type):
 
     elif object_type == 'mupif.HeavyStruct':
         hs = app.get(mupif.DataID[data_id], time, obj_id)
-
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
             full_path = tempDir + "/file.h5"
             hs_copy = hs.deepcopy()
             hs.moveStorage(full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFile(f)
+                f.close()
+            if fileID is not None:
+                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+            else:
+                print("hdf5 file was not saved")
+
+    elif object_type == 'mupif.Field':
+        field = app.get(mupif.DataID[data_id], time, obj_id)
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            full_path = tempDir + "/file.h5"
+            field.toHdf5(full_path)
             fileID = None
             with open(full_path, 'rb') as f:
                 fileID = restApiControl.uploadBinaryFile(f)
@@ -529,9 +554,17 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                 "value": prop.quantity.value.tolist(),
                 "type": "float"
             }
+
+    elif object_type == 'mupif.String':
+        string = app.get(mupif.DataID[data_id], time, obj_id)
+        return {
+            "name": str(name),
+            "value": prop.getValue(),
+            "type": "str"
+        }
+
     if object_type == 'mupif.HeavyStruct':
         hs = app.get(mupif.DataID[data_id], time, obj_id)
-
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
             full_path = tempDir + "/file.h5"
             hs_copy = hs.deepcopy()
@@ -547,6 +580,23 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                 "value": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
                 "type": "hyperlink"
             }
+
+    elif object_type == 'mupif.Field':
+        field = app.get(mupif.DataID[data_id], time, obj_id)
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            full_path = tempDir + "/file.h5"
+            field.toHdf5(full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFile(f)
+                f.close()
+            if fileID is None:
+                print("hdf5 file was not saved")
+                return {
+                    "name": str(name),
+                    "value": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
+                    "type": "hyperlink"
+                }
 
     return None
 
