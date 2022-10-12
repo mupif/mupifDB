@@ -11,8 +11,6 @@ import re
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
-new_api_development = True
-
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
 
 # RESTserver *must* have trailing /, fix if not
@@ -42,12 +40,8 @@ if api_type == 'granta':
 def getUserByIP(ip):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "users/" + str(ip))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=get_user_by_ip&ip=" + str(ip))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.get(RESTserver_new + "users/" + str(ip))
+    return response.json()
 
 
 # --------------------------------------------------
@@ -58,17 +52,11 @@ def getUsecaseRecords():
     if api_type == 'granta':
         return []
     data = []
-    if new_api_development:
-        response = requests.get(RESTserver_new + "usecases/")
-        response_json = response.json()
-        if response_json:
-            print(response)
-            for record in response_json:
-                data.append(record)
-    else:
-        response = requests.get(RESTserver + "main?action=get_usecases")
-        response_json = response.json()
-        for record in response_json['result']:
+    response = requests.get(RESTserver_new + "usecases/")
+    response_json = response.json()
+    if response_json:
+        print(response)
+        for record in response_json:
             data.append(record)
     return data
 
@@ -76,29 +64,16 @@ def getUsecaseRecords():
 def getUsecaseRecord(ucid):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "usecases/" + ucid)
-        response_json = response.json()
-        return response_json
-
-    response = requests.get(RESTserver + "main?action=get_usecase&id=" + ucid)
+    response = requests.get(RESTserver_new + "usecases/" + ucid)
     response_json = response.json()
-    return response_json['result']
+    return response_json
 
 
 def insertUsecaseRecord(ucid, description):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.post(RESTserver_new + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
-        return response.json()
-
-    response = requests.get(RESTserver + "main?action=insert_usecase&ucid=" + ucid + "&description=" + description)
-    response_json = response.json()
-    print(response_json)
-    if 'result' in response_json:
-        return response_json['result']
-    return None
+    response = requests.post(RESTserver_new + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
+    return response.json()
 
 
 # --------------------------------------------------
@@ -109,16 +84,10 @@ def getWorkflowRecords():
     if api_type == 'granta':
         return []
     data = []
-    if new_api_development:
-        response = requests.get(RESTserver_new + "workflows/")
-        response_json = response.json()
-        for record in response_json:
-            data.append(record)
-    else:
-        response = requests.get(RESTserver + "main?action=get_workflows")
-        response_json = response.json()
-        for record in response_json['result']:
-            data.append(record)
+    response = requests.get(RESTserver_new + "workflows/")
+    response_json = response.json()
+    for record in response_json:
+        data.append(record)
     return data
 
 
@@ -126,52 +95,33 @@ def getWorkflowRecordsWithUsecase(usecase):
     if api_type == 'granta':
         return []
     data = []
-    if new_api_development:
-        response = requests.get(RESTserver_new + "usecases/" + str(usecase) + "/workflows")
-        response_json = response.json()
-        for record in response_json:
-            data.append(record)
-    else:
-        response = requests.get(RESTserver + "main?action=get_workflows_for_usecase&usecase=" + str(usecase))
-        response_json = response.json()
-        for record in response_json['result']:
-            data.append(record)
+    response = requests.get(RESTserver_new + "usecases/" + str(usecase) + "/workflows")
+    response_json = response.json()
+    for record in response_json:
+        data.append(record)
     return data
 
 
 def getWorkflowRecord(wid):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "workflows/" + wid)
-        response_json = response.json()
-        return response_json
-
-    response = requests.get(RESTserver + "main?action=get_workflow&wid=" + wid)
+    response = requests.get(RESTserver_new + "workflows/" + wid)
     response_json = response.json()
-    return response_json['result']
+    return response_json
 
 
 def insertWorkflow(data):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.post(RESTserver_new + "workflows/", data=json.dumps({"entity": data}))
-        return response.json()
-    response = requests.post(RESTserver + "main?action=insert_workflow", data=json.dumps(data))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.post(RESTserver_new + "workflows/", data=json.dumps({"entity": data}))
+    return response.json()
 
 
 def updateWorkflow(data):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "workflows/", data=json.dumps({"workflow": data}))
-        return response.json()
-    response = requests.post(RESTserver + "main?action=update_workflow", data=json.dumps(data))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.patch(RESTserver_new + "workflows/", data=json.dumps({"workflow": data}))
+    return response.json()
 
 
 def fix_json(val):
@@ -356,27 +306,16 @@ def _getGrantaExecutionInputItem(eid, name):
 def getWorkflowRecordFromHistory(wid, version):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "workflows_history/" + wid + "/" + str(version))
-        response_json = response.json()
-        return response_json
-    response = requests.get(RESTserver + "main?action=get_workflow_from_history&wid=" + str(wid) + "&version=" + str(version))
+    response = requests.get(RESTserver_new + "workflows_history/" + wid + "/" + str(version))
     response_json = response.json()
-    print(response_json)
-    for record in response_json['result']:
-        return record
-    return None
+    return response_json
 
 
 def insertWorkflowHistory(data):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.post(RESTserver_new + "workflows_history/", data=json.dumps({"entity": data}))
-        return response.json()
-    response = requests.post(RESTserver + "main?action=insert_workflow_history", data=json.dumps(data))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.post(RESTserver_new + "workflows_history/", data=json.dumps({"entity": data}))
+    return response.json()
 
 
 # --------------------------------------------------
@@ -420,26 +359,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
             return res
         return []
     data = []
-
-    if new_api_development:
-        endpoint_address = RESTserver_new + "executions/?noparam"
-        if num_limit is not None:
-            endpoint_address += "&num_limit=" + str(num_limit)
-        if label is not None:
-            endpoint_address += "&label=" + str(label)
-        if workflow_id is not None:
-            endpoint_address += "&workflow_id=" + str(workflow_id)
-        if workflow_version is not None:
-            endpoint_address += "&workflow_version=" + str(workflow_version)
-        if status:
-            endpoint_address += "&status=" + str(status)
-        response = requests.get(endpoint_address)
-        response_json = response.json()
-        for record in response_json:
-            data.append(record)
-        return data
-
-    endpoint_address = RESTserver + "main?action=get_executions"
+    endpoint_address = RESTserver_new + "executions/?noparam"
     if num_limit is not None:
         endpoint_address += "&num_limit=" + str(num_limit)
     if label is not None:
@@ -448,11 +368,11 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
         endpoint_address += "&workflow_id=" + str(workflow_id)
     if workflow_version is not None:
         endpoint_address += "&workflow_version=" + str(workflow_version)
-    if status is not None:
+    if status:
         endpoint_address += "&status=" + str(status)
     response = requests.get(endpoint_address)
     response_json = response.json()
-    for record in response_json['result']:
+    for record in response_json:
         data.append(record)
     return data
 
@@ -474,13 +394,9 @@ def getExecutionRecord(weid):
             execution['Task_ID'] = ''
             return execution
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "executions/" + str(weid))
-        response_json = response.json()
-        return response_json
-    response = requests.get(RESTserver + "main?action=get_execution&id=" + str(weid))
+    response = requests.get(RESTserver_new + "executions/" + str(weid))
     response_json = response.json()
-    return response_json['result']
+    return response_json
 
 
 def getScheduledExecutions():
@@ -513,22 +429,15 @@ def getPendingExecutions():
 def scheduleExecution(execution_id):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/schedule")
-        response_json = response.json()
-        return response_json
-    response = requests.get(RESTserver + "main?action=schedule_execution&id=" + str(execution_id))
-    return response.status_code == 200
+    response = requests.patch(RESTserver_new + "executions/" + str(execution_id) + "/schedule")
+    return response.json()
 
 
 def setExecutionParameter(execution_id, param, value, val_type="str"):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=modify_execution&id=" + str(execution_id) + "&key=" + str(param) + "&value=" + str(value) + "&val_type=" + str(val_type))
-    return response.status_code == 200
+    response = requests.patch(RESTserver_new + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}))
+    return response.json()
 
 
 def setExecutionAttemptsCount(execution_id, val):
@@ -555,7 +464,7 @@ def _setGrantaExecutionStatus(eid, val):
 
 def setExecutionStatusScheduled(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Planned')
+        return _setGrantaExecutionStatus(execution_id, 'Scheduled')
     return setExecutionParameter(execution_id, "Status", "Scheduled")
 
 
@@ -579,21 +488,21 @@ def setExecutionStatusPending(execution_id, reverted=False):
 
 def setExecutionStatusRunning(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'On-going')
+        return _setGrantaExecutionStatus(execution_id, 'Running')
     setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Running")
 
 
 def setExecutionStatusFinished(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Completed')
+        return _setGrantaExecutionStatus(execution_id, 'Completed, to be reviewed')
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Finished")
 
 
 def setExecutionStatusFailed(execution_id):
     if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Cancelled')
+        return _setGrantaExecutionStatus(execution_id, 'Failed')
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
 
@@ -601,45 +510,29 @@ def setExecutionStatusFailed(execution_id):
 def createExecution(wid, version, ip):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.post(RESTserver_new + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip)}))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=insert_new_execution&wid=" + str(wid) + "&version=" + str(version) + "&ip=" + str(ip))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.post(RESTserver_new + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip)}))
+    return response.json()
 
 
 def insertExecution(data):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.post(RESTserver_new + "executions/", data=json.dumps({"entity": data}))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=insert_execution_data", data=json.dumps(data))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.post(RESTserver_new + "executions/", data=json.dumps({"entity": data}))
+    return response.json()
 
 
 def getExecutionInputRecord(weid):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "executions/" + str(weid) + "/inputs/")
-        return response.json()
-    response = requests.get(RESTserver + "main?action=get_execution_inputs&id=" + str(weid))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.get(RESTserver_new + "executions/" + str(weid) + "/inputs/")
+    return response.json()
 
 
 def getExecutionOutputRecord(weid):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "executions/" + str(weid) + "/outputs/")
-        return response.json()
-    response = requests.get(RESTserver + "main?action=get_execution_outputs&id=" + str(weid))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.get(RESTserver_new + "executions/" + str(weid) + "/outputs/")
+    return response.json()
 
 
 def getExecutionInputRecordItem(weid, name, obj_id):
@@ -665,73 +558,43 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 def getIODataRecord(iod_id):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "iodata/" + str(iod_id))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=get_iodata&id=" + str(iod_id))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.get(RESTserver_new + "iodata/" + str(iod_id))
+    return response.json()
 
 
 def insertIODataRecord(data):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.post(RESTserver_new + "iodata/", data=json.dumps({"entity": data}))
-        return response.json()
-    response = requests.post(RESTserver + "main?action=insert_iodata", data=json.dumps(data))
-    response_json = response.json()
-    return response_json['result']
+    response = requests.post(RESTserver_new + "iodata/", data=json.dumps({"entity": data}))
+    return response.json()
 
 
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=set_execution_input_link&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id) + "&link_eid=" + str(link_eid) + "&link_name=" + str(link_name) + "&link_obj_id=" + str(link_obj_id))
-    return response.status_code == 200
+    response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}))
+    return response.json()
 
 
 def setExecutionInputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
-        return response.json()
-    response = requests.put(RESTserver + "main?action=set_execution_input_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
-    return response.status_code == 200
+    response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
+    return response.json()
 
 
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
-        return response.json()
-    response = requests.put(RESTserver + "main?action=set_execution_output_object&id=" + str(weid) + "&name=" + str(name) + "&obj_id=" + str(obj_id), json=object_dict)
-    return response.status_code == 200
-
-
-def setExecutionOutputFileID(weid, name, fileID, obj_id):
-    if api_type == 'granta':
-        return None
-    if new_api_development:
-        response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"file_id": fileID}))
-        return response.json()
-    response = requests.get(RESTserver + "main?action=set_execution_output&id=" + str(weid) + "&name=" + str(name) + "&file_id=" + str(fileID) + "&obj_id=" + str(obj_id))
-    return response.status_code == 200
+    response = requests.patch(RESTserver_new + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
+    return response.json()
 
 
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/")
-        return response.json()
-    response = requests.get(RESTserver + "main?action=get_property_array_data&file_id=" + str(file_id) + "&i_start=" + i_start + "&i_count=" + i_count)
-    return response.json()['result']
+    response = requests.get(RESTserver_new + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/")
+    return response.json()
 
 
 # --------------------------------------------------
@@ -744,18 +607,9 @@ def getBinaryFileByID(fid):
         response = requests.get(url + str(fid), auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), allow_redirects=True)
         return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
 
-    if new_api_development:
-        response = requests.get(RESTserver_new + "file/" + str(fid))
-        d = response.headers['Content-Disposition']
-        filename = re.findall("filename=(.+)", d)[0]
-        return response.content, filename
-
-    # name
-    response = requests.get(RESTserver + "main?action=get_filename&id=" + str(fid), allow_redirects=True)
-    response_json = response.json()
-    filename = str(response_json['result'])
-    # content
-    response = requests.get(RESTserver + "main?action=get_file&id=" + str(fid), allow_redirects=True)
+    response = requests.get(RESTserver_new + "file/" + str(fid))
+    d = response.headers['Content-Disposition']
+    filename = re.findall("filename=(.+)", d)[0]
     return response.content, filename
 
 
@@ -766,13 +620,8 @@ def uploadBinaryFile(binary_data):
         response_json = response.json()
         return response_json['guid']
 
-    if new_api_development:
-        response = requests.post(RESTserver_new + "file/", files={"file": binary_data})
-        return response.json()
-
-    response = requests.post(RESTserver + "upload", files={"myfile": binary_data})
-    response_json = response.json()
-    return response_json['result']
+    response = requests.post(RESTserver_new + "file/", files={"file": binary_data})
+    return response.json()
 
 
 # --------------------------------------------------
@@ -782,32 +631,20 @@ def uploadBinaryFile(binary_data):
 def getStatus():
     if api_type == 'granta':
         return None
-    if new_api_development:
-        response = requests.get(RESTserver_new + "status/")
-        return response.json()
-    response = requests.get(RESTserver + "main?action=get_status")
-    response_json = response.json()
-    return response_json['result']
+    response = requests.get(RESTserver_new + "status/")
+    return response.json()
 
 
 def getStatScheduler():
     if api_type == 'granta':
         return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
-    if new_api_development:
-        response = requests.get(RESTserver_new + "scheduler_statistics/")
-        response_json = response.json()
-        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
-        for k in keys:
-            if k not in response_json:
-                response_json[k] = None
-        return response_json
-    response = requests.get(RESTserver + "main?action=get_scheduler_stat")
+    response = requests.get(RESTserver_new + "scheduler_statistics/")
     response_json = response.json()
     keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
     for k in keys:
-        if k not in response_json['result']:
-            response_json['result'][k] = None
-    return response_json['result']
+        if k not in response_json:
+            response_json[k] = None
+    return response_json
 
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.
@@ -815,44 +652,26 @@ def getStatScheduler():
 def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        if runningTasks is not None:
-            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
-        if scheduledTasks is not None:
-            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
-        if load is not None:
-            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
-        if processedTasks is not None:
-            response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
-        return
     if runningTasks is not None:
-        response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.runningTasks&value=" + str(runningTasks))
+        response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
     if scheduledTasks is not None:
-        response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.scheduledTasks&value=" + str(scheduledTasks))
+        response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
     if load is not None:
-        response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.load&value=" + str(load))
+        response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
     if processedTasks is not None:
-        response = session.get(RESTserver + "main?action=set_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
+        response = session.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+    return
 
 
 def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
     if api_type == 'granta':
         return None
-    if new_api_development:
-        if runningTasks is not None:
-            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
-        if scheduledTasks is not None:
-            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
-        if load is not None:
-            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
-        if processedTasks is not None:
-            response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
-        return
     if runningTasks is not None:
-        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.runningTasks&value=" + str(runningTasks))
+        response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
     if scheduledTasks is not None:
-        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.scheduledTasks&value=" + str(scheduledTasks))
+        response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
     if load is not None:
-        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.load&value=" + str(load))
+        response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
     if processedTasks is not None:
-        response = requests.get(RESTserver + "main?action=update_scheduler_stat&key=scheduler.processedTasks&value=" + str(processedTasks))
+        response = requests.patch(RESTserver_new + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+    return
