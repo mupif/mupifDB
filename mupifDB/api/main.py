@@ -294,28 +294,21 @@ class M_IOData_link(BaseModel):
 
 
 class M_IODataSetContainer(BaseModel):
-    # value: typing.Optional[typing.Any] = None
     link: typing.Optional[dict] = None
     object: typing.Optional[dict] = None
-    file_id: typing.Optional[str] = None
 
 
 def set_execution_io_item(uid, name, obj_id, inout, data_container):
-    # todo checks for status
     we = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    id_condition = {'_id': bson.objectid.ObjectId(we[inout])}
-
-    # if data_container.value is not None:
-    #     pass
-    if data_container.link is not None and inout == 'Inputs':
-        res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Link": data_container.link}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        return res.matched_count > 0
-    if data_container.object is not None:
-        res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Object": data_container.object}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        return res.matched_count > 0
-    if data_container.file_id is not None:
-        res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].FileID": data_container.file_id}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
-        return res.matched_count > 0
+    if (we.get('Status', '') == 'Created' and inout == 'Inputs') or (we.get('Status', '') == 'Running' and inout == 'Outputs'):
+        id_condition = {'_id': bson.objectid.ObjectId(we[inout])}
+        if data_container.link is not None and inout == 'Inputs':
+            res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Link": data_container.link}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+            return res.matched_count > 0
+        if data_container.object is not None:
+            res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Object": data_container.object}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
+            return res.matched_count > 0
+    return False
 
 
 @app.patch("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
