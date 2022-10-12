@@ -322,14 +322,6 @@ def insertWorkflowHistory(data):
 # Executions
 # --------------------------------------------------
 
-status_transcript = {
-    'Created': '-',
-    'Pending': 'Ready',
-    'Running': 'On-going',
-    'Finished': 'Completed',
-    'Failed': 'Canceled'
-}
-
 def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None):
     if api_type == 'granta':
         url = RESTserver + 'executions/'
@@ -343,16 +335,19 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
                 execution['_id'] = ex['guid']
                 execution['WorkflowID'] = ex['template_guid']
                 execution['WorkflowVersion'] = -1
-                st = 'unknown'
-                if ex['status'] == 'Ready':
+                st = ex['status']
+                if st == 'Ready':
                     st = 'Pending'
-                if ex['status'] == 'On-going':
+                if st == 'On-going':
                     st = 'Running'
-                if ex['status'] == 'Completed':
+                if st == 'Completed':
                     st = 'Finished'
-                if ex['status'] == 'Canceled':
+                if st == 'Completed, to be reviewed':
+                    st = 'Finished'
+                if st == 'Completed & reviewed':
+                    st = 'Finished'
+                if st == 'Canceled':
                     st = 'Failed'
-
                 execution['Status'] = st
                 execution['Task_ID'] = ''
                 res.append(execution)
@@ -389,8 +384,22 @@ def getExecutionRecord(weid):
             execution['WorkflowID'] = r_json['template_guid']
             execution['WorkflowVersion'] = -1
             execution['Status'] = 'unknown'
-            if r_json['status'] == 'Ready':
-                execution['Status'] = 'Pending'
+
+            st = r_json['status']
+            if st == 'Ready':
+                st = 'Pending'
+            if st == 'On-going':
+                st = 'Running'
+            if st == 'Completed':
+                st = 'Finished'
+            if st == 'Completed, to be reviewed':
+                st = 'Finished'
+            if st == 'Completed & reviewed':
+                st = 'Finished'
+            if st == 'Canceled':
+                st = 'Failed'
+            execution['Status'] = st
+
             execution['Task_ID'] = ''
             return execution
         return None
