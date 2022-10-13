@@ -111,6 +111,7 @@ class SchedulerMonitor (object):
             'failedTasks': failedTasks,
             'lastJobs': lastJobs 
             } 
+    @staticmethod
     def getExecutions(status='Running'):
         restApiControl.getExecutionRecords(status=status)
     def stop (self):
