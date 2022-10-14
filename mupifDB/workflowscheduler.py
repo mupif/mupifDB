@@ -111,6 +111,9 @@ class SchedulerMonitor (object):
             'failedTasks': failedTasks,
             'lastJobs': lastJobs 
             } 
+    @staticmethod
+    def getExecutions(status='Running'):
+        return restApiControl.getExecutionRecords(status=status)
     def stop (self):
         stopFlag=True
         self.ns.remove("mupif.scheduler")
