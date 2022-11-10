@@ -22,6 +22,7 @@ tableWorkflow = {
     'classname': None,
     'IOCard': {'Inputs': [], 'Outputs': []},
     'Models': [],
+    'OntoBaseObjects': []
 }
 
 
@@ -41,6 +42,7 @@ tableExecution = {
     'Task_ID': '',
     'label': '',
     'Attempts': 0,
+    'OntoBaseObjects': []
 }
 
 

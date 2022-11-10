@@ -56,6 +56,7 @@ if __name__ == "__main__":
         wfUri=str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid,'workflowURI',wfUri)
         mupifDB.restApiControl.setExecutionParameter(weid,'loggerURI',logUri)
+        mupifDB.workflowmanager.createOutputOntoBaseObjects(weid)
         mupifDB.workflowmanager.mapInputs(workflow, args.id)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())

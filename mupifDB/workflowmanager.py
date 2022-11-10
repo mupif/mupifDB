@@ -18,7 +18,7 @@ ns = mupif.pyroutil.connectNameServer()
 daemon = mupif.pyroutil.getDaemon(ns)
 
 
-def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md):
+def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, ontoBaseObjects=None):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -46,13 +46,21 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
+        if i.get('OntoPath', None) is not None:
+            irec['OntoPath'] = i.get('OntoPath')
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
+        if i.get('OntoPath', None) is not None:
+            irec['OntoPath'] = i.get('OntoPath')
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
-    
+
+    rec['OntoBaseObjects'] = []
+    if ontoBaseObjects is not None:
+        rec['OntoBaseObjects'] = ontoBaseObjects
+
     # first check if workflow with wid already exist in workflows
     w_rec = restApiControl.getWorkflowRecord(wid)
     if w_rec is None:  # can safely create a new record in workflows collection
@@ -105,7 +113,7 @@ class WorkflowExecutionIODataSet:
         self.weid = weid
     
     @staticmethod
-    def create(workflowID, type, workflowVer=-1):
+    def create(workflowID, type, workflowVer=-1, no_onto=False):
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if wdoc is None:
             raise KeyError("Workflow document with ID" + workflowID + " not found")
@@ -114,12 +122,28 @@ class WorkflowExecutionIODataSet:
         rec = {}
         data = []
         for io in IOCard[type]:  # loop over workflow inputs/outputs
-            if isinstance(io.get('ObjID', ""), list) or isinstance(io.get('ObjID', ""), tuple):
-                for objid in io['ObjID']:
-                    # make separate input entry for each obj_id
-                    data.append({'Name': io['Name'], 'Type': io['Type'], 'Object': {}, 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': objid, 'Compulsory': io.get('Compulsory', None), 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
-            else:  # single obj_id provided
-                data.append({'Name': io['Name'], 'Type': io['Type'], 'Object': {}, 'Value': None, 'ValueType': io['ValueType'], 'TypeID': io['TypeID'], 'Units': io['Units'], 'ObjID': io.get('ObjID', ""), 'Compulsory': io.get('Compulsory', None), 'FileID': None, 'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}})
+            OID = [""]
+            if io.get('ObjID', None) is not None:
+                if isinstance(io.get('ObjID'), str):
+                    OID = [io.get('ObjID')]
+                if isinstance(io.get('ObjID'), list) or isinstance(io.get('ObjID'), tuple):
+                    OID = io.get('ObjID')
+
+            for objid in OID:
+                data.append({
+                    'Name': io['Name'],
+                    'Type': io['Type'],
+                    'Object': {},
+                    'Value': None,
+                    'ValueType': io['ValueType'],
+                    'TypeID': io['TypeID'],
+                    'Units': io['Units'],
+                    'ObjID': objid,
+                    'OntoPath': None if no_onto else io.get('OntoPath', None),
+                    'Compulsory': io.get('Compulsory', None),
+                    'FileID': None,
+                    'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}
+                })
         rec['Type'] = type
         rec['DataSet'] = data
         rec_id = restApiControl.insertIODataRecord(rec)
@@ -176,7 +200,7 @@ class WorkflowExecutionContext:
         self.executionID = executionID
 
     @staticmethod
-    def create(workflowID, requestedBy='', workflowVer=-1, ip=''):
+    def create(workflowID, requestedBy='', workflowVer=-1, ip='', no_onto=False):
         """
         """
         # first query for workflow document
@@ -189,8 +213,16 @@ class WorkflowExecutionContext:
             rec['RequestedBy'] = requestedBy
             rec['UserIP'] = ip
             rec['CreatedDate'] = str(datetime.datetime.now())
-            rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs')
-            rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs')
+            rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto)
+            rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto)
+            if no_onto:
+                rec['OntoBaseObjects'] = []
+            else:
+                OBO = []
+                for obo in wdoc.get('OntoBaseObjects'):
+                    obo['id'] = None
+                    OBO.append(obo)
+                rec['OntoBaseObjects'] = OBO
             new_id = restApiControl.insertExecution(rec)
             return WorkflowExecutionContext(new_id)
 
@@ -251,74 +283,95 @@ def ObjIDIsIterable(val):
         return False
 
 
-def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False):
+def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects=None):
     if linked_output:
         inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
         inp_record = restApiControl.getExecutionInputRecordItem(eid, name, obj_id)
-    if inp_record is not None:
-        link_eid = inp_record['Link'].get('ExecID', '')
-        link_name = inp_record['Link'].get('Name', '')
-        link_oid = inp_record['Link'].get('ObjID', '')
-        if link_eid != "" and link_name != "":
-            # check linked value
-            return checkInput(
-                eid=link_eid,
-                name=link_name,
-                obj_id=link_oid,
-                object_type=object_type,
-                data_id=data_id,
-                linked_output=True
-            )
 
-        else:
-            # check value from database record
+    if onto_path is not None:
+        splitted = onto_path.split('.', 1)
+        base_object_name = splitted[0]
+        object_path = splitted[1]
+
+        # find base object info
+        info = {}
+        for i in onto_base_objects:
+            if i['Name'] == base_object_name:
+                info = i
+
+        # get the desired object
+        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+        if onto_data is not None:
             if object_type == 'mupif.Property':
-                file_id = inp_record['Object'].get('FileID', None)
-                if file_id is None:
+                if onto_data.get('value', None) is not None:
+                    return True
+        return False
+
+    else:
+        if inp_record is not None:
+            link_eid = inp_record['Link'].get('ExecID', '')
+            link_name = inp_record['Link'].get('Name', '')
+            link_oid = inp_record['Link'].get('ObjID', '')
+            if link_eid != "" and link_name != "":
+                # check linked value
+                return checkInput(
+                    eid=link_eid,
+                    name=link_name,
+                    obj_id=link_oid,
+                    object_type=object_type,
+                    data_id=data_id,
+                    linked_output=True
+                )
+
+            else:
+                # check value from database record
+                if object_type == 'mupif.Property':
+                    file_id = inp_record['Object'].get('FileID', None)
+                    if file_id is None:
+                        # property from dict
+                        try:
+                            prop = mupif.ConstantProperty.from_db_dict(inp_record['Object'])
+                            return True
+                        except:
+                            return False
+                    else:
+                        # property from hdf5 file
+                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                            full_path = tempDir + "/file.h5"
+                            f = open(full_path, 'wb')
+                            f.write(pfile)
+                            f.close()
+                            try:
+                                prop = mupif.ConstantProperty.loadHdf5(full_path)
+                                return True
+                            except:
+                                return False
+
+                elif object_type == 'mupif.String':
                     # property from dict
                     try:
-                        prop = mupif.ConstantProperty.from_db_dict(inp_record['Object'])
+                        prop = mupif.String.from_db_dict(inp_record['Object'])
                         return True
                     except:
                         return False
-                else:
-                    # property from hdf5 file
-                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        try:
-                            prop = mupif.ConstantProperty.loadHdf5(full_path)
-                            return True
-                        except:
-                            return False
 
-            elif object_type == 'mupif.String':
-                # property from dict
-                try:
-                    prop = mupif.String.from_db_dict(inp_record['Object'])
-                    return True
-                except:
-                    return False
-
-            elif object_type == 'mupif.HeavyStruct':
-                file_id = inp_record['Object'].get('FileID', None)
-                if file_id is not None:
-                    # load from hdf5 file
-                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        try:
-                            hs = mupif.HeavyStruct(h5path=full_path, mode='readonly', id=mupif.DataID[data_id])
-                            return True
-                        except:
-                            return False
+                elif object_type == 'mupif.HeavyStruct':
+                    file_id = inp_record['Object'].get('FileID', None)
+                    if file_id is not None:
+                        # load from hdf5 file
+                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                            full_path = tempDir + "/file.h5"
+                            f = open(full_path, 'wb')
+                            f.write(pfile)
+                            f.close()
+                            try:
+                                hs = mupif.HeavyStruct(h5path=full_path, mode='readonly', id=mupif.DataID[data_id])
+                                return True
+                            except:
+                                return False
     return False
 
 
@@ -328,7 +381,7 @@ def checkInputs(eid):
     workflow_input_templates = workflow['IOCard']['Inputs']
     execution_inputs = restApiControl.getIODataRecord(execution['Inputs'])['DataSet']
 
-    for input_template in workflow_input_templates:
+    for input_template in execution_inputs:
         name = input_template['Name']
         object_type = input_template['Type']
         valueType = input_template['ValueType']
@@ -350,14 +403,16 @@ def checkInputs(eid):
                     name=name,
                     obj_id=oid,
                     data_id=data_id,
-                    object_type=object_type
+                    object_type=object_type,
+                    onto_path=input_template.get('OntoPath', None),
+                    onto_base_objects=execution.get('OntoBaseObjects', []),
                 ) is False:
                     return False
 
     return True
 
 
-def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False):
+def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects={}, value_type=None):
     if linked_output:
         inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
@@ -365,92 +420,141 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
 
     if api_type == 'granta':
         inp_record = restApiControl._getGrantaExecutionInputItem(eid, name)
+    # onto_path is not unused
+    op = inp_record.get('OntoPath', None)
+    if op is not None:
+        splitted = op.split('.', 1)
+        base_object_name = splitted[0]
+        object_path = splitted[1]
 
-    if inp_record is not None:
-        link_eid = inp_record['Link'].get('ExecID', '')
-        link_name = inp_record['Link'].get('Name', '')
-        link_oid = inp_record['Link'].get('ObjID', '')
-        if link_eid != "" and link_name != "":
-            # map linked value
-            mapInput(
-                app=app,
-                eid=link_eid,
-                name=link_name,
-                obj_id=link_oid,
-                app_obj_id=app_obj_id,
-                object_type=object_type,
-                data_id=data_id,
-                linked_output=True
-            )
+        # find base object info
+        info = {}
+        for i in onto_base_objects:
+            if i['Name'] == base_object_name:
+                info = i
 
+        # get the desired object
+        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+        if object_type == 'mupif.Property':
+            value = onto_data.get('value', None)
+            unit = onto_data.get('unit', '')
+            prop = mupif.ConstantProperty.from_db_dict({
+                "Value": value,
+                "DataID": data_id,
+                "ValueType": value_type,
+                "Unit": unit,
+                "Time": None
+            })
+            app.set(prop, app_obj_id)
         else:
-            # map value from database record
-            if object_type == 'mupif.Property':
-                file_id = inp_record['Object'].get('FileID', None)
-                if file_id is None:
-                    # property from dict
-                    prop = mupif.ConstantProperty.from_db_dict(inp_record['Object'])
-                    app.set(prop, app_obj_id)
-                else:
-                    # property from hdf5 file
-                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        prop = mupif.ConstantProperty.loadHdf5(full_path)
-                        app.set(prop, app_obj_id)
+            raise ValueError('Handling of Onto io param of type %s is not implemented' % object_type)
 
-            elif object_type == 'mupif.String':
-                prop = mupif.String.from_db_dict(inp_record['Object'])
-                app.set(prop, app_obj_id)
+    else:
+        if inp_record is not None:
+            link_eid = inp_record['Link'].get('ExecID', '')
+            link_name = inp_record['Link'].get('Name', '')
+            link_oid = inp_record['Link'].get('ObjID', '')
+            if link_eid != "" and link_name != "":
+                # map linked value
+                mapInput(
+                    app=app,
+                    eid=link_eid,
+                    name=link_name,
+                    obj_id=link_oid,
+                    app_obj_id=app_obj_id,
+                    object_type=object_type,
+                    data_id=data_id,
+                    linked_output=True
+                )
 
-            elif object_type == 'mupif.PyroFile':
-                file_id = inp_record['Object'].get('FileID', None)
-                if file_id is not None:
-                    # load from hdf5 file
-                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        # full_path = "/home/stanislav/tmp/" + fn  # tempDir
-                        full_path = tempDir + "/" + fn
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        pf = mupif.PyroFile(filename=full_path, mode='rb')
-                        daemon.register(pf)
-                        app.set(pf, app_obj_id)
-
-            elif object_type == 'mupif.HeavyStruct':
-                file_id = inp_record['Object'].get('FileID', None)
-                if file_id is not None:
-                    # load from hdf5 file
-                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        hs = mupif.HeavyStruct(h5path=full_path, mode='copy-readwrite', id=mupif.DataID[data_id])
-                        # hs = hs.deepcopy()
-                        daemon.register(hs)
-                        hs.exposeData()
-                        app.set(hs, app_obj_id)
-
-            elif object_type == 'mupif.Field':
-                file_id = inp_record['Object'].get('FileID', None)
-                if file_id is not None:
-                    # load from hdf5 file
-                    pfile, fn = restApiControl.getBinaryFileByID(file_id)
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-                        full_path = tempDir + "/file.h5"
-                        f = open(full_path, 'wb')
-                        f.write(pfile)
-                        f.close()
-                        field = mupif.Field.makeFromHdf5(full_path)[0]
-                        app.set(field, app_obj_id)
             else:
-                raise ValueError('Handling of io param of type %s is not implemented' % object_type)
+                # map value from database record
+                if object_type == 'mupif.Property':
+                    file_id = inp_record['Object'].get('FileID', None)
+                    if file_id is None:
+                        # property from dict
+                        prop = mupif.ConstantProperty.from_db_dict(inp_record['Object'])
+                        app.set(prop, app_obj_id)
+                    else:
+                        # property from hdf5 file
+                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                            full_path = tempDir + "/file.h5"
+                            f = open(full_path, 'wb')
+                            f.write(pfile)
+                            f.close()
+                            prop = mupif.ConstantProperty.loadHdf5(full_path)
+                            app.set(prop, app_obj_id)
+
+                elif object_type == 'mupif.String':
+                    prop = mupif.String.from_db_dict(inp_record['Object'])
+                    app.set(prop, app_obj_id)
+
+                elif object_type == 'mupif.PyroFile':
+                    file_id = inp_record['Object'].get('FileID', None)
+                    if file_id is not None:
+                        # load from hdf5 file
+                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                            # full_path = "/home/stanislav/tmp/" + fn  # tempDir
+                            full_path = tempDir + "/" + fn
+                            f = open(full_path, 'wb')
+                            f.write(pfile)
+                            f.close()
+                            pf = mupif.PyroFile(filename=full_path, mode='rb')
+                            daemon.register(pf)
+                            app.set(pf, app_obj_id)
+
+                elif object_type == 'mupif.HeavyStruct':
+                    file_id = inp_record['Object'].get('FileID', None)
+                    if file_id is not None:
+                        # load from hdf5 file
+                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                            full_path = tempDir + "/file.h5"
+                            f = open(full_path, 'wb')
+                            f.write(pfile)
+                            f.close()
+                            hs = mupif.HeavyStruct(h5path=full_path, mode='copy-readwrite', id=mupif.DataID[data_id])
+                            # hs = hs.deepcopy()
+                            daemon.register(hs)
+                            hs.exposeData()
+                            app.set(hs, app_obj_id)
+
+                elif object_type == 'mupif.Field':
+                    file_id = inp_record['Object'].get('FileID', None)
+                    if file_id is not None:
+                        # load from hdf5 file
+                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                            full_path = tempDir + "/file.h5"
+                            f = open(full_path, 'wb')
+                            f.write(pfile)
+                            f.close()
+                            field = mupif.Field.makeFromHdf5(full_path)[0]
+                            app.set(field, app_obj_id)
+                else:
+                    raise ValueError('Handling of io param of type %s is not implemented' % object_type)
+
+
+def getOntoBaseObjectByName(objects, name):
+    for i in objects:
+        if i['Name'] == name:
+            return i
+    return None
+
+def createOutputOntoBaseObjects(eid):
+    execution = restApiControl.getExecutionRecord(eid)
+    OBO = execution.get('OntoBaseObjects', [])
+    for obo in OBO:
+        if obo.get('createFrom', None) is not None:
+            source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
+            if source_obo is not None:
+                if source_obo.get('id', None) is not None and source_obo.get('id', None) is not '':
+                    new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('Type', ''), source_obo.get('id'))
+                    restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+
+
 
 
 def mapInputs(app, eid):
@@ -481,16 +585,32 @@ def mapInputs(app, eid):
                 obj_id=oid,
                 app_obj_id=oid,
                 data_id=data_id,
-                object_type=object_type
+                object_type=object_type,
+                onto_path=input_template.get('OntoPath', None),
+                onto_base_objects=execution.get('OntoBaseObjects', []),
+                value_type=input_template.get('ValueType', '')
             )
 
 
-def mapOutput(app, eid, name, obj_id, data_id, time, object_type):
+def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}):
     if object_type == 'mupif.Property':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
 
         if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-            restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+            if onto_path is not None:
+                splitted = onto_path.split('.', 1)
+                base_object_name = splitted[0]
+                object_path = splitted[1]
+                # find base object info
+                info = {}
+                for i in onto_base_objects:
+                    if i['Name'] == base_object_name:
+                        info = i
+                # set the desired object
+                data = {"value": str(prop.quantity.value.tolist()), "unit": str(prop.quantity.unit)}
+                restApiControl.setOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path, data=data)
+            else:
+                restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                 full_path = tempDir + "/file.h5"
@@ -610,16 +730,18 @@ def mapOutputs(app, eid, time):
 
     granta_output_data = []
 
-    for output_template in workflow_output_templates:
-        name = output_template['Name']
-        object_type = output_template['Type']
-        typeID = output_template.get('TypeID', output_template.get('Type_ID'))
+    outputs = restApiControl.getExecutionOutputRecord(eid)
+
+    for outitem in outputs:
+        name = outitem['Name']
+        object_type = outitem['Type']
+        typeID = outitem.get('TypeID', outitem.get('Type_ID'))
         # try to get raw PID from typeID
         match = re.search('\w+\Z', typeID)
         if match:
             typeID = match.group()
 
-        objID = output_template.get('ObjID', output_template.get('Obj_ID', ''))
+        objID = outitem.get('ObjID', outitem.get('Obj_ID', ''))
         if not ObjIDIsIterable(objID):
             objID = [objID]
 
@@ -644,7 +766,9 @@ def mapOutputs(app, eid, time):
                     obj_id=oid,
                     data_id=typeID,
                     time=time,
-                    object_type=object_type
+                    object_type=object_type,
+                    onto_path=outitem.get('OntoPath', None),
+                    onto_base_objects=execution.get('OntoBaseObjects', []),
                 )
 
     if api_type == 'granta':

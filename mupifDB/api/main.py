@@ -224,11 +224,12 @@ class M_WorkflowExecutionAddSpec(BaseModel):
     wid: str
     version: str
     ip: str
+    no_onto: bool
 
 
 @app.post("/executions/create/", tags=["Executions"])
 def create_execution(data: M_WorkflowExecutionAddSpec):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip, no_onto=bool(data.no_onto))
     return str(c.executionID)
 
 
@@ -329,6 +330,17 @@ def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer):
 @app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"])
 def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer):
     return set_execution_io_item(uid, name, '', 'Outputs', data)
+
+
+class M_ModifyExecutionOntoBaseObjectID(BaseModel):
+    name: str
+    value: str
+
+
+@app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
+def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "OntoBaseObjects.Name": data.name}, {"$set": {"OntoBaseObjects.$.id": data.value}})
+    return get_execution(uid)
 
 
 class M_ModifyExecution(BaseModel):

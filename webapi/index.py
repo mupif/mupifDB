@@ -3,7 +3,7 @@ import importlib
 import math
 import zipfile
 import tempfile
-
+import json
 import mupif
 from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory, jsonify
 from flask import request
@@ -31,7 +31,7 @@ CORS(app, resources={r"/static/*": {"origins": "*"}})
 
 
 # unless overridden by the environment, use 127.0.0.1:5000
-RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:5000/")
+RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
 
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
@@ -221,9 +221,11 @@ def workflow(wid, version):
     html += '</table>'
 
     html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(wdata['Version'])+'">Initialize new execution record</a>'
+    if len(wdata.get('OntoBaseObjects', [])):
+        html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata['Version']) + '?no_onto">Optionally without ontology based objects</a>'
     html += '<br><br>Inputs'
     html += '<table>'
-    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th></thead>'
+    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>OntoPath</th></thead>'
     for item in wdata["IOCard"]["Inputs"]:
         html += '<tr>'
         html += '<td class="c1">'+str(item['Name'])+'</td>'
@@ -234,31 +236,47 @@ def workflow(wid, version):
         html += '<td class="c6">'+str(item['ObjID'])+'</td>'
         html += '<td class="c7">'+str(item['Compulsory'])+'</td>'
         html += '<td class="c7">'+str(item.get('Set_At', ''))+'</td>'
+        html += '<td class="c7">'+str(item.get('OntoPath', ''))+'</td>'
         html += '</tr>'
     html += '</table>'
 
     html += '<br>Outputs'
     html += '<table>'
-    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th></thead>'
+    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>OntoPath</th></thead>'
     for item in wdata["IOCard"]["Outputs"]:
         html += '<tr>'
-        html += '<td class="c1">' + str(item['Name']) + '</td>'
-        html += '<td class="c2">' + str(item['Type']) + '</td>'
-        html += '<td class="c3">' + str(item['TypeID']) + '</td>'
-        html += '<td class="c4">' + str(item['Description']) + '</td>'
-        html += '<td class="c5">' + str(item['Units']) + '</td>'
-        html += '<td class="c6">' + str(item['ObjID']) + '</td>'
+        html += '<td class="c1">' + str(item.get('Name')) + '</td>'
+        html += '<td class="c2">' + str(item.get('Type')) + '</td>'
+        html += '<td class="c3">' + str(item.get('TypeID')) + '</td>'
+        html += '<td class="c4">' + str(item.get('Description')) + '</td>'
+        html += '<td class="c5">' + str(item.get('Units')) + '</td>'
+        html += '<td class="c6">' + str(item.get('ObjID')) + '</td>'
+        html += '<td class="c6">' + str(item.get('OntoPath', '')) + '</td>'
         html += '</tr>'
     html += '</table>'
     # html += '<br><br>All versions of this workflow:'
     html += ''
     html += ''
 
+    OBO = wdata.get('OntoBaseObjects', [])
+    if len(OBO):
+        html += "<br>Ontology Base Objects:"
+        html += "<table>"
+        html += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>createFrom</th></tr>"
+        for obo in OBO:
+            html += '<tr>'
+            html += '<td>' + obo.get('Name', '') + '</td>'
+            html += '<td>' + obo.get('Type', '') + '</td>'
+            html += '<td>' + obo.get('DBName', '') + '</td>'
+            html += '<td>' + obo.get('createFrom', '') + '</td>'
+            html += '</tr>'
+        html += "</table>"
+
     html += '<br><br><a href="/workflowexecutions?filter_workflow_id='+str(wdata['wid'])+'&filter_workflow_version='+str(wdata['Version'])+'">Executions of this workflow</a>'
 
     admin_rights = getUserHasAdminRights()
     if admin_rights:
-        html += '<br><br><a href="'+RESTserver+'main?action=get_file&id='+str(wdata['GridFSID'])+'" target="_blank">Download file</a>'
+        html += '<br><br><a href="'+RESTserver+'file/'+str(wdata['GridFSID'])+'" target="_blank">Download file</a>'
 
     return my_render_template('basic.html', body=Markup(html))
 
@@ -284,6 +302,8 @@ def addWorkflow(usecaseid):
         workflowOutputs = None
         description = None
         classname = None
+        models_md = None
+        ontoBaseObjects = None
         zip_filename = "files.zip"
         modulename = ""
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -323,6 +343,7 @@ def addWorkflow(usecaseid):
                                     workflowOutputs = workflow_instance.getMetadata('Outputs')
                                     description = workflow_instance.getMetadata('Description')
                                     models_md = workflow_instance.getMetadata('Models')
+                                    ontoBaseObjects = workflow_instance.getMetadata('OntoBaseObjects')
                                 else:
                                     print("File does not contain only one class")
                     else:
@@ -338,7 +359,8 @@ def addWorkflow(usecaseid):
                     workflowOutputs=workflowOutputs,
                     modulename=modulename,
                     classname=classname,
-                    models_md=models_md
+                    models_md=models_md,
+                    ontoBaseObjects=ontoBaseObjects
                 )
 
     if new_workflow_id is not None:
@@ -426,10 +448,11 @@ def executions():
 
 
 @app.route('/workflowexecutions/init/<wid>/<version>')
-def initexecution(wid, version):
+def initexecution(wid, version, methods=('GET')):
+    disable_onto = 'no_onto' in request.args
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
     if we_record is not None:
-        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress())
+        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)
         return redirect(url_for("executionStatus", weid=weid))
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'))
@@ -474,7 +497,7 @@ def executionStatus(weid):
     if data['Status'] == 'Finished':
         html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
     if (data['Status'] == 'Finished' or data['Status'] == 'Failed') and logID is not None:
-        html += '<li> <a href="' + RESTserver + 'main?action=get_file&id=' + str(logID) + '"> Execution log</a></li>'
+        html += '<li> <a href="' + RESTserver + 'file/' + str(logID) + '"> Execution log</a></li>'
     html += '</ul>'
 
     return my_render_template('basic.html', body=Markup(html))
@@ -505,162 +528,240 @@ def setExecutionInputs(weid):
             msg = ""
             c = 0
             for i in execution_inputs:
-                name = i['Name']
-                objID = i['ObjID']
-                value = request.form.get('Value_%d' % c, '')
-                units = i['Units']
+                if i.get('OntoPath', None) is None:
+                    name = i['Name']
+                    objID = i['ObjID']
+                    value = request.form.get('Value_%d' % c, '')
+                    units = i['Units']
 
-                # set Link to output data
-                c_eid = request.form.get('c_eid_%d' % c, '')
-                c_name = request.form.get('c_name_%d' % c, '')
-                c_objid = request.form.get('c_objid_%d' % c, '')
-                if c_eid != "" and c_name != "":
-                    restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
-                    restApiControl.setExecutionInputObject(weid, name, objID, {})
-                else:
-                    restApiControl.setExecutionInputLink(weid, name, objID, '', '', '')
-                    if i['Type'] == 'mupif.Property':
-                        msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
-
-                        object_dict = {
-                            'ClassName': 'ConstantProperty',
-                            'ValueType': i['ValueType'],
-                            'DataID': i['TypeID'].replace('mupif.DataID.', ''),
-                            'Unit': i['Units'],
-                            'Value': literal_eval(value),
-                            'Time': None
-                        }
-                        restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
-                    elif i['Type'] == 'mupif.String':
-                        msg += 'Setting %s (ObjID %s) to %s</br>' % (name, objID, value)
-
-                        object_dict = {
-                            'ClassName': 'String',
-                            'DataID': i['TypeID'].replace('mupif.DataID.', ''),
-                            'Value': str(value)
-                        }
-                        restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
+                    # set Link to output data
+                    c_eid = request.form.get('c_eid_%d' % c, '')
+                    c_name = request.form.get('c_name_%d' % c, '')
+                    c_objid = request.form.get('c_objid_%d' % c, '')
+                    if c_eid != "" and c_name != "":
+                        restApiControl.setExecutionInputLink(weid, name, objID, c_eid, c_name, c_objid)
+                        restApiControl.setExecutionInputObject(weid, name, objID, {})
                     else:
-                        print("Unknown data type")
+                        restApiControl.setExecutionInputLink(weid, name, objID, '', '', '')
+                        if i['Type'] == 'mupif.Property':
+                            msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
+
+                            object_dict = {
+                                'ClassName': 'ConstantProperty',
+                                'ValueType': i['ValueType'],
+                                'DataID': i['TypeID'].replace('mupif.DataID.', ''),
+                                'Unit': i['Units'],
+                                'Value': literal_eval(value),
+                                'Time': None
+                            }
+                            restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
+                        elif i['Type'] == 'mupif.String':
+                            msg += 'Setting %s (ObjID %s) to %s</br>' % (name, objID, value)
+
+                            object_dict = {
+                                'ClassName': 'String',
+                                'DataID': i['TypeID'].replace('mupif.DataID.', ''),
+                                'Value': str(value)
+                            }
+                            restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
+                        else:
+                            print("Unknown data type")
 
                 c = c+1
+
+            OBO = execution_record.get('OntoBaseObjects', [])
+            for obo in OBO:
+                if obo.get('createFrom', None) is None:
+                    obo_id = request.form.get('obo_id_' + obo.get('Name', ''), None)
+                    if obo_id is not None:
+                        restApiControl.setExecutionOntoBaseObjectID(weid, name=obo.get('Name', ''), value=obo_id)
+
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
-            return my_render_template("basic.html", body=Markup(msg))
-    else:      
-        # generate input form
-        form = ""
+            # return my_render_template("basic.html", body=Markup(msg))
 
-        form += "<h3>Workflow: %s</h3><br>" % wid
+    execution_record = restApiControl.getExecutionRecord(weid)
+    wid = execution_record["WorkflowID"]
+    execution_inputs = restApiControl.getExecutionInputRecord(weid)
+    workflow_record = restApiControl.getWorkflowRecord(wid)
+    winprec = workflow_record["IOCard"]["Inputs"]
+    # generate input form
+    form = "<a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a><br>"
 
-        form += "Task_ID: "
-        if execution_record["Status"] == "Created":
-            form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
+    form += "<h3>Workflow: %s</h3><br>" % wid
+
+    form += "Task_ID: "
+    if execution_record["Status"] == "Created":
+        form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
+    else:
+        form += "%s<br>" % execution_record["Task_ID"]
+
+    form += "Label: "
+    if execution_record["Status"] == "Created":
+        form += "<input type=\"text\" name=\"label\" value=\"%s\" /><br>" % execution_record["label"]
+    else:
+        form += "%s<br>" % execution_record["label"]
+
+    form += "E-mail address: "
+    if execution_record["Status"] == "Created":
+        form += "<input type=\"text\" name=\"RequestedBy\" value=\"%s\" /><br>" % execution_record["RequestedBy"]
+    else:
+        form += "%s<br>" % execution_record["RequestedBy"]
+
+    form += "<br>Input record for weid %s<table>" % weid
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th><th>OntoPath</th></tr>"
+    c = 0
+    for i in execution_inputs:
+        name = i['Name']
+        # get description from workflow rec
+        description = ""
+        for ii in winprec:
+            # print(ii)
+            if ii["Name"] == name:
+                description = ii.get("Description")
+                break
+
+        input_type = i['Type']
+        if i.get('Compulsory', False):
+            required = "required"
         else:
-            form += "%s<br>" % execution_record["Task_ID"]
+            required = ""
 
-        form += "Label: "
-        if execution_record["Status"] == "Created":
-            form += "<input type=\"text\" name=\"label\" value=\"%s\" /><br>" % execution_record["label"]
-        else:
-            form += "%s<br>" % execution_record["label"]
+        form += '<tr>'
 
-        form += "E-mail address: "
-        if execution_record["Status"] == "Created":
-            form += "<input type=\"text\" name=\"RequestedBy\" value=\"%s\" /><br>" % execution_record["RequestedBy"]
-        else:
-            form += "%s<br>" % execution_record["RequestedBy"]
-
-        form += "<br>Input record for weid %s<table>" % weid
-        form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th></tr>"
-        c = 0
-        for i in execution_inputs:
-            print(i)
-            name = i['Name']
-            # get description from workflow rec
-            description = ""
-            for ii in winprec:
-                if ii["Name"] == name:
-                    description = ii.get("Description")
-                    break
-
-            input_type = i['Type']
-            if i.get('Compulsory', False):
-                required = "required"
+        if input_type == "mupif.Property":
+            form += '<td>' + str(i['Name']) + '</td>'
+            form += '<td>' + str(i['Type']) + '</td>'
+            form += '<td>' + str(i.get('ValueType', '')) + '</td>'
+            form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
+            form += '<td>' + str(description) + '</td>'
+            form += '<td>' + str(i['ObjID']) + '</td>'
+            form += '<td>'
+            if execution_record["Status"] == "Created" and i.get('OntoPath', None) is None:
+                try:
+                    prop = mupif.ConstantProperty.from_db_dict(i['Object'])
+                    ival = prop.quantity.inUnitsOf(i['Units']).value.tolist()
+                except:
+                    ival = None
+                form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
             else:
-                required = ""
+                if i.get('OntoPath', None) is not None:
+                    onto_path = i.get('OntoPath')
+                    onto_base_objects = execution_record.get('OntoBaseObjects', [])
 
-            form += '<tr>'
+                    splitted = onto_path.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
 
-            if input_type == "mupif.Property":
-                form += '<td>' + str(i['Name']) + '</td>'
-                form += '<td>' + str(i['Type']) + '</td>'
-                form += '<td>' + str(i.get('ValueType', '')) + '</td>'
-                form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-                form += '<td>' + str(description) + '</td>'
-                form += '<td>' + str(i['ObjID']) + '</td>'
-                form += '<td>'
-                if execution_record["Status"] == "Created":
-                    try:
-                        prop = mupif.ConstantProperty.from_db_dict(i['Object'])
-                        ival = prop.quantity.inUnitsOf(i['Units']).value.tolist()
-                    except:
-                        ival = None
-                    form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
+                    # find base object info
+                    info = {}
+                    for ii in onto_base_objects:
+                        if ii['Name'] == base_object_name:
+                            info = ii
+
+                    # get the desired object
+                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+                    if onto_data is not None and type(onto_data) is dict:
+                        value = onto_data.get('value', None)
+                        unit = onto_data.get('unit', '')
+                        if value is not None:
+                            form += str(value) + ' ' + str(unit)
+
                 else:
                     if i['Object'].get('Value', None) is not None:
                         form += str(i['Object']['Value'])
-                form += "</td>"
-                form += '<td>' + str(i.get('Units')) + '</td>'
+            form += "</td>"
+            form += '<td>' + str(i.get('Units')) + '</td>'
 
-            elif input_type == "mupif.String":
-                form += '<td>' + str(i['Name']) + '</td>'
-                form += '<td>' + str(i['Type']) + '</td>'
-                form += '<td>' + str(i.get('ValueType', '')) + '</td>'
-                form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-                form += '<td>' + str(description) + '</td>'
-                form += '<td>' + str(i['ObjID']) + '</td>'
-                form += '<td>'
-                if execution_record["Status"] == "Created":
-                    try:
-                        prop = mupif.String.from_db_dict(i['Object'])
-                        ival = prop.getValue()
-                    except:
-                        ival = ''
-                    form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
+        elif input_type == "mupif.String":
+            form += '<td>' + str(i['Name']) + '</td>'
+            form += '<td>' + str(i['Type']) + '</td>'
+            form += '<td>' + str(i.get('ValueType', '')) + '</td>'
+            form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
+            form += '<td>' + str(description) + '</td>'
+            form += '<td>' + str(i['ObjID']) + '</td>'
+            form += '<td>'
+            if execution_record["Status"] == "Created" and i.get('OntoPath', None) is None:
+                try:
+                    prop = mupif.String.from_db_dict(i['Object'])
+                    ival = prop.getValue()
+                except:
+                    ival = ''
+                form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
+            else:
+                if i.get('OntoPath', None) is not None:
+                    pass
                 else:
-                    form += str(i['Object']['Value'])
-                form += "</td>"
-                form += '<td>' + str(i.get('Units')) + '</td>'
+                    if i['Object'].get('Value', None) is not None:
+                        form += str(i['Object']['Value'])
+            form += "</td>"
+            form += '<td>' + str(i.get('Units')) + '</td>'
+
+        else:
+            form += '<td>' + str(i['Name']) + '</td>'
+            form += '<td>' + str(i['Type']) + '</td>'
+            form += '<td>' + str(i.get('ValueType', '')) + '</td>'
+            form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
+            form += '<td>' + str(description) + '</td>'
+            form += '<td>' + str(i['ObjID']) + '</td>'
+            form += '<td>' + str(i.get('Object', {}).get('Value', '')) + '</td>'
+            form += '<td>' + str(i.get('Units')) + '</td>'
+
+        if execution_record["Status"] == "Created" and i.get('OntoPath', None) is None:
+            form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"%s\" style=\"width:100px;\" /></td>" % (c, i['Link']['ExecID'])
+            form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['Name'])
+            form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['ObjID'])
+        else:
+            form += "<td>" + str(i['Link']['ExecID']) + "</td>"
+            form += "<td>" + str(i['Link']['Name']) + "</td>"
+            form += "<td>" + str(i['Link']['ObjID']) + "</td>"
+
+        form += '<td>' + str(i.get('OntoPath', '')) + '</td>'
+
+        form += "</tr>"
+        c += 1
+
+    form += "</table>"
+    form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
+
+    OBO = execution_record.get('OntoBaseObjects', [])
+    if len(OBO):
+        form += "<br>Ontology Base Objects:"
+        form += "<table>"
+        form += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>ID</th><th>createFrom</th><th>inspect</th></tr>"
+        for obo in OBO:
+
+            form += '<tr>'
+            form += '<td>' + obo.get('Name', '') + '</td>'
+            form += '<td>' + obo.get('Type', '') + '</td>'
+            form += '<td>' + obo.get('DBName', '') + '</td>'
+            obo_id = obo.get('id', '')
+            if obo_id is None:
+                obo_id = ''
+            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None:
+                # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
+                form += '<td>'
+                form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
+                form += '<option value="">-</option>'
+                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('Type', '')):
+                    form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
+                form += '</select>'
+                form += '</td>'
+
 
             else:
-                form += '<td>' + str(i['Name']) + '</td>'
-                form += '<td>' + str(i['Type']) + '</td>'
-                form += '<td>' + str(i.get('ValueType', '')) + '</td>'
-                form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-                form += '<td>' + str(description) + '</td>'
-                form += '<td>' + str(i['ObjID']) + '</td>'
-                form += '<td>' + str(i.get('Object', {}).get('Value', '')) + '</td>'
-                form += '<td>' + str(i.get('Units')) + '</td>'
-
-            if execution_record["Status"] == "Created":
-                form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"%s\" style=\"width:100px;\" /></td>" % (c, i['Link']['ExecID'])
-                form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['Name'])
-                form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['ObjID'])
-            else:
-                form += "<td>" + str(i['Link']['ExecID']) + "</td>"
-                form += "<td>" + str(i['Link']['Name']) + "</td>"
-                form += "<td>" + str(i['Link']['ObjID']) + "</td>"
-
-            form += "</tr>"
-            c += 1
-
+                form += '<td>' + obo_id + '</td>'
+            form += '<td>' + obo.get('createFrom', '') + '</td>'
+            form += '<td>'
+            if obo_id != '':
+                form += '<a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('Type', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
+            form += '</td>'
+            form += '</tr>'
         form += "</table>"
-        form += "<br>"
-        form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
-        if execution_record["Status"] == "Created":
-            form += "<input type=\"submit\" value=\"Submit\" />"
 
-        return my_render_template('form.html', form=form)
+    if execution_record["Status"] == "Created":
+        form += "<br><input type=\"submit\" value=\"Submit\" />"
+
+    return my_render_template('form.html', form=form)
 
 
 @app.route("/workflowexecutions/<weid>/outputs")
@@ -672,21 +773,52 @@ def getExecutionOutputs(weid):
     # winprec = workflow_record["IOCard"]["Outputs"]
 
     # generate result table form
-    form = "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Units</th><th>Value</th></tr>"
+
+    form = "<a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
+
+    form += "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Units</th><th>Value</th><th>OntoPath</th></tr>"
     for i in execution_outputs:
-        val = '<i>unable to display</i>'
+        val = ''
 
         if i['Type'] == 'mupif.Property':
             if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
                 val = '<a href="/property_array_view/' + str(i['Object'].get('FileID')) + '/1">link</a>'
             else:
-                prop = mupif.ConstantProperty.from_db_dict(i['Object'])
-                val = prop.inUnitsOf(i.get('Units', '')).getValue()
+                if i.get('OntoPath', None) is not None:
+                    onto_path = i.get('OntoPath')
+                    onto_base_objects = execution_record.get('OntoBaseObjects', [])
+
+                    splitted = onto_path.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
+
+                    # find base object info
+                    info = {}
+                    for ii in onto_base_objects:
+                        if ii['Name'] == base_object_name:
+                            info = ii
+
+                    # get the desired object
+                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+                    if onto_data is not None:
+                        value = onto_data.get('value', None)
+                        unit = onto_data.get('unit', '')
+                        if value is not None:
+                            val = str(value) + ' ' + str(unit)
+                else:
+                    try:
+                        prop = mupif.ConstantProperty.from_db_dict(i['Object'])
+                        val = prop.inUnitsOf(i.get('Units', '')).getValue()
+                    except:
+                        pass
 
         if i['Type'] == 'mupif.String':
-            prop = mupif.String.from_db_dict(i['Object'])
-            val = prop.getValue()
+            try:
+                prop = mupif.String.from_db_dict(i['Object'])
+                val = prop.getValue()
+            except:
+                pass
 
         form += '<tr>'
         form += '<td>' + str(i['Name']) + '</td>'
@@ -696,10 +828,48 @@ def getExecutionOutputs(weid):
         form += '<td>' + str(i['ObjID']) + '</td>'
         form += '<td>' + str(escape(i.get('Units'))) + '</td>'
         form += '<td>' + str(val) + '</td>'
+        form += '<td>' + str(i.get('OntoPath', '')) + '</td>'
     form += "</table>"
-    form += "</br><a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
-    # print (form)
+
+    OBO = execution_record.get('OntoBaseObjects', [])
+    if len(OBO):
+        form += "<br>Ontology Base Objects:"
+        form += "<table>"
+        form += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>ID</th><th>createFrom</th><th>inspect</th></tr>"
+        for obo in OBO:
+
+            form += '<tr>'
+            form += '<td>' + obo.get('Name', '') + '</td>'
+            form += '<td>' + obo.get('Type', '') + '</td>'
+            form += '<td>' + obo.get('DBName', '') + '</td>'
+            obo_id = obo.get('id', '')
+            if obo_id is None:
+                obo_id = ''
+            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None:
+                # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
+                form += '<td>'
+                form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
+                form += '<option value="">-</option>'
+                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('Type', '')):
+                    form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
+                form += '</select>'
+                form += '</td>'
+            else:
+                form += '<td>' + obo_id + '</td>'
+            form += '<td>' + obo.get('createFrom', '') + '</td>'
+            form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('Type', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
+            form += '</tr>'
+        form += "</table>"
+
     return my_render_template('basic.html', body=Markup(form))
+
+
+@app.route("/entity_browser/<DB>/<Name>/<ID>/")
+def entity_browser(DB, Name, ID):
+    obj = restApiControl.getOntoData(DB, Name, ID, '')
+    html = json.dumps(obj, indent=4)
+    html = html.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>').replace('  "', '  "<b>').replace('":', '</b>":').replace(' ', '&nbsp;')
+    return my_render_template('basic.html', body=Markup(html))
 
 
 @app.route("/property_array_view/<file_id>/<page>")
@@ -781,8 +951,9 @@ def mainjs():
 @app.route('/api/')
 def restapi():
     full_url = str(request.url)
-    args_str = full_url.split('?')[1]
-    full_rest_url = RESTserver + "main?" + args_str
+    print(full_url)
+    args_str = full_url.split('/api/?', 1)[1]
+    full_rest_url = RESTserver + args_str
     print(full_rest_url)
     response = requests.get(full_rest_url)
     return jsonify(response.json())
