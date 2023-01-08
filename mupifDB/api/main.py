@@ -442,6 +442,19 @@ def get_property_array_data(fid: str, i_start: int, i_count: int):
         return sub_propval.tolist()
 
 
+@app.get("/field_as_vtu/{fid}", tags=["Additional"])
+def get_property_array_data(fid: str, tdir=Depends(get_temp_dir)):
+    pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
+    full_path = tdir + "/file.h5"
+    f = open(full_path, 'wb')
+    f.write(pfile)
+    f.close()
+    field = mp.Field.makeFromHdf5(fileName=full_path)[0]
+    full_path_vtu = tdir+'/file.vtu'
+    field.toMeshioMesh().write(full_path_vtu)
+    return FileResponse(path=full_path_vtu, headers={"Content-Disposition": "attachment; filename=file.vtu"})
+
+
 # --------------------------------------------------
 # Stats
 # --------------------------------------------------

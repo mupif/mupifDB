@@ -219,7 +219,7 @@ class WorkflowExecutionContext:
                 rec['OntoBaseObjects'] = []
             else:
                 OBO = []
-                for obo in wdoc.get('OntoBaseObjects'):
+                for obo in wdoc.get('OntoBaseObjects', []):
                     obo['id'] = None
                     OBO.append(obo)
                 rec['OntoBaseObjects'] = OBO
@@ -772,8 +772,5 @@ def mapOutputs(app, eid, time):
                 )
 
     if api_type == 'granta':
-        # f = open("/home/stanislav/Projects/mupifDB/mupifDB/outputs.txt", "w")
-        # f.write(str(granta_output_data))
-        # f.close()
         restApiControl._setGrantaExecutionResults(eid, granta_output_data)
 

@@ -343,7 +343,7 @@ def addWorkflow(usecaseid):
                                     workflowOutputs = workflow_instance.getMetadata('Outputs')
                                     description = workflow_instance.getMetadata('Description')
                                     models_md = workflow_instance.getMetadata('Models')
-                                    ontoBaseObjects = workflow_instance.getMetadata('OntoBaseObjects')
+                                    ontoBaseObjects = workflow_instance.getMetadata('OntoBaseObjects', [])
                                 else:
                                     print("File does not contain only one class")
                     else:
@@ -817,6 +817,13 @@ def getExecutionOutputs(weid):
             try:
                 prop = mupif.String.from_db_dict(i['Object'])
                 val = prop.getValue()
+            except:
+                pass
+
+        if i['Type'] == 'mupif.Field':
+            try:
+                if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
+                    val = '<a href="' + RESTserver + 'field_as_vtu/' + str(i['Object'].get('FileID')) + '">file.vtu</a>'
             except:
                 pass
 
