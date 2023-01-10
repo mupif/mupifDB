@@ -224,11 +224,12 @@ class M_WorkflowExecutionAddSpec(BaseModel):
     wid: str
     version: str
     ip: str
+    no_onto: bool
 
 
 @app.post("/executions/create/", tags=["Executions"])
 def create_execution(data: M_WorkflowExecutionAddSpec):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip, no_onto=bool(data.no_onto))
     return str(c.executionID)
 
 
@@ -331,6 +332,17 @@ def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer):
     return set_execution_io_item(uid, name, '', 'Outputs', data)
 
 
+class M_ModifyExecutionOntoBaseObjectID(BaseModel):
+    name: str
+    value: str
+
+
+@app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
+def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "OntoBaseObjects.Name": data.name}, {"$set": {"OntoBaseObjects.$.id": data.value}})
+    return get_execution(uid)
+
+
 class M_ModifyExecution(BaseModel):
     key: str
     value: str
@@ -428,6 +440,19 @@ def get_property_array_data(fid: str, i_start: int, i_count: int):
         id_end = id_start + id_num
         sub_propval = propval[id_start:id_end]
         return sub_propval.tolist()
+
+
+@app.get("/field_as_vtu/{fid}", tags=["Additional"])
+def get_property_array_data(fid: str, tdir=Depends(get_temp_dir)):
+    pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
+    full_path = tdir + "/file.h5"
+    f = open(full_path, 'wb')
+    f.write(pfile)
+    f.close()
+    field = mp.Field.makeFromHdf5(fileName=full_path)[0]
+    full_path_vtu = tdir+'/file.vtu'
+    field.toMeshioMesh().write(full_path_vtu)
+    return FileResponse(path=full_path_vtu, headers={"Content-Disposition": "attachment; filename=file.vtu"})
 
 
 # --------------------------------------------------
