@@ -550,7 +550,7 @@ def createOutputOntoBaseObjects(eid):
         if obo.get('createFrom', None) is not None:
             source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
             if source_obo is not None:
-                if source_obo.get('id', None) is not None and source_obo.get('id', None) is not '':
+                if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
                     new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('Type', ''), source_obo.get('id'))
                     restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
 
@@ -661,6 +661,20 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             else:
                 print("hdf5 file was not saved")
 
+    elif object_type == 'mupif.TemporalField':
+        field = app.get(mupif.DataID[data_id], time, obj_id)
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            full_path = tempDir + "/file.h5"
+            field.toHdf5(full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFile(f)
+                f.close()
+            if fileID is not None:
+                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+            else:
+                print("hdf5 file was not saved")
+
     else:
         raise ValueError('Handling of io param of type %s not implemented' % object_type)
 
@@ -695,11 +709,15 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                 f.close()
             if fileID is None:
                 print("hdf5 file was not saved")
-            return {
-                "name": str(name),
-                "value": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
-                "type": "hyperlink"
-            }
+            else:
+                return {
+                    "name": str(name),
+                    "value": {
+                        "url": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
+                        "description": None
+                    },
+                    "type": "hyperlink"
+                }
 
     elif object_type == 'mupif.Field':
         field = app.get(mupif.DataID[data_id], time, obj_id)
@@ -712,9 +730,13 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                 f.close()
             if fileID is None:
                 print("hdf5 file was not saved")
+            else:
                 return {
                     "name": str(name),
-                    "value": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
+                    "value": {
+                        "url": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
+                        "description": None
+                    },
                     "type": "hyperlink"
                 }
 
@@ -731,6 +753,8 @@ def mapOutputs(app, eid, time):
     granta_output_data = []
 
     outputs = restApiControl.getExecutionOutputRecord(eid)
+    if api_type == 'granta':
+        outputs = workflow_output_templates
 
     for outitem in outputs:
         name = outitem['Name']

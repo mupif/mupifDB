@@ -162,7 +162,7 @@ def getWorkflowRecordGeneral(wid, version):
                     workflow['modulename'] = md['ModuleName']
 
                 if gmd['name'] == 'workflow python file':
-                    fid = gmd['value'].split('/')[-1]
+                    fid = gmd['value']['url'].split('/')[-1]
 
             if fid:
                 file, filename = getBinaryFileByID(fid)
@@ -237,14 +237,14 @@ def _getGrantaExecutionInputItem(eid, name):
                     'Name': inp['name'],
                     'ObjID': inp['name'],
                     'Type': 'mupif.Property',
-                    'TypeID': 'mupif.DataID.ID_None',
+                    'TypeID': w_i['Type_ID'],
                     'Units': units,  # todo
                     'ValueType': 'Scalar',
                     'Link': {},
                     'Object': {
                         'ClassName': 'ConstantProperty',
                         'ValueType': 'Scalar',
-                        'DataID': 'ID_None',
+                        'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
                         'Unit': units,  # todo
                         'Value': inp['value'],
                         'Time': None
@@ -265,13 +265,13 @@ def _getGrantaExecutionInputItem(eid, name):
                     'Name': inp['name'],
                     'ObjID': inp['name'],
                     'Type': 'mupif.String',
-                    'TypeID': 'mupif.DataID.ID_None',
+                    'TypeID': w_i['Type_ID'],
                     'Units': units,  # todo
                     'ValueType': 'Scalar',
                     'Link': {},
                     'Object': {
                         'ClassName': 'String',
-                        'DataID': 'ID_None',
+                        'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
                         'Value': inp['value']
                     }
                 }
@@ -293,7 +293,7 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.HeavyStruct',
-                        'TypeID': 'mupif.DataID.ID_None',
+                        'TypeID': w_i['Type_ID'],
                         'Units': '',
                         'ValueType': 'Scalar',
                         'Link': {},
@@ -309,7 +309,7 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.PyroFile',
-                        'TypeID': 'mupif.DataID.ID_None',
+                        'TypeID': w_i['Type_ID'],
                         'Units': '',
                         'ValueType': 'Scalar',
                         'Link': {},
@@ -325,7 +325,7 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.Field',
-                        'TypeID': 'mupif.DataID.ID_None',
+                        'TypeID': w_i['Type_ID'],
                         'Units': '',
                         'ValueType': 'Scalar',
                         'Link': {},
@@ -739,7 +739,7 @@ def getOntoDataArray(DBName, Type):
     return response.json()
 
 def getOntoData(DBName, Type, ID, path):
-    if ID is '' or ID is None:
+    if ID == '' or ID is None:
         return None
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
     response = requests.get(url)
