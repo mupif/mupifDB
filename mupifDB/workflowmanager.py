@@ -14,8 +14,12 @@ import table_structures
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
-ns = mupif.pyroutil.connectNameServer()
-daemon = mupif.pyroutil.getDaemon(ns)
+daemon = None
+def getDaemon():
+    if daemon is None:
+        ns = mupif.pyroutil.connectNameServer()
+        daemon = mupif.pyroutil.getDaemon(ns)
+    return daemon
 
 
 def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, ontoBaseObjects=None):
@@ -502,7 +506,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                             f.write(pfile)
                             f.close()
                             pf = mupif.PyroFile(filename=full_path, mode='rb')
-                            daemon.register(pf)
+                            getDaemon().register(pf)
                             app.set(pf, app_obj_id)
 
                 elif object_type == 'mupif.HeavyStruct':
@@ -517,7 +521,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                             f.close()
                             hs = mupif.HeavyStruct(h5path=full_path, mode='copy-readwrite', id=mupif.DataID[data_id])
                             # hs = hs.deepcopy()
-                            daemon.register(hs)
+                            getDaemon().register(hs)
                             hs.exposeData()
                             app.set(hs, app_obj_id)
 

@@ -41,7 +41,9 @@ def getUserByIP(ip):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "users/" + str(ip))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 # --------------------------------------------------
@@ -53,10 +55,8 @@ def getUsecaseRecords():
         return []
     data = []
     response = requests.get(RESTserver + "usecases/")
-    response_json = response.json()
-    if response_json:
-        print(response)
-        for record in response_json:
+    if response.status_code == 200:
+        for record in response.json():
             data.append(record)
     return data
 
@@ -65,15 +65,18 @@ def getUsecaseRecord(ucid):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "usecases/" + ucid)
-    response_json = response.json()
-    return response_json
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def insertUsecaseRecord(ucid, description):
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 # --------------------------------------------------
@@ -85,9 +88,9 @@ def getWorkflowRecords():
         return []
     data = []
     response = requests.get(RESTserver + "workflows/")
-    response_json = response.json()
-    for record in response_json:
-        data.append(record)
+    if response.status_code == 200:
+        for record in response.json():
+            data.append(record)
     return data
 
 
@@ -96,9 +99,9 @@ def getWorkflowRecordsWithUsecase(usecase):
         return []
     data = []
     response = requests.get(RESTserver + "usecases/" + str(usecase) + "/workflows")
-    response_json = response.json()
-    for record in response_json:
-        data.append(record)
+    if response.status_code == 200:
+        for record in response.json():
+            data.append(record)
     return data
 
 
@@ -106,23 +109,27 @@ def getWorkflowRecord(wid):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "workflows/" + wid)
-    response_json = response.json()
-    return response_json
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def insertWorkflow(data):
     if api_type == 'granta':
         return None
-    print(data)
     response = requests.post(RESTserver + "workflows/", data=json.dumps({"entity": data}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def updateWorkflow(data):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "workflows/", data=json.dumps({"entity": data}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def fix_json(val):
@@ -220,119 +227,119 @@ def _getGrantaExecutionInputItem(eid, name):
     url = RESTserver + 'executions/' + str(eid) + '/inputs'
     headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
     r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
-    r_json = r.json()
-    for inp in r_json:
-        if name == inp['name']:
-            if inp['type'] == 'float':
-                # fint units first :(
-                execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
-                units = ''
-                for w_i in w_inputs:
-                    if w_i['Name'] == name:
-                        units = w_i['Units']
-                return {
-                    'Compulsory': True,
-                    'Description': '',
-                    'Name': inp['name'],
-                    'ObjID': inp['name'],
-                    'Type': 'mupif.Property',
-                    'TypeID': w_i['Type_ID'],
-                    'Units': units,  # todo
-                    'ValueType': 'Scalar',
-                    'Link': {},
-                    'Object': {
-                        'ClassName': 'ConstantProperty',
-                        'ValueType': 'Scalar',
-                        'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
-                        'Unit': units,  # todo
-                        'Value': inp['value'],
-                        'Time': None
-                    }
-                }
-
-            if inp['type'] == 'str':
-                # fint units first :(
-                execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
-                units = ''
-                for w_i in w_inputs:
-                    if w_i['Name'] == name:
-                        units = w_i['Units']
-                return {
-                    'Compulsory': True,
-                    'Description': '',
-                    'Name': inp['name'],
-                    'ObjID': inp['name'],
-                    'Type': 'mupif.String',
-                    'TypeID': w_i['Type_ID'],
-                    'Units': units,  # todo
-                    'ValueType': 'Scalar',
-                    'Link': {},
-                    'Object': {
-                        'ClassName': 'String',
-                        'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
-                        'Value': inp['value']
-                    }
-                }
-
-            if inp['type'] == 'hyperlink':
-                execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
-                units = ''
-                obj_type = ''
-                for w_i in w_inputs:
-                    if w_i['Name'] == name:
-                        units = w_i['Units']
-                        obj_type = w_i['Type']
-
-                if obj_type == 'mupif.HeavyStruct':
+    if r.status_code == 200:
+        for inp in r.json():
+            if name == inp['name']:
+                if inp['type'] == 'float':
+                    # fint units first :(
+                    execution_record = getExecutionRecord(eid)
+                    w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
+                    units = ''
+                    for w_i in w_inputs:
+                        if w_i['Name'] == name:
+                            units = w_i['Units']
                     return {
                         'Compulsory': True,
                         'Description': '',
                         'Name': inp['name'],
                         'ObjID': inp['name'],
-                        'Type': 'mupif.HeavyStruct',
+                        'Type': 'mupif.Property',
                         'TypeID': w_i['Type_ID'],
-                        'Units': '',
+                        'Units': units,  # todo
                         'ValueType': 'Scalar',
                         'Link': {},
                         'Object': {
-                            'FileID': inp['value'].split('/')[-1]
+                            'ClassName': 'ConstantProperty',
+                            'ValueType': 'Scalar',
+                            'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
+                            'Unit': units,  # todo
+                            'Value': inp['value'],
+                            'Time': None
                         }
                     }
 
-                if obj_type == 'mupif.PyroFile':
+                if inp['type'] == 'str':
+                    # fint units first :(
+                    execution_record = getExecutionRecord(eid)
+                    w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
+                    units = ''
+                    for w_i in w_inputs:
+                        if w_i['Name'] == name:
+                            units = w_i['Units']
                     return {
                         'Compulsory': True,
                         'Description': '',
                         'Name': inp['name'],
                         'ObjID': inp['name'],
-                        'Type': 'mupif.PyroFile',
+                        'Type': 'mupif.String',
                         'TypeID': w_i['Type_ID'],
-                        'Units': '',
+                        'Units': units,  # todo
                         'ValueType': 'Scalar',
                         'Link': {},
                         'Object': {
-                            'FileID': inp['value'].split('/')[-1]
+                            'ClassName': 'String',
+                            'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
+                            'Value': inp['value']
                         }
                     }
 
-                if obj_type == 'mupif.Field':
-                    return {
-                        'Compulsory': True,
-                        'Description': '',
-                        'Name': inp['name'],
-                        'ObjID': inp['name'],
-                        'Type': 'mupif.Field',
-                        'TypeID': w_i['Type_ID'],
-                        'Units': '',
-                        'ValueType': 'Scalar',
-                        'Link': {},
-                        'Object': {
-                            'FileID': inp['value'].split('/')[-1]
+                if inp['type'] == 'hyperlink':
+                    execution_record = getExecutionRecord(eid)
+                    w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
+                    units = ''
+                    obj_type = ''
+                    for w_i in w_inputs:
+                        if w_i['Name'] == name:
+                            units = w_i['Units']
+                            obj_type = w_i['Type']
+
+                    if obj_type == 'mupif.HeavyStruct':
+                        return {
+                            'Compulsory': True,
+                            'Description': '',
+                            'Name': inp['name'],
+                            'ObjID': inp['name'],
+                            'Type': 'mupif.HeavyStruct',
+                            'TypeID': w_i['Type_ID'],
+                            'Units': '',
+                            'ValueType': 'Scalar',
+                            'Link': {},
+                            'Object': {
+                                'FileID': inp['value'].split('/')[-1]
+                            }
                         }
-                    }
+
+                    if obj_type == 'mupif.PyroFile':
+                        return {
+                            'Compulsory': True,
+                            'Description': '',
+                            'Name': inp['name'],
+                            'ObjID': inp['name'],
+                            'Type': 'mupif.PyroFile',
+                            'TypeID': w_i['Type_ID'],
+                            'Units': '',
+                            'ValueType': 'Scalar',
+                            'Link': {},
+                            'Object': {
+                                'FileID': inp['value'].split('/')[-1]
+                            }
+                        }
+
+                    if obj_type == 'mupif.Field':
+                        return {
+                            'Compulsory': True,
+                            'Description': '',
+                            'Name': inp['name'],
+                            'ObjID': inp['name'],
+                            'Type': 'mupif.Field',
+                            'TypeID': w_i['Type_ID'],
+                            'Units': '',
+                            'ValueType': 'Scalar',
+                            'Link': {},
+                            'Object': {
+                                'FileID': inp['value'].split('/')[-1]
+                            }
+                        }
     return None
 
 
@@ -344,15 +351,18 @@ def getWorkflowRecordFromHistory(wid, version):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "workflows_history/" + wid + "/" + str(version))
-    response_json = response.json()
-    return response_json
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def insertWorkflowHistory(data):
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "workflows_history/", data=json.dumps({"entity": data}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 # --------------------------------------------------
@@ -365,9 +375,8 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
         r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
         if r.status_code == 200:
-            r_json = r.json()
             res = []
-            for ex in r_json:
+            for ex in r.json():
                 execution = table_structures.extendRecord({}, table_structures.tableExecution)
                 execution['_id'] = ex['guid']
                 execution['WorkflowID'] = ex['template_guid']
@@ -403,9 +412,9 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
     if status:
         endpoint_address += "&status=" + str(status)
     response = requests.get(endpoint_address)
-    response_json = response.json()
-    for record in response_json:
-        data.append(record)
+    if response.status_code == 200:
+        for record in response.json():
+            data.append(record)
     return data
 
 
@@ -441,8 +450,9 @@ def getExecutionRecord(weid):
             return execution
         return None
     response = requests.get(RESTserver + "executions/" + str(weid))
-    response_json = response.json()
-    return response_json
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def getScheduledExecutions():
@@ -457,9 +467,8 @@ def getPendingExecutions():
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
         r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
         if r.status_code == 200:
-            r_json = r.json()
             res = []
-            for ex in r_json:
+            for ex in r.json():
                 execution = table_structures.extendRecord({}, table_structures.tableExecution)
                 execution['_id'] = ex['guid']
                 execution['WorkflowID'] = ex['template_guid']
@@ -476,21 +485,27 @@ def scheduleExecution(execution_id):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "executions/" + str(execution_id) + "/schedule")
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setExecutionParameter(execution_id, param, value, val_type="str"):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setExecutionOntoBaseObjectID(execution_id, name, value):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setExecutionAttemptsCount(execution_id, val):
@@ -504,7 +519,9 @@ def _setGrantaExecutionResults(eid, val_list):
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8'}
     newdata = {"results": val_list}
     r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata))
-    return None
+    if r.status_code == 200:
+        return True
+    return False
 
 
 def _setGrantaExecutionStatus(eid, val):
@@ -512,7 +529,9 @@ def _setGrantaExecutionStatus(eid, val):
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8'}
     newdata = {"status": str(val)}
     r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata))
-    return True
+    if r.status_code == 200:
+        return True
+    return False
 
 
 def setExecutionStatusScheduled(execution_id):
@@ -564,28 +583,36 @@ def createExecution(wid, version, ip, no_onto=False):
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip), "no_onto": no_onto}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def insertExecution(data):
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "executions/", data=json.dumps({"entity": data}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def getExecutionInputRecord(weid):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "executions/" + str(weid) + "/inputs/")
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def getExecutionOutputRecord(weid):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "executions/" + str(weid) + "/outputs/")
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def getExecutionInputRecordItem(weid, name, obj_id):
@@ -612,42 +639,54 @@ def getIODataRecord(iod_id):
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "iodata/" + str(iod_id))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def insertIODataRecord(data):
     if api_type == 'granta':
         return None
     response = requests.post(RESTserver + "iodata/", data=json.dumps({"entity": data}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setExecutionInputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
     response = requests.patch(RESTserver + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/")
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 # --------------------------------------------------
@@ -658,23 +697,30 @@ def getBinaryFileByID(fid):
     if api_type == 'granta':
         url = RESTserver.replace('/api/', '/filestore/')
         response = requests.get(url + str(fid), auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), allow_redirects=True)
-        return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
+        if response.status_code == 200:
+            return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
+        return None, None
 
     response = requests.get(RESTserver + "file/" + str(fid))
-    d = response.headers['Content-Disposition']
-    filename = re.findall("filename=(.+)", d)[0]
-    return response.content, filename
+    if response.status_code == 200:
+        d = response.headers['Content-Disposition']
+        filename = re.findall("filename=(.+)", d)[0]
+        return response.content, filename
+    return None, None
 
 
 def uploadBinaryFile(binary_data):
     if api_type == 'granta':
         url = RESTserver.replace('/api/', '/filestore')
         response = requests.post(url, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), files={"file": binary_data})
-        response_json = response.json()
-        return response_json['guid']
+        if response.status_code == 200:
+            return response.json()['guid']
+        return None
 
     response = requests.post(RESTserver + "file/", files={"file": binary_data})
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 # --------------------------------------------------
@@ -685,19 +731,23 @@ def getStatus():
     if api_type == 'granta':
         return None
     response = requests.get(RESTserver + "status/")
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def getStatScheduler():
     if api_type == 'granta':
         return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
     response = requests.get(RESTserver + "scheduler_statistics/")
-    response_json = response.json()
-    keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
-    for k in keys:
-        if k not in response_json:
-            response_json[k] = None
-    return response_json
+    if response.status_code == 200:
+        response_json = response.json()
+        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
+        for k in keys:
+            if k not in response_json:
+                response_json[k] = None
+        return response_json
+    return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
 
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.
@@ -736,23 +786,31 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 
 def getOntoDataArray(DBName, Type):
     response = requests.get(RESTserver_onto + str(DBName) + "/" + str(Type) + "/")
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 def getOntoData(DBName, Type, ID, path):
     if ID == '' or ID is None:
         return None
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
     response = requests.get(url)
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def setOntoData(DBName, Type, ID, path, data):
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID)
     response = requests.patch(url, data=json.dumps({"path": str(path), "data": data}))
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
 
 
 def cloneOntoData(DBName, Type, ID):
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
     response = requests.get(url)
-    return response.json()
+    if response.status_code == 200:
+        return response.json()
+    return None
