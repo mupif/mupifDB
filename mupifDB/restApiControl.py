@@ -11,6 +11,8 @@ import re
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
+timeout_sec = 10
+
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
 RESTserver = RESTserver.replace('5000', '8005')
 
@@ -40,7 +42,7 @@ if api_type == 'granta':
 def getUserByIP(ip):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "users/" + str(ip))
+    response = requests.get(RESTserver + "users/" + str(ip), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -54,7 +56,7 @@ def getUsecaseRecords():
     if api_type == 'granta':
         return []
     data = []
-    response = requests.get(RESTserver + "usecases/")
+    response = requests.get(RESTserver + "usecases/", timeout=timeout_sec)
     if response.status_code == 200:
         for record in response.json():
             data.append(record)
@@ -64,7 +66,7 @@ def getUsecaseRecords():
 def getUsecaseRecord(ucid):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "usecases/" + ucid)
+    response = requests.get(RESTserver + "usecases/" + ucid, timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -73,7 +75,7 @@ def getUsecaseRecord(ucid):
 def insertUsecaseRecord(ucid, description):
     if api_type == 'granta':
         return None
-    response = requests.post(RESTserver + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
+    response = requests.post(RESTserver + "usecases/", data=json.dumps({"ucid": ucid, "description": description}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -87,7 +89,7 @@ def getWorkflowRecords():
     if api_type == 'granta':
         return []
     data = []
-    response = requests.get(RESTserver + "workflows/")
+    response = requests.get(RESTserver + "workflows/", timeout=timeout_sec)
     if response.status_code == 200:
         for record in response.json():
             data.append(record)
@@ -98,7 +100,7 @@ def getWorkflowRecordsWithUsecase(usecase):
     if api_type == 'granta':
         return []
     data = []
-    response = requests.get(RESTserver + "usecases/" + str(usecase) + "/workflows")
+    response = requests.get(RESTserver + "usecases/" + str(usecase) + "/workflows", timeout=timeout_sec)
     if response.status_code == 200:
         for record in response.json():
             data.append(record)
@@ -108,7 +110,7 @@ def getWorkflowRecordsWithUsecase(usecase):
 def getWorkflowRecord(wid):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "workflows/" + wid)
+    response = requests.get(RESTserver + "workflows/" + wid, timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -117,7 +119,7 @@ def getWorkflowRecord(wid):
 def insertWorkflow(data):
     if api_type == 'granta':
         return None
-    response = requests.post(RESTserver + "workflows/", data=json.dumps({"entity": data}))
+    response = requests.post(RESTserver + "workflows/", data=json.dumps({"entity": data}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -126,7 +128,7 @@ def insertWorkflow(data):
 def updateWorkflow(data):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "workflows/", data=json.dumps({"entity": data}))
+    response = requests.patch(RESTserver + "workflows/", data=json.dumps({"entity": data}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -144,7 +146,7 @@ def getWorkflowRecordGeneral(wid, version):
     if api_type == 'granta':
         url = RESTserver + 'templates/' + str(wid)
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
-        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
+        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), timeout=timeout_sec)
         if r.status_code == 200:
             r_json = r.json()
             workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
@@ -226,7 +228,7 @@ def _getGrantaExecutionInputItem(eid, name):
 
     url = RESTserver + 'executions/' + str(eid) + '/inputs'
     headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
-    r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
+    r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), timeout=timeout_sec)
     if r.status_code == 200:
         for inp in r.json():
             if name == inp['name']:
@@ -350,7 +352,7 @@ def _getGrantaExecutionInputItem(eid, name):
 def getWorkflowRecordFromHistory(wid, version):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "workflows_history/" + wid + "/" + str(version))
+    response = requests.get(RESTserver + "workflows_history/" + wid + "/" + str(version), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -359,7 +361,7 @@ def getWorkflowRecordFromHistory(wid, version):
 def insertWorkflowHistory(data):
     if api_type == 'granta':
         return None
-    response = requests.post(RESTserver + "workflows_history/", data=json.dumps({"entity": data}))
+    response = requests.post(RESTserver + "workflows_history/", data=json.dumps({"entity": data}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -373,7 +375,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
     if api_type == 'granta':
         url = RESTserver + 'executions/'
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
-        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
+        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), timeout=timeout_sec)
         if r.status_code == 200:
             res = []
             for ex in r.json():
@@ -411,7 +413,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
         endpoint_address += "&workflow_version=" + str(workflow_version)
     if status:
         endpoint_address += "&status=" + str(status)
-    response = requests.get(endpoint_address)
+    response = requests.get(endpoint_address, timeout=timeout_sec)
     if response.status_code == 200:
         for record in response.json():
             data.append(record)
@@ -422,7 +424,7 @@ def getExecutionRecord(weid):
     if api_type == 'granta':
         url = RESTserver + 'executions/' + str(weid)
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
-        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
+        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), timeout=timeout_sec)
         if r.status_code == 200:
             r_json = r.json()
             execution = table_structures.extendRecord({}, table_structures.tableExecution)
@@ -449,7 +451,7 @@ def getExecutionRecord(weid):
             execution['Task_ID'] = ''
             return execution
         return None
-    response = requests.get(RESTserver + "executions/" + str(weid))
+    response = requests.get(RESTserver + "executions/" + str(weid), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -465,7 +467,7 @@ def getPendingExecutions():
     if api_type == 'granta':
         url = RESTserver + 'executions/?status=Ready'
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
-        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']))
+        r = requests.get(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), timeout=timeout_sec)
         if r.status_code == 200:
             res = []
             for ex in r.json():
@@ -484,7 +486,7 @@ def getPendingExecutions():
 def scheduleExecution(execution_id):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "executions/" + str(execution_id) + "/schedule")
+    response = requests.patch(RESTserver + "executions/" + str(execution_id) + "/schedule", timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -493,7 +495,7 @@ def scheduleExecution(execution_id):
 def setExecutionParameter(execution_id, param, value, val_type="str"):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}))
+    response = requests.patch(RESTserver + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -502,7 +504,7 @@ def setExecutionParameter(execution_id, param, value, val_type="str"):
 def setExecutionOntoBaseObjectID(execution_id, name, value):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}))
+    response = requests.patch(RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -518,7 +520,7 @@ def _setGrantaExecutionResults(eid, val_list):
     url = RESTserver + 'executions/' + str(eid)
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8'}
     newdata = {"results": val_list}
-    r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata))
+    r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata), timeout=timeout_sec)
     if r.status_code == 200:
         return True
     return False
@@ -528,7 +530,7 @@ def _setGrantaExecutionStatus(eid, val):
     url = RESTserver + 'executions/' + str(eid)
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8'}
     newdata = {"status": str(val)}
-    r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata))
+    r = requests.patch(url, headers=headers, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), data=json.dumps(newdata), timeout=timeout_sec)
     if r.status_code == 200:
         return True
     return False
@@ -582,7 +584,7 @@ def setExecutionStatusFailed(execution_id):
 def createExecution(wid, version, ip, no_onto=False):
     if api_type == 'granta':
         return None
-    response = requests.post(RESTserver + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip), "no_onto": no_onto}))
+    response = requests.post(RESTserver + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip), "no_onto": no_onto}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -591,7 +593,7 @@ def createExecution(wid, version, ip, no_onto=False):
 def insertExecution(data):
     if api_type == 'granta':
         return None
-    response = requests.post(RESTserver + "executions/", data=json.dumps({"entity": data}))
+    response = requests.post(RESTserver + "executions/", data=json.dumps({"entity": data}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -600,7 +602,7 @@ def insertExecution(data):
 def getExecutionInputRecord(weid):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "executions/" + str(weid) + "/inputs/")
+    response = requests.get(RESTserver + "executions/" + str(weid) + "/inputs/", timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -609,7 +611,7 @@ def getExecutionInputRecord(weid):
 def getExecutionOutputRecord(weid):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "executions/" + str(weid) + "/outputs/")
+    response = requests.get(RESTserver + "executions/" + str(weid) + "/outputs/", timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -638,7 +640,7 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 def getIODataRecord(iod_id):
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "iodata/" + str(iod_id))
+    response = requests.get(RESTserver + "iodata/" + str(iod_id), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -647,7 +649,7 @@ def getIODataRecord(iod_id):
 def insertIODataRecord(data):
     if api_type == 'granta':
         return None
-    response = requests.post(RESTserver + "iodata/", data=json.dumps({"entity": data}))
+    response = requests.post(RESTserver + "iodata/", data=json.dumps({"entity": data}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -656,7 +658,7 @@ def insertIODataRecord(data):
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}))
+    response = requests.patch(RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -665,7 +667,7 @@ def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
 def setExecutionInputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
+    response = requests.patch(RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -674,7 +676,7 @@ def setExecutionInputObject(weid, name, obj_id, object_dict):
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
     if api_type == 'granta':
         return None
-    response = requests.patch(RESTserver + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
+    response = requests.patch(RESTserver + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -683,7 +685,7 @@ def setExecutionOutputObject(weid, name, obj_id, object_dict):
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/")
+    response = requests.get(RESTserver + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/", timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -696,12 +698,12 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 def getBinaryFileByID(fid):
     if api_type == 'granta':
         url = RESTserver.replace('/api/', '/filestore/')
-        response = requests.get(url + str(fid), auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), allow_redirects=True)
+        response = requests.get(url + str(fid), auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), allow_redirects=True, timeout=timeout_sec)
         if response.status_code == 200:
             return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
         return None, None
 
-    response = requests.get(RESTserver + "file/" + str(fid))
+    response = requests.get(RESTserver + "file/" + str(fid), timeout=timeout_sec)
     if response.status_code == 200:
         d = response.headers['Content-Disposition']
         filename = re.findall("filename=(.+)", d)[0]
@@ -712,12 +714,12 @@ def getBinaryFileByID(fid):
 def uploadBinaryFile(binary_data):
     if api_type == 'granta':
         url = RESTserver.replace('/api/', '/filestore')
-        response = requests.post(url, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), files={"file": binary_data})
+        response = requests.post(url, auth=HTTPBasicAuth(granta_credentials['username'], granta_credentials['password']), files={"file": binary_data}, timeout=timeout_sec)
         if response.status_code == 200:
             return response.json()['guid']
         return None
 
-    response = requests.post(RESTserver + "file/", files={"file": binary_data})
+    response = requests.post(RESTserver + "file/", files={"file": binary_data}, timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -730,7 +732,7 @@ def uploadBinaryFile(binary_data):
 def getStatus():
     if api_type == 'granta':
         return None
-    response = requests.get(RESTserver + "status/")
+    response = requests.get(RESTserver + "status/", timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -739,7 +741,7 @@ def getStatus():
 def getStatScheduler():
     if api_type == 'granta':
         return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
-    response = requests.get(RESTserver + "scheduler_statistics/")
+    response = requests.get(RESTserver + "scheduler_statistics/", timeout=timeout_sec)
     if response.status_code == 200:
         response_json = response.json()
         keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
@@ -756,13 +758,13 @@ def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processe
     if api_type == 'granta':
         return None
     if runningTasks is not None:
-        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
+        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}), timeout=timeout_sec)
     if scheduledTasks is not None:
-        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
+        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}), timeout=timeout_sec)
     if load is not None:
-        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
+        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}), timeout=timeout_sec)
     if processedTasks is not None:
-        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+        response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}), timeout=timeout_sec)
     return
 
 
@@ -770,13 +772,13 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
     if api_type == 'granta':
         return None
     if runningTasks is not None:
-        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
+        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}), timeout=timeout_sec)
     if scheduledTasks is not None:
-        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
+        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}), timeout=timeout_sec)
     if load is not None:
-        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
+        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}), timeout=timeout_sec)
     if processedTasks is not None:
-        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+        response = requests.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}), timeout=timeout_sec)
     return
 
 
@@ -785,7 +787,7 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # --------------------------------------------------
 
 def getOntoDataArray(DBName, Type):
-    response = requests.get(RESTserver_onto + str(DBName) + "/" + str(Type) + "/")
+    response = requests.get(RESTserver_onto + str(DBName) + "/" + str(Type) + "/", timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -794,7 +796,7 @@ def getOntoData(DBName, Type, ID, path):
     if ID == '' or ID is None:
         return None
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
-    response = requests.get(url)
+    response = requests.get(url, timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -802,7 +804,7 @@ def getOntoData(DBName, Type, ID, path):
 
 def setOntoData(DBName, Type, ID, path, data):
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID)
-    response = requests.patch(url, data=json.dumps({"path": str(path), "data": data}))
+    response = requests.patch(url, data=json.dumps({"path": str(path), "data": data}), timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
@@ -810,7 +812,7 @@ def setOntoData(DBName, Type, ID, path, data):
 
 def cloneOntoData(DBName, Type, ID):
     url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
-    response = requests.get(url)
+    response = requests.get(url, timeout=timeout_sec)
     if response.status_code == 200:
         return response.json()
     return None
