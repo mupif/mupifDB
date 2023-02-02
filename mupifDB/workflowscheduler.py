@@ -616,7 +616,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         print("waiting..")
-                        time.sleep(10)
+                        time.sleep(60)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)
