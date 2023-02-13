@@ -50,14 +50,14 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
-        if i.get('OntoPath', None) is not None:
-            irec['OntoPath'] = i.get('OntoPath')
+        if i.get('EDMPath', None) is not None:
+            irec['EDMPath'] = i.get('EDMPath')
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
-        if i.get('OntoPath', None) is not None:
-            irec['OntoPath'] = i.get('OntoPath')
+        if i.get('EDMPath', None) is not None:
+            irec['EDMPath'] = i.get('EDMPath')
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
 
@@ -143,7 +143,7 @@ class WorkflowExecutionIODataSet:
                     'TypeID': io['TypeID'],
                     'Units': io['Units'],
                     'ObjID': objid,
-                    'OntoPath': None if no_onto else io.get('OntoPath', None),
+                    'EDMPath': None if no_onto else io.get('EDMPath', None),
                     'Compulsory': io.get('Compulsory', None),
                     'FileID': None,
                     'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}
@@ -408,7 +408,7 @@ def checkInputs(eid):
                     obj_id=oid,
                     data_id=data_id,
                     object_type=object_type,
-                    onto_path=input_template.get('OntoPath', None),
+                    onto_path=input_template.get('EDMPath', None),
                     onto_base_objects=execution.get('EDMMapping', []),
                 ) is False:
                     return False
@@ -425,7 +425,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
     if api_type == 'granta':
         inp_record = restApiControl._getGrantaExecutionInputItem(eid, name)
     # onto_path is not unused
-    op = inp_record.get('OntoPath', None)
+    op = inp_record.get('EDMPath', None)
     if op is not None:
         splitted = op.split('.', 1)
         base_object_name = splitted[0]
@@ -555,7 +555,7 @@ def createOutputEDMMappingObjects(eid):
             source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
             if source_obo is not None:
                 if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
-                    new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('Type', ''), source_obo.get('id'))
+                    new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('EDMEntity', ''), source_obo.get('id'))
                     restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
 
 
@@ -590,7 +590,7 @@ def mapInputs(app, eid):
                 app_obj_id=oid,
                 data_id=data_id,
                 object_type=object_type,
-                onto_path=input_template.get('OntoPath', None),
+                onto_path=input_template.get('EDMPath', None),
                 onto_base_objects=execution.get('EDMMapping', []),
                 value_type=input_template.get('ValueType', '')
             )
@@ -795,7 +795,7 @@ def mapOutputs(app, eid, time):
                     data_id=typeID,
                     time=time,
                     object_type=object_type,
-                    onto_path=outitem.get('OntoPath', None),
+                    onto_path=outitem.get('EDMPath', None),
                     onto_base_objects=execution.get('EDMMapping', []),
                 )
 
