@@ -221,7 +221,7 @@ def workflow(wid, version):
     html += '</table>'
 
     html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(wdata['Version'])+'">Initialize new execution record</a>'
-    if len(wdata.get('OntoBaseObjects', [])):
+    if len(wdata.get('EDMMapping', [])):
         html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata['Version']) + '?no_onto">Optionally without ontology based objects</a>'
     html += '<br><br>Inputs'
     html += '<table>'
@@ -258,7 +258,7 @@ def workflow(wid, version):
     html += ''
     html += ''
 
-    OBO = wdata.get('OntoBaseObjects', [])
+    OBO = wdata.get('EDMMapping', [])
     if len(OBO):
         html += "<br>Ontology Base Objects:"
         html += "<table>"
@@ -303,7 +303,7 @@ def addWorkflow(usecaseid):
         description = None
         classname = None
         models_md = None
-        ontoBaseObjects = None
+        EDM_Mapping = None
         zip_filename = "files.zip"
         modulename = ""
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -343,7 +343,7 @@ def addWorkflow(usecaseid):
                                     workflowOutputs = workflow_instance.getMetadata('Outputs')
                                     description = workflow_instance.getMetadata('Description')
                                     models_md = workflow_instance.getMetadata('Models')
-                                    ontoBaseObjects = workflow_instance.getMetadata('OntoBaseObjects', [])
+                                    EDM_Mapping = workflow_instance.getMetadata('EDMMapping', [])
                                 else:
                                     print("File does not contain only one class")
                     else:
@@ -360,7 +360,7 @@ def addWorkflow(usecaseid):
                     modulename=modulename,
                     classname=classname,
                     models_md=models_md,
-                    ontoBaseObjects=ontoBaseObjects
+                    EDM_Mapping=EDM_Mapping
                 )
 
     if new_workflow_id is not None:
@@ -569,7 +569,7 @@ def setExecutionInputs(weid):
 
                 c = c+1
 
-            OBO = execution_record.get('OntoBaseObjects', [])
+            OBO = execution_record.get('EDMMapping', [])
             for obo in OBO:
                 if obo.get('createFrom', None) is None:
                     obo_id = request.form.get('obo_id_' + obo.get('Name', ''), None)
@@ -646,7 +646,7 @@ def setExecutionInputs(weid):
             else:
                 if i.get('OntoPath', None) is not None:
                     onto_path = i.get('OntoPath')
-                    onto_base_objects = execution_record.get('OntoBaseObjects', [])
+                    onto_base_objects = execution_record.get('EDMMapping', [])
 
                     splitted = onto_path.split('.', 1)
                     base_object_name = splitted[0]
@@ -723,7 +723,7 @@ def setExecutionInputs(weid):
     form += "</table>"
     form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
 
-    OBO = execution_record.get('OntoBaseObjects', [])
+    OBO = execution_record.get('EDMMapping', [])
     if len(OBO):
         form += "<br>Ontology Base Objects:"
         form += "<table>"
@@ -787,7 +787,7 @@ def getExecutionOutputs(weid):
             else:
                 if i.get('OntoPath', None) is not None:
                     onto_path = i.get('OntoPath')
-                    onto_base_objects = execution_record.get('OntoBaseObjects', [])
+                    onto_base_objects = execution_record.get('EDMMapping', [])
 
                     splitted = onto_path.split('.', 1)
                     base_object_name = splitted[0]
@@ -838,7 +838,7 @@ def getExecutionOutputs(weid):
         form += '<td>' + str(i.get('OntoPath', '')) + '</td>'
     form += "</table>"
 
-    OBO = execution_record.get('OntoBaseObjects', [])
+    OBO = execution_record.get('EDMMapping', [])
     if len(OBO):
         form += "<br>Ontology Base Objects:"
         form += "<table>"
