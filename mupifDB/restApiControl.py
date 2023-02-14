@@ -699,6 +699,15 @@ def uploadBinaryFile(binary_data):
     response = rPost(url=RESTserver + "file/", files={"file": binary_data})
     return response.json()
 
+# --------------------------------------------------
+# Logging
+# --------------------------------------------------
+
+def logMessage(msgJson):
+    ## TODO: implement REST logging service, call it here
+    ## msgJson is a dict, obtained from logging.LogRecord.__dict__
+    import rich
+    rich.print_json(msgJson)
 
 # --------------------------------------------------
 # Stat

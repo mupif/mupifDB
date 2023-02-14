@@ -15,6 +15,7 @@ import ctypes
 import json
 
 import restApiControl
+import restLogger
 import my_email
 
 from pathlib import Path
@@ -103,10 +104,12 @@ def setupLogger(fileName, level=logging.DEBUG):
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()
     streamHandler.setFormatter(formatter)
+    restHandler=restLogger.RestLogHandler(restApiControl)
 
     logger.setLevel(level)
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
+    logger.addHandler(restApiControl)
 
     return logger
 
