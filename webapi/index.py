@@ -221,11 +221,11 @@ def workflow(wid, version):
     html += '</table>'
 
     html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(wdata['Version'])+'">Initialize new execution record</a>'
-    if len(wdata.get('OntoBaseObjects', [])):
+    if len(wdata.get('EDMMapping', [])):
         html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata['Version']) + '?no_onto">Optionally without ontology based objects</a>'
     html += '<br><br>Inputs'
     html += '<table>'
-    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>OntoPath</th></thead>'
+    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>EDMPath</th></thead>'
     for item in wdata["IOCard"]["Inputs"]:
         html += '<tr>'
         html += '<td class="c1">'+str(item['Name'])+'</td>'
@@ -236,13 +236,13 @@ def workflow(wid, version):
         html += '<td class="c6">'+str(item['ObjID'])+'</td>'
         html += '<td class="c7">'+str(item['Compulsory'])+'</td>'
         html += '<td class="c7">'+str(item.get('Set_At', ''))+'</td>'
-        html += '<td class="c7">'+str(item.get('OntoPath', ''))+'</td>'
+        html += '<td class="c7">'+str(item.get('EDMPath', ''))+'</td>'
         html += '</tr>'
     html += '</table>'
 
     html += '<br>Outputs'
     html += '<table>'
-    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>OntoPath</th></thead>'
+    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>EDMPath</th></thead>'
     for item in wdata["IOCard"]["Outputs"]:
         html += '<tr>'
         html += '<td class="c1">' + str(item.get('Name')) + '</td>'
@@ -251,22 +251,22 @@ def workflow(wid, version):
         html += '<td class="c4">' + str(item.get('Description')) + '</td>'
         html += '<td class="c5">' + str(item.get('Units')) + '</td>'
         html += '<td class="c6">' + str(item.get('ObjID')) + '</td>'
-        html += '<td class="c6">' + str(item.get('OntoPath', '')) + '</td>'
+        html += '<td class="c6">' + str(item.get('EDMPath', '')) + '</td>'
         html += '</tr>'
     html += '</table>'
     # html += '<br><br>All versions of this workflow:'
     html += ''
     html += ''
 
-    OBO = wdata.get('OntoBaseObjects', [])
+    OBO = wdata.get('EDMMapping', [])
     if len(OBO):
-        html += "<br>Ontology Base Objects:"
+        html += "<br>EDM Mapping:"
         html += "<table>"
         html += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>createFrom</th></tr>"
         for obo in OBO:
             html += '<tr>'
             html += '<td>' + obo.get('Name', '') + '</td>'
-            html += '<td>' + obo.get('Type', '') + '</td>'
+            html += '<td>' + obo.get('EDMEntity', '') + '</td>'
             html += '<td>' + obo.get('DBName', '') + '</td>'
             html += '<td>' + obo.get('createFrom', '') + '</td>'
             html += '</tr>'
@@ -303,7 +303,7 @@ def addWorkflow(usecaseid):
         description = None
         classname = None
         models_md = None
-        ontoBaseObjects = None
+        EDM_Mapping = None
         zip_filename = "files.zip"
         modulename = ""
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -343,7 +343,7 @@ def addWorkflow(usecaseid):
                                     workflowOutputs = workflow_instance.getMetadata('Outputs')
                                     description = workflow_instance.getMetadata('Description')
                                     models_md = workflow_instance.getMetadata('Models')
-                                    ontoBaseObjects = workflow_instance.getMetadata('OntoBaseObjects', [])
+                                    EDM_Mapping = workflow_instance.getMetadata('EDMMapping', [])
                                 else:
                                     print("File does not contain only one class")
                     else:
@@ -360,7 +360,7 @@ def addWorkflow(usecaseid):
                     modulename=modulename,
                     classname=classname,
                     models_md=models_md,
-                    ontoBaseObjects=ontoBaseObjects
+                    EDM_Mapping=EDM_Mapping
                 )
 
     if new_workflow_id is not None:
@@ -528,7 +528,7 @@ def setExecutionInputs(weid):
             msg = ""
             c = 0
             for i in execution_inputs:
-                if i.get('OntoPath', None) is None:
+                if i.get('EDMPath', None) is None:
                     name = i['Name']
                     objID = i['ObjID']
                     value = request.form.get('Value_%d' % c, '')
@@ -569,7 +569,7 @@ def setExecutionInputs(weid):
 
                 c = c+1
 
-            OBO = execution_record.get('OntoBaseObjects', [])
+            OBO = execution_record.get('EDMMapping', [])
             for obo in OBO:
                 if obo.get('createFrom', None) is None:
                     obo_id = request.form.get('obo_id_' + obo.get('Name', ''), None)
@@ -608,7 +608,7 @@ def setExecutionInputs(weid):
         form += "%s<br>" % execution_record["RequestedBy"]
 
     form += "<br>Input record for weid %s<table>" % weid
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th><th>OntoPath</th></tr>"
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th><th>EDMPath</th></tr>"
     c = 0
     for i in execution_inputs:
         name = i['Name']
@@ -636,7 +636,7 @@ def setExecutionInputs(weid):
             form += '<td>' + str(description) + '</td>'
             form += '<td>' + str(i['ObjID']) + '</td>'
             form += '<td>'
-            if execution_record["Status"] == "Created" and i.get('OntoPath', None) is None:
+            if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
                 try:
                     prop = mupif.ConstantProperty.from_db_dict(i['Object'])
                     ival = prop.quantity.inUnitsOf(i['Units']).value.tolist()
@@ -644,9 +644,9 @@ def setExecutionInputs(weid):
                     ival = None
                 form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
             else:
-                if i.get('OntoPath', None) is not None:
-                    onto_path = i.get('OntoPath')
-                    onto_base_objects = execution_record.get('OntoBaseObjects', [])
+                if i.get('EDMPath', None) is not None:
+                    onto_path = i.get('EDMPath')
+                    onto_base_objects = execution_record.get('EDMMapping', [])
 
                     splitted = onto_path.split('.', 1)
                     base_object_name = splitted[0]
@@ -659,7 +659,7 @@ def setExecutionInputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None and type(onto_data) is dict:
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
@@ -680,7 +680,7 @@ def setExecutionInputs(weid):
             form += '<td>' + str(description) + '</td>'
             form += '<td>' + str(i['ObjID']) + '</td>'
             form += '<td>'
-            if execution_record["Status"] == "Created" and i.get('OntoPath', None) is None:
+            if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
                 try:
                     prop = mupif.String.from_db_dict(i['Object'])
                     ival = prop.getValue()
@@ -688,7 +688,7 @@ def setExecutionInputs(weid):
                     ival = ''
                 form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
             else:
-                if i.get('OntoPath', None) is not None:
+                if i.get('EDMPath', None) is not None:
                     pass
                 else:
                     if i['Object'].get('Value', None) is not None:
@@ -706,7 +706,7 @@ def setExecutionInputs(weid):
             form += '<td>' + str(i.get('Object', {}).get('Value', '')) + '</td>'
             form += '<td>' + str(i.get('Units')) + '</td>'
 
-        if execution_record["Status"] == "Created" and i.get('OntoPath', None) is None:
+        if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
             form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"%s\" style=\"width:100px;\" /></td>" % (c, i['Link']['ExecID'])
             form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['Name'])
             form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['ObjID'])
@@ -715,7 +715,7 @@ def setExecutionInputs(weid):
             form += "<td>" + str(i['Link']['Name']) + "</td>"
             form += "<td>" + str(i['Link']['ObjID']) + "</td>"
 
-        form += '<td>' + str(i.get('OntoPath', '')) + '</td>'
+        form += '<td>' + str(i.get('EDMPath', '')) + '</td>'
 
         form += "</tr>"
         c += 1
@@ -723,7 +723,7 @@ def setExecutionInputs(weid):
     form += "</table>"
     form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
 
-    OBO = execution_record.get('OntoBaseObjects', [])
+    OBO = execution_record.get('EDMMapping', [])
     if len(OBO):
         form += "<br>Ontology Base Objects:"
         form += "<table>"
@@ -732,7 +732,7 @@ def setExecutionInputs(weid):
 
             form += '<tr>'
             form += '<td>' + obo.get('Name', '') + '</td>'
-            form += '<td>' + obo.get('Type', '') + '</td>'
+            form += '<td>' + obo.get('EDMEntity', '') + '</td>'
             form += '<td>' + obo.get('DBName', '') + '</td>'
             obo_id = obo.get('id', '')
             if obo_id is None:
@@ -742,7 +742,7 @@ def setExecutionInputs(weid):
                 form += '<td>'
                 form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
                 form += '<option value="">-</option>'
-                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('Type', '')):
+                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('EDMEntity', '')):
                     form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
                 form += '</select>'
                 form += '</td>'
@@ -777,7 +777,7 @@ def getExecutionOutputs(weid):
     form = "<a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
 
     form += "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Units</th><th>Value</th><th>OntoPath</th></tr>"
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Units</th><th>Value</th><th>EDMPath</th></tr>"
     for i in execution_outputs:
         val = ''
 
@@ -785,9 +785,9 @@ def getExecutionOutputs(weid):
             if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
                 val = '<a href="/property_array_view/' + str(i['Object'].get('FileID')) + '/1">link</a>'
             else:
-                if i.get('OntoPath', None) is not None:
-                    onto_path = i.get('OntoPath')
-                    onto_base_objects = execution_record.get('OntoBaseObjects', [])
+                if i.get('EDMPath', None) is not None:
+                    onto_path = i.get('EDMPath')
+                    onto_base_objects = execution_record.get('EDMMapping', [])
 
                     splitted = onto_path.split('.', 1)
                     base_object_name = splitted[0]
@@ -800,7 +800,7 @@ def getExecutionOutputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None:
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
@@ -835,10 +835,10 @@ def getExecutionOutputs(weid):
         form += '<td>' + str(i['ObjID']) + '</td>'
         form += '<td>' + str(escape(i.get('Units'))) + '</td>'
         form += '<td>' + str(val) + '</td>'
-        form += '<td>' + str(i.get('OntoPath', '')) + '</td>'
+        form += '<td>' + str(i.get('EDMPath', '')) + '</td>'
     form += "</table>"
 
-    OBO = execution_record.get('OntoBaseObjects', [])
+    OBO = execution_record.get('EDMMapping', [])
     if len(OBO):
         form += "<br>Ontology Base Objects:"
         form += "<table>"
@@ -847,7 +847,7 @@ def getExecutionOutputs(weid):
 
             form += '<tr>'
             form += '<td>' + obo.get('Name', '') + '</td>'
-            form += '<td>' + obo.get('Type', '') + '</td>'
+            form += '<td>' + obo.get('EDMEntity', '') + '</td>'
             form += '<td>' + obo.get('DBName', '') + '</td>'
             obo_id = obo.get('id', '')
             if obo_id is None:
@@ -857,14 +857,14 @@ def getExecutionOutputs(weid):
                 form += '<td>'
                 form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
                 form += '<option value="">-</option>'
-                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('Type', '')):
+                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('EDMEntity', '')):
                     form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
                 form += '</select>'
                 form += '</td>'
             else:
                 form += '<td>' + obo_id + '</td>'
             form += '<td>' + obo.get('createFrom', '') + '</td>'
-            form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('Type', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
+            form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
             form += '</tr>'
         form += "</table>"
 

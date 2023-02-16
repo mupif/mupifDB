@@ -50,6 +50,9 @@ tags_metadata = [
     {
         "name": "Additional",
     },
+    {
+        "name": "User Interface",
+    },
 ]
 
 
@@ -339,7 +342,7 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
 
 @app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
 def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
-    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "OntoBaseObjects.Name": data.name}, {"$set": {"OntoBaseObjects.$.id": data.value}})
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}})
     return get_execution(uid)
 
 
@@ -507,3 +510,25 @@ def set_scheduler_statistics(data: M_ModifyStatistics):
         res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
         return True
     return False
+
+
+@app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
+def ui():
+    f = open('../ui/app.html', 'r')
+    content = f.read()
+    f.close()
+    return HTMLResponse(content=content, status_code=200)
+
+
+@app.get("/UI/{file_path:path}", tags=["User Interface"])
+def get_ui_file(file_path: str):
+    try:
+        if file_path.find('..') == -1:
+            f = open('../ui/'+file_path, 'r')
+            content = f.read()
+            f.close()
+            return HTMLResponse(content=content, status_code=200)
+    except:
+        pass
+    print(file_path + " not found")
+    return None

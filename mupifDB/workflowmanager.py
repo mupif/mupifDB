@@ -14,11 +14,15 @@ import table_structures
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
-ns = mupif.pyroutil.connectNameServer()
-daemon = mupif.pyroutil.getDaemon(ns)
+daemon = None
+def getDaemon():
+    if daemon is None:
+        ns = mupif.pyroutil.connectNameServer()
+        daemon = mupif.pyroutil.getDaemon(ns)
+    return daemon
 
 
-def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, ontoBaseObjects=None):
+def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping=None):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -46,20 +50,20 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     Inputs = []
     for i in workflowInputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
-        if i.get('OntoPath', None) is not None:
-            irec['OntoPath'] = i.get('OntoPath')
+        if i.get('EDMPath', None) is not None:
+            irec['EDMPath'] = i.get('EDMPath')
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
-        if i.get('OntoPath', None) is not None:
-            irec['OntoPath'] = i.get('OntoPath')
+        if i.get('EDMPath', None) is not None:
+            irec['EDMPath'] = i.get('EDMPath')
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
 
-    rec['OntoBaseObjects'] = []
-    if ontoBaseObjects is not None:
-        rec['OntoBaseObjects'] = ontoBaseObjects
+    rec['EDMMapping'] = []
+    if EDM_Mapping is not None:
+        rec['EDMMapping'] = EDM_Mapping
 
     # first check if workflow with wid already exist in workflows
     w_rec = restApiControl.getWorkflowRecord(wid)
@@ -139,7 +143,7 @@ class WorkflowExecutionIODataSet:
                     'TypeID': io['TypeID'],
                     'Units': io['Units'],
                     'ObjID': objid,
-                    'OntoPath': None if no_onto else io.get('OntoPath', None),
+                    'EDMPath': None if no_onto else io.get('EDMPath', None),
                     'Compulsory': io.get('Compulsory', None),
                     'FileID': None,
                     'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}
@@ -216,13 +220,13 @@ class WorkflowExecutionContext:
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto)
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto)
             if no_onto:
-                rec['OntoBaseObjects'] = []
+                rec['EDMMapping'] = []
             else:
                 OBO = []
-                for obo in wdoc.get('OntoBaseObjects', []):
+                for obo in wdoc.get('EDMMapping', []):
                     obo['id'] = None
                     OBO.append(obo)
-                rec['OntoBaseObjects'] = OBO
+                rec['EDMMapping'] = OBO
             new_id = restApiControl.insertExecution(rec)
             return WorkflowExecutionContext(new_id)
 
@@ -404,8 +408,8 @@ def checkInputs(eid):
                     obj_id=oid,
                     data_id=data_id,
                     object_type=object_type,
-                    onto_path=input_template.get('OntoPath', None),
-                    onto_base_objects=execution.get('OntoBaseObjects', []),
+                    onto_path=input_template.get('EDMPath', None),
+                    onto_base_objects=execution.get('EDMMapping', []),
                 ) is False:
                     return False
 
@@ -421,7 +425,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
     if api_type == 'granta':
         inp_record = restApiControl._getGrantaExecutionInputItem(eid, name)
     # onto_path is not unused
-    op = inp_record.get('OntoPath', None)
+    op = inp_record.get('EDMPath', None)
     if op is not None:
         splitted = op.split('.', 1)
         base_object_name = splitted[0]
@@ -502,7 +506,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                             f.write(pfile)
                             f.close()
                             pf = mupif.PyroFile(filename=full_path, mode='rb')
-                            daemon.register(pf)
+                            getDaemon().register(pf)
                             app.set(pf, app_obj_id)
 
                 elif object_type == 'mupif.HeavyStruct':
@@ -517,7 +521,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                             f.close()
                             hs = mupif.HeavyStruct(h5path=full_path, mode='copy-readwrite', id=mupif.DataID[data_id])
                             # hs = hs.deepcopy()
-                            daemon.register(hs)
+                            getDaemon().register(hs)
                             hs.exposeData()
                             app.set(hs, app_obj_id)
 
@@ -543,15 +547,15 @@ def getOntoBaseObjectByName(objects, name):
             return i
     return None
 
-def createOutputOntoBaseObjects(eid):
+def createOutputEDMMappingObjects(eid):
     execution = restApiControl.getExecutionRecord(eid)
-    OBO = execution.get('OntoBaseObjects', [])
+    OBO = execution.get('EDMMapping', [])
     for obo in OBO:
         if obo.get('createFrom', None) is not None:
             source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
             if source_obo is not None:
                 if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
-                    new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('Type', ''), source_obo.get('id'))
+                    new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('EDMEntity', ''), source_obo.get('id'))
                     restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
 
 
@@ -586,8 +590,8 @@ def mapInputs(app, eid):
                 app_obj_id=oid,
                 data_id=data_id,
                 object_type=object_type,
-                onto_path=input_template.get('OntoPath', None),
-                onto_base_objects=execution.get('OntoBaseObjects', []),
+                onto_path=input_template.get('EDMPath', None),
+                onto_base_objects=execution.get('EDMMapping', []),
                 value_type=input_template.get('ValueType', '')
             )
 
@@ -791,8 +795,8 @@ def mapOutputs(app, eid, time):
                     data_id=typeID,
                     time=time,
                     object_type=object_type,
-                    onto_path=outitem.get('OntoPath', None),
-                    onto_base_objects=execution.get('OntoBaseObjects', []),
+                    onto_path=outitem.get('EDMPath', None),
+                    onto_base_objects=execution.get('EDMMapping', []),
                 )
 
     if api_type == 'granta':
