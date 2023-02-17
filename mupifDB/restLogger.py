@@ -14,7 +14,7 @@ class RestLogHandler(logging.StreamHandler):
     *extraData* is dictionary added to every logging message (it will overwrite standard fields of LogRecords, so be careful there).
     """
     def __init__(self, *, extraData=None):
-        self.extraData=extraData
+        self.extraData=(extraData if extraData is not None else {})
         self.lock = threading.Lock()
         super().__init__()
 

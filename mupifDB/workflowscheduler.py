@@ -109,7 +109,7 @@ def setupLogger(fileName, level=logging.DEBUG):
     logger.setLevel(level)
     logger.addHandler(fileHandler)
     logger.addHandler(streamHandler)
-    # logger.addHandler(restApiControl)
+    # logger.addHandler(restHandler)
 
     return logger
 
