@@ -11,7 +11,7 @@ import mupifDB
 import mupif as mp
 
 
-log = logging.getLogger()
+log = logging.getLogger('workflow_execution_script')
 log.setLevel(logging.DEBUG)
 tailHandler=mp.pyrolog.TailLogHandler(capacity=10000)
 log.addHandler(tailHandler)
@@ -34,6 +34,10 @@ if __name__ == "__main__":
         parser.add_argument('-eid', '--executionID', required=True, dest="id")
         args = parser.parse_args()
         weid = args.id
+        
+        # add REST logging handler for this weid, add 'weid' field to every message automatically
+        import mupifDB.restLogger
+        log.addHandler(mupifDB.restLogger.RestLogHandler(extraData={'weid':weid}))
 
         execution_record = mupifDB.restApiControl.getExecutionRecord(weid)
         if execution_record is None:

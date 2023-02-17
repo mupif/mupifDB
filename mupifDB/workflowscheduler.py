@@ -104,7 +104,7 @@ def setupLogger(fileName, level=logging.DEBUG):
     fileHandler.setFormatter(formatter)
     streamHandler = logging.StreamHandler()
     streamHandler.setFormatter(formatter)
-    restHandler=restLogger.RestLogHandler(restApiControl)
+    restHandler=restLogger.RestLogHandler()
 
     logger.setLevel(level)
     logger.addHandler(fileHandler)
