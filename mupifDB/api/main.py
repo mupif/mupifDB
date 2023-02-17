@@ -45,6 +45,9 @@ tags_metadata = [
         "name": "Files",
     },
     {
+        "name": "Logs",
+    },
+    {
         "name": "Stats",
     },
     {
@@ -456,6 +459,16 @@ def get_property_array_data(fid: str, tdir=Depends(get_temp_dir)):
     full_path_vtu = tdir+'/file.vtu'
     field.toMeshioMesh().write(full_path_vtu)
     return FileResponse(path=full_path_vtu, headers={"Content-Disposition": "attachment; filename=file.vtu"})
+
+
+# --------------------------------------------------
+# Stats
+# --------------------------------------------------
+
+@app.post("/logs/", tags=["Logs"])
+def insert_log(data: M_Dict):
+    res = db.Logs.insert_one(data.entity)
+    return str(res.inserted_id)
 
 
 # --------------------------------------------------

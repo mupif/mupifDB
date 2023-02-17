@@ -8,6 +8,7 @@ import table_structures
 import tempfile
 import importlib
 import re
+import logging
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
@@ -57,6 +58,8 @@ RESTserver = RESTserver.replace('5000', '8005')
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
     RESTserver += '/'
+
+RESTserverMuPIF = RESTserver
 
 RESTserver_onto = RESTserver.replace('8005', '8080')
 
@@ -108,7 +111,7 @@ def getUsecaseRecord(ucid):
 def insertUsecaseRecord(ucid, description):
     if api_type == 'granta':
         return None
-    response = rGet(url=RESTserver + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
+    response = rPost(url=RESTserver + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
     return response.json()
 
 
@@ -726,10 +729,19 @@ def logMessage(*,name,levelno,pathname,lineno,created,**kw):
     Variable extra fields might added in when calling the logging function, e.g. log.error(...,extra={'another-field':123})
     '''
     # re-assemble the dictionary
-    allData=dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
-    import rich.pretty
-    rich.pretty.pprint(allData)
-    ## TODO: implement REST logging service, call it here
+    data = dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
+    data['msg'] = data['msg'] % data['args']
+    del data['args']
+    # import rich.pretty
+    # rich.pretty.pprint(data)
+    previous_level = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        response = rPost(url=RESTserverMuPIF + "logs/", data=json.dumps({"entity": data}))
+    finally:
+        logging.disable(previous_level)
+    return response.json()
+
 
 # --------------------------------------------------
 # Stat
