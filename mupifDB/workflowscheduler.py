@@ -28,6 +28,9 @@ import mupif as mp
 import logging
 # logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
 
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("urllib3").propagate = False
+
 # try to import schedulerconfig.py
 authToken = None
 try:
