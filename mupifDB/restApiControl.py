@@ -703,11 +703,33 @@ def uploadBinaryFile(binary_data):
 # Logging
 # --------------------------------------------------
 
-def logMessage(msgJson):
+def logMessage(*,name,levelno,pathname,lineno,created,**kw):
+    '''
+    Logging message; compulsory fileds are present in standard logging.LogRecord, their name
+    should not be changed.
+
+    - *name*: logger name; comes from logging.getLogger(name)
+    - *levelno*: number of logging severity (e.g. 30 for logging.WARNING etc)
+    - *pathname*: full path to file where the message originated
+    - *lineno*: line number within file where the message originated
+    - *created*: epoch time; use datetime.datetime.fromtimestamp(...) for higher-level representation
+
+    Other possibly important fields in logging.LogRecord (not enforced by this function signature) are:
+
+    - *exc_info*, *exc_text*: exception information when using log.exception(...) in the client code
+
+       .. note:: exc_info is a python object (includes exception class and traceback),
+                 there must be a custom routine to convert it to JSON.
+
+    Constant extra fields might be added on the level of the handler: RestLogHandler(extraData=...).
+
+    Variable extra fields might added in when calling the logging function, e.g. log.error(...,extra={'another-field':123})
+    '''
+    # re-assemble the dictionary
+    allData=dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
+    import rich.pretty
+    rich.pretty.pprint(allData)
     ## TODO: implement REST logging service, call it here
-    ## msgJson is a dict, obtained from logging.LogRecord.__dict__
-    import rich
-    rich.print_json(msgJson)
 
 # --------------------------------------------------
 # Stat
