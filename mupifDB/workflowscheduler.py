@@ -521,8 +521,14 @@ if __name__ == '__main__':
         # run scheduler monitor
         monitor.runServer()
 
-        
-        pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
+        # https://github.com/mupif/mupifDB/issues/14
+        # explicitly use forking (instead of spawning) so that there are no leftover monitoring processes
+        # if scheduler gets killed externally (such as in the docker by supervisor, which won't reap
+        # orphan processes
+        # even though fork is the default for POSIX, mp.simplejobmanager was setting the (global)
+        # default to spawn, therefore it was used here as well. So better to be explicit (and also
+        # fix the — perhaps unnecessary now? — global setting in simplejobmanager)
+        pool = multiprocessing.get_context('fork').Pool(processes=poolsize, initializer=procInit)
         atexit.register(stop, pool)
         try:
             with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
