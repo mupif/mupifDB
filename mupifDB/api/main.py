@@ -61,6 +61,13 @@ tags_metadata = [
 
 app = FastAPI(openapi_tags=tags_metadata)
 
+# import and initialize EDM
+if 1:
+    import mupifDB.api.edm as edm
+    edm.initializeEdm(db)
+    app.include_router(edm.dms3.router)
+
+
 
 def fix_id(record):
     if record:
@@ -545,3 +552,11 @@ def get_ui_file(file_path: str):
         pass
     print(file_path + " not found")
     return None
+
+
+
+if __name__=='__main__':
+    import uvicorn
+    uvicorn.run('main:app',host='0.0.0.0',port=8080,reload=True)
+
+

@@ -10,3 +10,12 @@ psutil
 fastapi
 uvicorn[standard]
 python-multipart
+networkx
+astropy
+rich
+pytest-rich
+pytest
+requests
+parsy
+attrdict3
+asteval
