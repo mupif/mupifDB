@@ -8,7 +8,14 @@ MuPIF DB documentation
 
 
 
-This is a preliminary MupifDB documentation. It does not contain anything yet.
+This is a preliminary MupifDB documentation.
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Contents
+   :numbered:
+
+   infrastructure.rst
 
 
 .. .. toctree::
