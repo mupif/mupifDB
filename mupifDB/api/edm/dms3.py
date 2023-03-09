@@ -17,10 +17,10 @@ import shutil
 
 import fastapi.responses
 from fastapi import FastAPI, APIRouter
-app=FastAPI()
 
-
-if __name__=='__main__':
+# uvicorn with reload re-imports the module without __name__=='__main__'
+# thus use dms3.py (executable name) to check whether we are being run directly
+if __name__=='__main__' or sys.argv[0]=='dms3.py':
     router=FastAPI()
     @router.exception_handler(Exception)
     async def validation_exception_handler(request, err):
@@ -721,10 +721,11 @@ def initializeEdm(db):
     GG.client_set(db)
     GG.schema_import_maybe('dms0',open(os.path.dirname(__file__)+'/dms-schema.json').read())
 
-
-if __name__=='__main__':
+# when run as main, but also upon reload from uvicorn — see at the beginning of this file
+if __name__=='__main__' or sys.argv[0]=='dms3.py':
     initializeEdm(pymongo.MongoClient("localhost",27017))
 
+if __name__=='__main__':
     import uvicorn
-    uvicorn.run('dms3:app',host='0.0.0.0',port=8080,reload=True)
+    uvicorn.run('dms3:router',host='0.0.0.0',port=8080,reload=True)
 

@@ -4,6 +4,8 @@ import json
 from rich.pretty import pprint
 from rich import print_json
 
+import pymongo
+
 
 import sys,os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -12,7 +14,7 @@ import dms3
 
 DB='dms0'
 REST_URL='http://localhost:8080'
-
+dms3.initializeEdm(pymongo.MongoClient("localhost",27017))
 
 
 dta={ # BeamState 
