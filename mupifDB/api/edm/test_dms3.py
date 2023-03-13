@@ -81,7 +81,8 @@ class Test_REST(unittest.TestCase):
     @classmethod
     def get(C,p,show=False,**kw):
         r=requests.get(f'{REST_URL}/{p}',params=kw)
-        if not r.ok: raise RuntimeError(r.text)
+        if not r.ok:
+            raise RuntimeError(r.text)
         data=json.loads(r.text)
         if show: pprint(data)
         return data
@@ -106,8 +107,8 @@ class Test_REST(unittest.TestCase):
                 ret+=chunk
             return ret
     @classmethod
-    def patch(C,p,**kw):
-        r=requests.patch(f'{REST_URL}/{p}',json=kw)
+    def patch(C,p,patchData):
+        r=requests.patch(f'{REST_URL}/{p}',json=patchData)
         if not r.ok: raise RuntimeError(r.text)
         return json.loads(r.text)
 
@@ -138,6 +139,21 @@ class Test_REST(unittest.TestCase):
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=False,tracking=True,max_level=0)
         self.assertTrue('cs' not in d)
         self.assertTrue('npointz' in d)
+    def test_06_patch(self):
+        C=self.__class__
+        C.patch(f'{DB}/BeamState/{C.ID_01}',dict(path='beam.length',data={'value':0.005,'unit':'km'}))
+        d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=False)
+        self.assertAlmostEqual(d['beam']['length']['value'],5,places=4)
+        self.assertEqual(d['beam']['length']['unit'],'m')
+
+    @unittest.skip('Failing test (TODO)')
+    def test_07_meta(self):
+        C=self.__class__
+        d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=True,max_level=0)
+        self.assertTrue('id' in d['_meta'])
+        d=C.get(f'{DB}/BeamState/{C.ID_01}',path='_meta',meta=True)
+
+
 
     @unittest.skip('Failing test (TODO)')
     def test_06_blob(self):
@@ -166,7 +182,8 @@ class Test_REST(unittest.TestCase):
 class Test_Direct(unittest.TestCase):
     def test_01_list(self):
         C=self.__class__
-        C.ID0=dms3.dms_api_object_list(db=DB,type='BeamState')[0]
+        dms3.dms_api_object_post(db=DB,type='BeamState',data=dta)
+        C.ID0=dms3.dms_api_object_list(db=DB,type='BeamState')[-1]
     def test_02_parse(self):
         C=self.__class__
         N=None

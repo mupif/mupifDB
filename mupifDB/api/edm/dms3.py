@@ -414,11 +414,8 @@ def dms_api_schema_post(db: str, schema: str,force:bool=False):
     coll.insert_one(schema)
 
 @router.get('/{db}/schema')
-def dms_api_schema_get(db: str,include_id:bool=False):
-    ret=GG.db_get(db)['schema'].find_one()
-    if ret is None: raise KeyError(f'No schema defined in database {db}.')
-    if ret is not None and not include_id: del ret['_id']
-    return ret
+def dms_api_schema_get(db: str, include_id:bool=False):
+    return GG.schema_get(db,include_id=include_id)
 
 @pydantic.dataclasses.dataclass
 class _ObjectTracker:
@@ -690,11 +687,16 @@ class GG(object):
         assert str(obj['_id'])==dbId
         return GG.schema_get_type(db,klass),obj
     @staticmethod
-    def schema_get(db:str):
+    def schema_get(db:str,include_id:bool=False):
         if db not in GG._SCH:
-            rawSchema=dms_api_schema_get(db=db)
-            if '_id' in rawSchema: del rawSchema['_id'] # this prevents breakage when reloading
+            rawSchema=GG.db_get(db)['schema'].find_one()
+            if rawSchema is not None:
+                if not include_id and '_id' in rawSchema: del rawSchema['_id'] # this prevents breakage when reloading
             GG._SCH[db]=SchemaSchema.parse_obj(rawSchema)
+            if 0:
+                # inject _meta attribute into each schema item
+                for key,val in GG._SCH[db]:
+                    val['_meta']=ItemSchema(dtype='object')
         return GG._SCH[db]
     @staticmethod
     def schema_get_type(db:str,type:str):
