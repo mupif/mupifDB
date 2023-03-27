@@ -30,6 +30,10 @@ jobs:
       run: |
         # stop the build if there are Python syntax errors or undefined names
         python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=obsolete
+    - name: Start MongoDB
+      run: |
+        /usr/bin/mongod --config /etc/mongod.conf &
+        sleep 10
     - name: pytest (native)
       timeout-minutes: 2
       run: |
