@@ -49,6 +49,7 @@ dta={ # BeamState
         { # CrossSectionState
             "eps_axial": { "value":344, "unit":"um/m" },
             "bendingMoment": { "value":869, "unit":"kN*m" },
+            "meta": { "tags": ["tagCommon","tag1"] },
             "rveStates":[ 
                 { # ConcreteRVEState
                     "rve":"...beam.cs.rve", # rel 
@@ -63,6 +64,7 @@ dta={ # BeamState
         { # CrossSectionState
             "eps_axial": { "value":878, "unit":"um/m" },
             "bendingMoment": { "value":123, "unit":"kN*m" },
+            "meta": { "tags": ["tagCommon","tag2"] },
             "rveStates":[ 
                 { # ConcreteRVEState
                     "rve":"...beam.cs.rve", # rel 
@@ -119,21 +121,22 @@ class Test_REST(unittest.TestCase):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=True,tracking=False)
         # check that relative link was correctly interpreted
-        self.assertEqual(d['cs']['_meta']['id'],d['beam']['cs']['_meta']['id'])
+        self.assertEqual(d['cs']['meta']['id'],d['beam']['cs']['meta']['id'])
         # check that units were converted
         self.assertEqual(d['beam']['length']['unit'],'m')
         self.assertEqual(d['beam']['length']['value'],2.5)
         # check type metadata
-        self.assertEqual(d['_meta']['type'],'BeamState')
-        self.assertEqual(d['beam']['_meta']['type'],'Beam')
+        self.assertEqual(d['meta']['type'],'BeamState')
+        self.assertEqual(d['beam']['meta']['type'],'Beam')
     def test_03_tracking(self):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=False,tracking=True)
+        pprint(d)
         # relative link is recovered via object tracking
         self.assertEqual(d['cs'],'.beam.cs')
         self.assertEqual(d['csState'][0]['rveStates'][0]['rve'],'...beam.cs.rve')
         # metadata not returned
-        self.assertTrue('_meta' not in d)
+        self.assertTrue('meta' not in d)
     def test_05_max_level(self):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=False,tracking=True,max_level=0)
@@ -146,12 +149,17 @@ class Test_REST(unittest.TestCase):
         self.assertAlmostEqual(d['beam']['length']['value'],5,places=4)
         self.assertEqual(d['beam']['length']['unit'],'m')
 
-    @unittest.skip('Failing test (TODO)')
+    # @unittest.skip('Failing test (TODO)')
     def test_07_meta(self):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=True,max_level=0)
-        self.assertTrue('id' in d['_meta'])
-        d=C.get(f'{DB}/BeamState/{C.ID_01}',path='_meta',meta=True)
+        self.assertTrue('id' in d['meta'])
+        d=C.get(f'{DB}/BeamState/{C.ID_01}',path='meta',meta=True)
+        C.patch(f'{DB}/BeamState/{C.ID_01}',dict(path='meta',data={'tags':['asdf','ghjk']}))
+        d=C.get(f'{DB}/BeamState/{C.ID_01}',path='meta',meta=True)
+        #d2=C.get(f'{DB}/BeamState["asdf" in meta.tags]')
+        #self.assertEqual(d,d2)
+        # print(f'{d=}')
 
 
 
@@ -319,6 +327,13 @@ class Test_Direct(unittest.TestCase):
         RR=dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:].rveStates[:|sigmaHom["value"]<85]')
         self.assertEqual(len(RR),2)
         self.assertRaises(RuntimeError,lambda:dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:|some_nonsense_filter]'))
+    def test_06_meta(self):
+        C=self.__class__
+        r1=dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:|"tag1" in meta.tags]')
+        rBoth=dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:|"tagCommon" in meta["tags"]]')
+        self.assertEqual(len(r1),1)
+        self.assertEqual(len(rBoth),2)
+
 
 
 if __name__=='__main__':

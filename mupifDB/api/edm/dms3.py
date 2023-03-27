@@ -16,6 +16,9 @@ import itertools
 import gridfs
 import shutil
 
+import attrdict
+
+
 import fastapi.responses
 from fastapi import FastAPI, APIRouter
 
@@ -81,6 +84,9 @@ class SchemaSchema(pydantic.BaseModel):
     def links_valid(cls,attrs):
         root=attrs['__root__']
         for T,fields in root.items():
+            if 'meta' in fields: raise ValueError(f'{T}: "meta" field may not be specified in schema (is added automatically).')
+            assert 'meta' not in fields
+            fields['meta']=ItemSchema(dtype='object')
             for f,i in fields.items():
                 if i.link is None: continue
                 if i.link not in root.keys(): raise ValueError(f'{T}.{f}: link to undefined collection {i.link}.')
@@ -310,7 +316,10 @@ def _resolve_path_head(db: str, type: str, id: str, path: Optional[str]) -> _Res
     Resolves path head, descending as far as it can get. Returns list of paths resolved
     '''
     def _descend(*,klass,dbId,path,level,parentId,resolved):
-        klassSchema,obj=GG.db_get_schema_object(db,klass,dbId)
+        klassSchema,rec=GG.db_get_schema_object(db,klass,dbId)
+        obj=_db_rec_to_api_value__obj(klass,rec,parent=parentId)
+        obj|=rec
+        # pprint(obj)
         import attrdict
         obj=attrdict.AttrDict(obj)
         # terminate recursion here
@@ -361,6 +370,7 @@ class DbAttrProxy(object):
         item=self.schema[attr]
         if attr not in self.vals: raise ValueError(f'{self.klass}.{attr}: exists in schema but absent from database (id={self.id}).')
         val=self.vals[attr]
+        if attr=='meta': return attrdict.AttrDict(val)
         if item.link is None:
             # TODO: preprocess values?
             # e.g. wrap dicts as attrdict.AttrDict, or convert to astropy.Quantity etc.
@@ -391,7 +401,7 @@ def _make_link_digraph(db: str, type: str, id:str, debug:bool=False) -> Tuple[Se
         klassSchema,obj=GG.db_get_schema_object(db,klass,dbId)
         linkTracker.nodes.add(_nd(klass,dbId))
         for key,val in obj.items():
-            if key=='_id' or key=='_meta': continue
+            if key=='_id' or key=='meta': continue
             item=klassSchema[key]
             if item.link is None: continue
             def _handle_link(*,obj,index,i=item,key=key):
@@ -471,6 +481,16 @@ def _api_value_to_db_rec__attr(item,val,prefix):
         return _quantity_to_dict(q)
     else: raise NotImplementedError(f'{prefix}: unable to convert API data to database record?? {item=}')
 
+def _api_value_to_db_rec__obj(data):
+    'Convert API value to DB record, without attribute (for objects)'
+    ret={}
+    # transfer selected metadata to the new object, if any
+    # data contains metadata if it is a dump from an existing instance
+    meta=ret['meta']=data.pop('meta',{})
+    if 'id' in meta:
+        meta['upstream']=meta.pop('id')
+    return ret
+
 def _db_rec_to_api_value__attr(item,dbrec,prefix):
     'Convert DB record to API value (for attribute)'
     assert item.link is None
@@ -484,19 +504,11 @@ def _db_rec_to_api_value__attr(item,dbrec,prefix):
 def _db_rec_to_api_value__obj(klass,rec,parent):
     'Convert DB record to API value, without any attributes (for objects)'
     ret={}
-    meta=ret['_meta']=rec.pop('_meta',{})
+    meta=ret['meta']=rec.pop('meta',{})
     meta|=dict(id=str(rec.pop('_id')),type=klass)
     if parent is not None: meta['parent']=parent
     return ret
 
-def _api_value_to_db_rec__obj(data):
-    'Convert API value to DB record, without attribute (for objects)'
-    ret={}
-    # transfer selected metadata to the new object, if any
-    # data contains metadata if it is a dump from an existing instance
-    meta=data.pop('_meta',None)
-    if meta is not None: ret['_meta']={'upstream':meta['id']}
-    return ret
 
 
 class PatchData(pydantic.BaseModel):
@@ -525,6 +537,7 @@ def dms_api_object_patch(db:str,type:str,id:str,patchData:PatchData):
         item=GG.schema_get_type(db,R.type)[ent.attr]
         assert item.link is None
         rec=_api_value_to_db_rec__attr(item,dat,f'{R.type}:{path}')
+        if ent.attr=='meta': rec=R.obj['meta']|dat
         r=GG.db_get(db)[R.type].find_one_and_update(
             {'_id':bson.objectid.ObjectId(R.id)}, # filter
             {'$set':{ent.attr:rec}}, # update
@@ -619,10 +632,11 @@ def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:
         if tracker and (p:=tracker.resolve_id_to_relpath(id=dbId,curr=path)): return p
         if max_level>=0 and len(path)>max_level: return {}
         klassSchema,obj=GG.db_get_schema_object(db,klass,dbId)
+        # creates API value skeleton (meta etc), without attributes
         ret=_db_rec_to_api_value__obj(klass,obj,parentId)
-        if not meta: ret.pop('_meta')
+        if not meta: ret.pop('meta')
         for key,val in obj.items():
-            if key=='_meta': continue
+            if key in ('_id','meta'): continue
             if not key in klassSchema: raise AttributeError(f'Invalid stored attribute {klass}.{key} (not in schema).')
             item=klassSchema[key]
             if item.link is not None:
@@ -685,6 +699,9 @@ class GG(object):
         obj=GG.db_get(db)[klass].find_one({'_id':bson.objectid.ObjectId(dbId)})
         if obj is None: raise KeyError(f'No object {klass} with id={dbId} in the database {db}')
         assert str(obj['_id'])==dbId
+        #if 'meta' not in obj: obj['meta']={}
+        #obj['meta']['id']=dbId
+        #del obj['_id']
         return GG.schema_get_type(db,klass),obj
     @staticmethod
     def schema_get(db:str,include_id:bool=False):
@@ -693,10 +710,6 @@ class GG(object):
             if rawSchema is not None:
                 if not include_id and '_id' in rawSchema: del rawSchema['_id'] # this prevents breakage when reloading
             GG._SCH[db]=SchemaSchema.parse_obj(rawSchema)
-            if 0:
-                # inject _meta attribute into each schema item
-                for key,val in GG._SCH[db]:
-                    val['_meta']=ItemSchema(dtype='object')
         return GG._SCH[db]
     @staticmethod
     def schema_get_type(db:str,type:str):
