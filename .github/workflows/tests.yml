@@ -16,6 +16,7 @@ jobs:
         python-version: [ '3.10' ]
     steps:
     - uses: actions/checkout@v2
+    - uses: JarvusInnovations/background-action@v1
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -30,13 +31,19 @@ jobs:
       run: |
         # stop the build if there are Python syntax errors or undefined names
         python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=obsolete
-    - name: Start MongoDB and REST API
+    - name: Start MongoDB
       run: |
         mkdir ./mongo-data
-        /usr/bin/mongod --ipv6 --bind_ip_all --noauth --dbpath=./mongo-data &
-        sleep 5
-        python ./mupifDB/api/edm/dms3.py &
-        sleep 5
+        /usr/bin/mongod --ipv6 --bind_ip_all --noauth --dbpath=./mongo-data --logpath=mongo.log 2>&1 >/dev/null &
+        sleep 5 # mongo is required for our REST API
+        python ./mupifDB/api/edm/dms3.py 2>&1 >/dev/null &
+      wait-on: |
+        tcp:localhost:27017
+        tcp:localhost:8080
+      tail: true
+      log-output: stderr,stdout
+      log-output-if: failure
+      wait-for: 30s
     - name: pytest (native)
       timeout-minutes: 2
       run: |
