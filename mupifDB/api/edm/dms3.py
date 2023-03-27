@@ -161,7 +161,7 @@ def _validated_quantity_2(
     # 1a. check numeric type convertibility (must be done item-by-item; perhaps can be optimized later?)
     if isinstance(value,Sequence):
         for it in _flatten(value):
-            if not np.can_cast(it,item.dtype,casting='same_kind'): raise ValueError(f'Type mismatch: item {it} cannot be cast to dtype {cls.dtype} (using same_kind)')
+            if not np.can_cast(it,item.dtype,casting='same_kind'): raise ValueError(f'Type mismatch: item {it} cannot be cast to dtype {item.dtype} (using same_kind)')
     np_val=np.array(value,dtype=item.dtype)
     # 1b. check shape
     if len(item.shape) is not None:
@@ -469,10 +469,10 @@ def _api_value_to_db_rec__attr(item,val,prefix):
     'Convert API value to the DB record (for attribute)'
     assert item.link is None
     if item.dtype=='str':
-        if not isinstance(val,str): raise TypeError(f'{klass.key} must be str (not a {val.__class__.__name__})')
+        if not isinstance(val,str): raise TypeError(f'{prefix} must be a str (not a {val.__class__.__name__})')
         return val
     elif item.dtype=='bytes':
-        if not isinstance(val,str): raise TypeError('{klass.key} must be a str (base64-encoded perhaps).')
+        if not isinstance(val,str): raise TypeError('{prefix} must be a str (base64-encoded perhaps).')
         return val
     elif item.dtype=='object':
         return json.loads(json.dumps(val))

@@ -16,6 +16,7 @@ api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 
 daemon = None
 def getDaemon():
+    global daemon
     if daemon is None:
         ns = mupif.pyroutil.connectNameServer()
         daemon = mupif.pyroutil.getDaemon(ns)

@@ -313,6 +313,7 @@ def executeWorkflow(lock, schedulerStat, we_id):
                 #     tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
                 print("temp dir %s created" % (tempDir,))
                 log.info("temp dir %s created" % (tempDir,))
+                workflowLogName = tempDir+'/workflow.log'
                 # copy workflow source to tempDir
                 try:
                     python_script_filename = workflow_record['modulename'] + ".py"
@@ -374,7 +375,6 @@ def executeWorkflow(lock, schedulerStat, we_id):
                 # uses the same python interpreter as the current process
                 cmd = [sys.executable, execScript, '-eid', str(we_id)]
                 # print(cmd)
-                workflowLogName = tempDir+'/workflow.log'
                 with open(workflowLogName, 'w') as workflowLog:
                     ll = 10*'='
                     workflowLog.write(f'''
