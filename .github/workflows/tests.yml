@@ -32,8 +32,9 @@ jobs:
         python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=obsolete
     - name: Start MongoDB
       run: |
-        /usr/bin/mongod --config /etc/mongod.conf &
-        sleep 10
+        mkdir ./mongo-data
+        /usr/bin/mongod --ipv6 --bind_ip_all --noauth --dbpath=./mongo-data &
+        sleep 5
     - name: pytest (native)
       timeout-minutes: 2
       run: |
