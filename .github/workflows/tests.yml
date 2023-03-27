@@ -16,7 +16,6 @@ jobs:
         python-version: [ '3.10' ]
     steps:
     - uses: actions/checkout@v2
-    - uses: JarvusInnovations/background-action@v1
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -37,13 +36,7 @@ jobs:
         /usr/bin/mongod --ipv6 --bind_ip_all --noauth --dbpath=./mongo-data --logpath=mongo.log 2>&1 >/dev/null &
         sleep 5 # mongo is required for our REST API
         python ./mupifDB/api/edm/dms3.py 2>&1 >/dev/null &
-      wait-on: |
-        tcp:localhost:27017
-        tcp:localhost:8080
-      tail: true
-      log-output: stderr,stdout
-      log-output-if: failure
-      wait-for: 30s
+        sleep 5
     - name: pytest (native)
       timeout-minutes: 2
       run: |
