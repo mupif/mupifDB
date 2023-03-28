@@ -23,8 +23,6 @@ import table_structures
 client = MongoClient("mongodb://localhost:27017")
 db = client.MuPIF
 
-clientDMS = MongoClient("mongodb://localhost:27024")
-
 tags_metadata = [
     {
         "name": "Users",
@@ -64,7 +62,7 @@ app = FastAPI(openapi_tags=tags_metadata)
 # import and initialize EDM
 if 1:
     import mupifDB.api.edm as edm
-    edm.initializeEdm(db)
+    edm.initializeEdm(client)
     app.include_router(edm.dms3.router)
 
 

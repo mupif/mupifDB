@@ -733,8 +733,8 @@ class GG(object):
 
 
 
-def initializeEdm(db):
-    GG.client_set(db)
+def initializeEdm(client):
+    GG.client_set(client)
     GG.schema_import_maybe('dms0',open(os.path.dirname(__file__)+'/dms-schema.json').read())
 
 # when run as main, but also upon reload from uvicorn — see at the beginning of this file
