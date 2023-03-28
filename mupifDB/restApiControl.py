@@ -15,11 +15,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 #
 
-def Request(*, method, url, headers=None, auth=None, data=None, timeout=None):
+def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}):
     if method == 'get':
         response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
     elif method == 'post':
-        response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
+        response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data, files=files)
     elif method == 'patch':
         response = requests.patch(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
     elif method == 'put':
@@ -38,8 +38,8 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None):
 def rGet(*, url, headers=None, auth=None, timeout=10):
     return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout)
 
-def rPost(*, url, headers=None, auth=None, data=None, timeout=10):
-    return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
+def rPost(*, url, headers=None, auth=None, data=None, timeout=10, files={}):
+    return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data, files=files)
 
 def rPatch(*, url, headers=None, auth=None, data=None, timeout=10):
     return Request(method='patch', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
@@ -60,8 +60,6 @@ if not RESTserver[-1] == '/':
     RESTserver += '/'
 
 RESTserverMuPIF = RESTserver
-
-RESTserver_onto = RESTserver.replace('8005', '8080')
 
 granta_credentials = {'username': '', 'password': ''}
 
@@ -799,24 +797,24 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # --------------------------------------------------
 
 def getOntoDataArray(DBName, Type):
-    response = rGet(url=RESTserver_onto + str(DBName) + "/" + str(Type) + "/")
+    response = rGet(url=RESTserver + "EDM/" + str(DBName) + "/" + str(Type))
     return response.json()
 
 def getOntoData(DBName, Type, ID, path):
     if ID == '' or ID is None:
         return None
-    url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
     response = rGet(url=url)
     return response.json()
 
 
 def setOntoData(DBName, Type, ID, path, data):
-    url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID)
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID)
     response = rPatch(url=url, data=json.dumps({"path": str(path), "data": data}))
     return response.json()
 
 
 def cloneOntoData(DBName, Type, ID):
-    url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
     response = rGet(url=url)
     return response.json()

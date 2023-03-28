@@ -306,7 +306,7 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
                 info = i
 
         # get the desired object
-        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
         if onto_data is not None:
             if object_type == 'mupif.Property':
                 if onto_data.get('value', None) is not None:
@@ -439,7 +439,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 info = i
 
         # get the desired object
-        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path)
+        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
         if object_type == 'mupif.Property':
             value = onto_data.get('value', None)
             unit = onto_data.get('unit', '')
@@ -613,7 +613,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                         info = i
                 # set the desired object
                 data = {"value": str(prop.quantity.value.tolist()), "unit": str(prop.quantity.unit)}
-                restApiControl.setOntoData(info.get('DBName', ''), info.get('Type', ''), info.get('id', ''), object_path, data=data)
+                restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
                 restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:

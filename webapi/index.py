@@ -753,7 +753,7 @@ def setExecutionInputs(weid):
             form += '<td>' + obo.get('createFrom', '') + '</td>'
             form += '<td>'
             if obo_id != '':
-                form += '<a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('Type', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
+                form += '<a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
             form += '</td>'
             form += '</tr>'
         form += "</table>"
