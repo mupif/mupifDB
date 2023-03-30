@@ -612,7 +612,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                     if i['Name'] == base_object_name:
                         info = i
                 # set the desired object
-                data = {"value": str(prop.quantity.value.tolist()), "unit": str(prop.quantity.unit)}
+                data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
                 restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
                 restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
