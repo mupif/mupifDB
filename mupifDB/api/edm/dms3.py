@@ -84,9 +84,12 @@ class SchemaSchema(pydantic.BaseModel):
     def links_valid(cls,attrs):
         root=attrs['__root__']
         for T,fields in root.items():
-            if 'meta' in fields: raise ValueError(f'{T}: "meta" field may not be specified in schema (is added automatically).')
-            assert 'meta' not in fields
-            fields['meta']=ItemSchema(dtype='object')
+            # must handle repeated validation
+            if 'meta' in fields:
+                if fields['meta']!=ItemSchema(dtype='object'): raise ValueError(f'{T}: "meta" field may not be specified in schema (is added automatically).')
+            else:
+                assert 'meta' not in fields
+                fields['meta']=ItemSchema(dtype='object')
             for f,i in fields.items():
                 if i.link is None: continue
                 if i.link not in root.keys(): raise ValueError(f'{T}.{f}: link to undefined collection {i.link}.')
@@ -416,12 +419,13 @@ def _make_link_digraph(db: str, type: str, id:str, debug:bool=False) -> Tuple[Se
 ## schema POST, GET
 ## 
 @router.post('/{db}/schema')
-def dms_api_schema_post(db: str, schema: str,force:bool=False):
+def dms_api_schema_post(db: str, schema:SchemaSchema, force:bool=False):
     'Writes schema to the DB.'
     coll=GG.db_get(db)['schema']
     if (s:=coll.find_one()) is not None and not force: raise ValueError('Schema already defined (use force=True if you are sure).')
     if s is not None: coll.delete_one(s)
-    coll.insert_one(schema)
+    from rich.pretty import pprint
+    coll.insert_one(schema.dict())
 
 @router.get('/{db}/schema')
 def dms_api_schema_get(db: str, include_id:bool=False):
