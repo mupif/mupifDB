@@ -551,15 +551,36 @@ def getOntoBaseObjectByName(objects, name):
 def createOutputEDMMappingObjects(eid):
     execution = restApiControl.getExecutionRecord(eid)
     OBO = execution.get('EDMMapping', [])
-    for obo in OBO:
-        if obo.get('createFrom', None) is not None:
-            source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
-            if source_obo is not None:
-                if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
-                    new_id = restApiControl.cloneOntoData(source_obo.get('DBName', ''), source_obo.get('EDMEntity', ''), source_obo.get('id'))
-                    restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+    if len(OBO):
+        outputs = restApiControl.getExecutionOutputRecord(eid)
+        edmpaths = []
+        for path in [out.get('EDMPath', None) for out in outputs]:
+            if path is not None and path != '':
+                edmpaths.append(path)
 
+        for obo in OBO:
+            if obo.get('createFrom', None) is not None:
+                source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
+                if source_obo is not None:
+                    if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
+                        edm_name = obo.get('Name', '')
+                        valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
+                        valid_emdpaths = [p.replace(obo.get('Name')+'.', '') for p in valid_emdpaths]
 
+                        safe_links = restApiControl.getSafeLinks(
+                            DBName=source_obo.get('DBName', ''),
+                            Type=source_obo.get('EDMEntity', ''),
+                            ID=source_obo.get('id', ''),
+                            paths=valid_emdpaths
+                        )
+
+                        new_id = restApiControl.cloneOntoData(
+                            DBName=source_obo.get('DBName', ''),
+                            Type=source_obo.get('EDMEntity', ''),
+                            ID=source_obo.get('id'),
+                            shallow=safe_links
+                        )
+                        restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
 
 
 def mapInputs(app, eid):

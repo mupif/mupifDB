@@ -15,9 +15,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 #
 
-def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}):
+def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}):
     if method == 'get':
-        response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
+        response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data, params=params)
     elif method == 'post':
         response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data, files=files)
     elif method == 'patch':
@@ -35,8 +35,8 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, fi
         raise Exception('API returned code ' + str(response.status_code))
     return None
 
-def rGet(*, url, headers=None, auth=None, timeout=10):
-    return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout)
+def rGet(*, url, headers=None, auth=None, timeout=10, params={}):
+    return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params)
 
 def rPost(*, url, headers=None, auth=None, data=None, timeout=10, files={}):
     return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data, files=files)
@@ -814,7 +814,13 @@ def setOntoData(DBName, Type, ID, path, data):
     return response.json()
 
 
-def cloneOntoData(DBName, Type, ID):
+def cloneOntoData(DBName, Type, ID, shallow=[]):
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
-    response = rGet(url=url)
+    response = rGet(url=url, params={"shallow": ' '.join(shallow)})
+    return response.json()
+
+
+def getSafeLinks(DBName, Type, ID, paths=[]):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/safe-links"
+    response = rGet(url=url, params={"paths": ' '.join(paths)})
     return response.json()
