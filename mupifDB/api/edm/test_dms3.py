@@ -117,6 +117,7 @@ class Test_REST(unittest.TestCase):
     def test_01_post(self):
         C=self.__class__
         C.ID_01=C.post(f'{DB}/BeamState',**dta)
+        C.ID_02=C.post(f'{DB}/BeamState',beam={ "cs":{ "rve":{ "ct":{ "id":"scan-000" } } } })
     def test_02_get(self):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=True,tracking=False)

@@ -425,7 +425,7 @@ def dms_api_schema_post(db: str, schema:SchemaSchema, force:bool=False):
     if (s:=coll.find_one()) is not None and not force: raise ValueError('Schema already defined (use force=True if you are sure).')
     if s is not None: coll.delete_one(s)
     from rich.pretty import pprint
-    coll.insert_one(schema.dict())
+    coll.insert_one(schema)
 
 @router.get('/{db}/schema')
 def dms_api_schema_get(db: str, include_id:bool=False):
