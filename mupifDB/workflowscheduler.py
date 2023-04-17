@@ -612,7 +612,6 @@ if __name__ == '__main__':
                                         except Exception as e:
                                             log.error(repr(e))
 
-                            break
                         # ok, no more jobs to schedule for now, wait
                         # display progress (consider use of tqdm)
                         lt = time.localtime(time.time())
