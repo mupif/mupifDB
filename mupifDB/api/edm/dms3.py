@@ -78,11 +78,10 @@ class ItemSchema(pydantic.BaseModel):
 class SchemaSchema(pydantic.BaseModel):
     'Schema of the schema itself; read via parse_obj'
     __root__: typing.Dict[str,typing.Dict[str,ItemSchema]]
-    def getRoot(self): return self.__root__
 
-    @pydantic.root_validator
-    def links_valid(cls,attrs):
-        root=attrs['__root__']
+    @pydantic.root_validator(pre=False)
+    def _links_valid(cls, values):
+        root=values['__root__']
         for T,fields in root.items():
             # must handle repeated validation
             if 'meta' in fields:
@@ -93,7 +92,7 @@ class SchemaSchema(pydantic.BaseModel):
             for f,i in fields.items():
                 if i.link is None: continue
                 if i.link not in root.keys(): raise ValueError(f'{T}.{f}: link to undefined collection {i.link}.')
-        return root
+        return values
 
 
 
@@ -139,6 +138,7 @@ from pydantic import StrictInt, StrictFloat
 # use StrictFloat and StrictInt instead
 @pydantic.validate_arguments()
 def _validated_quantity_2(
+        itemName: str,
         item: ItemSchema,
         value: Union[
             StrictFloat,StrictInt,
@@ -164,23 +164,23 @@ def _validated_quantity_2(
     # 1a. check numeric type convertibility (must be done item-by-item; perhaps can be optimized later?)
     if isinstance(value,Sequence):
         for it in _flatten(value):
-            if not np.can_cast(it,item.dtype,casting='same_kind'): raise ValueError(f'Type mismatch: item {it} cannot be cast to dtype {item.dtype} (using same_kind)')
+            if not np.can_cast(it,item.dtype,casting='same_kind'): raise ValueError(f'{itemName}: type mismatch: item {it} cannot be cast to dtype {item.dtype} (using same_kind)')
     np_val=np.array(value,dtype=item.dtype)
     # 1b. check shape
     if len(item.shape) is not None:
-        if len(item.shape)!=np_val.ndim: raise ValueError(f'Dimension mismatch: {np_val.ndim} (shape {np_val.shape}), should be {len(item.shape)} (shape {item.shape})')
+        if len(item.shape)!=np_val.ndim: raise ValueError(f'{itemName}: dimension mismatch: {np_val.ndim} (shape {np_val.shape}), should be {len(item.shape)} (shape {item.shape})')
         for d in range(np_val.ndim):
-            if item.shape[d]>0 and np_val.shape[d]!=item.shape[d]: raise ValueError(f'Shape mismatch: axis {d}: {np_val.shape[d]} (should be {item.shape[d]})')
+            if item.shape[d]>0 and np_val.shape[d]!=item.shape[d]: raise ValueError(f'{itemName}: shape mismatch: axis {d}: {np_val.shape[d]} (should be {item.shape[d]})')
     # 2. handle units
     # 2a. schema has unit, data does not; or vice versa
-    if (unit is None)!=(item.unit is None): raise ValueError(f'Unit mismatch: item {it} stored unit is {unit} but schema unit is {item.unit}')
+    if (unit is None)!=(item.unit is None): raise ValueError(f'{itemName}: unit mismatch: unit is "{unit}" but schema unit is "{item.unit}".')
     
     # 2b. no unit, return np_val only
     if item.unit is None: return np_val
     # 2c. has unit, convert to schema unit (will raise exception is units are not compatible) and return au.Quantity
     return (np_val*au.Unit(unit)).to(item.unit)
                      
-def _validated_quantity(item: ItemSchema, data):
+def _validated_quantity(itemName: str, item: ItemSchema, data):
     '''
     Gets sequence (value only) or dict as {'value':..} or {'value':..,'unit':..};
     passes that to _validated_quantity_2, which will do the proper data check and conversions;
@@ -190,8 +190,8 @@ def _validated_quantity(item: ItemSchema, data):
     elif isinstance(data,dict):
         if extras:=(data.keys()-{'value','unit'}):
             raise ValueError(f'Quantity has extra keywords: {", ".join(extras)} (only value, unit allowed).')
-        return _validated_quantity_2(item,data['value'],data.get('unit',None))
-    else: return _validated_quantity_2(item,value=data,unit=None)
+        return _validated_quantity_2(itemName, item,data['value'],data.get('unit',None))
+    else: return _validated_quantity_2(itemName, item,value=data,unit=None)
 
 
 class _PathEntry(pydantic.BaseModel):
@@ -419,13 +419,15 @@ def _make_link_digraph(db: str, type: str, id:str, debug:bool=False) -> Tuple[Se
 ## schema POST, GET
 ## 
 @router.post('/{db}/schema')
-def dms_api_schema_post(db: str, schema:SchemaSchema, force:bool=False):
+def dms_api_schema_post(db: str, schema: SchemaSchema, force:bool=False):
     'Writes schema to the DB.'
     coll=GG.db_get(db)['schema']
     if (s:=coll.find_one()) is not None and not force: raise ValueError('Schema already defined (use force=True if you are sure).')
     if s is not None: coll.delete_one(s)
     from rich.pretty import pprint
-    coll.insert_one(schema)
+    # print(f'Schema is a {type(schema)=}')
+    coll.insert_one(json.loads(schema.json()))
+    GG.schema_invalidate_cache()
 
 @router.get('/{db}/schema')
 def dms_api_schema_get(db: str, include_id:bool=False):
@@ -481,7 +483,7 @@ def _api_value_to_db_rec__attr(item,val,prefix):
     elif item.dtype=='object':
         return json.loads(json.dumps(val))
     elif item.is_a_quantity():
-        q=_validated_quantity(item,val)
+        q=_validated_quantity(prefix,item,val)
         return _quantity_to_dict(q)
     else: raise NotImplementedError(f'{prefix}: unable to convert API data to database record?? {item=}')
 
@@ -717,7 +719,8 @@ class GG(object):
         return GG._SCH[db]
     @staticmethod
     def schema_get_type(db:str,type:str):
-        return getattr(GG.schema_get(db),type)
+        # why do we need to access through __root__ here? unclear
+        return GG.schema_get(db).__root__[type]
 
     @staticmethod
     def schema_invalidate_cache():
