@@ -709,6 +709,7 @@ class GG(object):
         #obj['meta']['id']=dbId
         #del obj['_id']
         return GG.schema_get_type(db,klass),obj
+
     @staticmethod
     def schema_get(db:str,include_id:bool=False):
         if db not in GG._SCH:
@@ -717,6 +718,7 @@ class GG(object):
                 if not include_id and '_id' in rawSchema: del rawSchema['_id'] # this prevents breakage when reloading
             GG._SCH[db]=SchemaSchema.parse_obj(rawSchema)
         return GG._SCH[db]
+
     @staticmethod
     def schema_get_type(db:str,type:str):
         # why do we need to access through __root__ here? unclear
@@ -726,12 +728,14 @@ class GG(object):
     def schema_invalidate_cache():
         GG._SCH={}
 
+    @pydantic.validate_arguments
     @staticmethod
     def schema_import(db:str, json_str:str, force=False):
-        rawSchema=json.loads(json_str)
-        dms_api_schema_post(db,rawSchema,force=force)
+        schema=SchemaSchema.parse_obj(json.loads(json_str))
+        dms_api_schema_post(db,schema,force=force)
         GG.schema_invalidate_cache()
 
+    @pydantic.validate_arguments
     @staticmethod
     def schema_import_maybe(db: str, json_str:str):
         try: s=GG.schema_get(db)
