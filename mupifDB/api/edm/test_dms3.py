@@ -12,7 +12,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import dms3
 
 
-DB='dms0'
+DB='test'
+DB1='test-1'
 REST_URL='http://localhost:8080'
 dms3.initializeEdm(pymongo.MongoClient("localhost",27017))
 
@@ -28,15 +29,15 @@ dta={ # BeamState
                 "origin":{"value":[5,5,5],"unit":"mm"},
                 "size":{ "value":[150,161,244],"unit":"um" },
                 "ct":{ # CTScan
-                    "id":"scan-000"
+                    "id":{'value':"scan-000"}
                 },
                 "materials":[
                     { # MaterialRecord
-                        "name":"mat0",
+                        "name":{'value':"mat0"},
                         "props":{"origin":"CZ","year":2018,"quality":"good"},
                     },
                     { # MaterialRecord
-                        "name":"mat1",
+                        "name":{'value':"mat1"},
                         "props":{"origin":"PL","year":2016,"project":"HTL-344PRP"},
                     }
                 ]
@@ -89,8 +90,8 @@ class Test_REST(unittest.TestCase):
         if show: pprint(data)
         return data
     @classmethod
-    def post(C,p,**kw):
-        r=requests.post(f'{REST_URL}/{p}',json=kw)
+    def post(C,p,body,query=None):
+        r=requests.post(f'{REST_URL}/{p}',json=body,params=query)
         if not r.ok: raise RuntimeError(r.text)
         return json.loads(r.text)
     @classmethod
@@ -114,10 +115,15 @@ class Test_REST(unittest.TestCase):
         if not r.ok: raise RuntimeError(r.text)
         return json.loads(r.text)
 
+    def test_00_set_schema(self):
+        C=self.__class__
+        schema=json.loads(open(os.path.dirname(__file__)+'/dms-schema.json').read())
+        print(schema)
+        C.post(f'{DB}/schema',body=schema,query={'force':True})
     def test_01_post(self):
         C=self.__class__
-        C.ID_01=C.post(f'{DB}/BeamState',**dta)
-        C.ID_02=C.post(f'{DB}/BeamState',beam={ "cs":{ "rve":{ "ct":{ "id":"scan-000" } } } })
+        C.ID_01=C.post(f'{DB}/BeamState',body=dta)
+        C.ID_02=C.post(f'{DB}/BeamState',body={'beam':{ "cs":{ "rve":{ "ct":{ "id":{'value':"scan-000"} } } } }})
     def test_02_get(self):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=True,tracking=False)
@@ -174,6 +180,31 @@ class Test_REST(unittest.TestCase):
         blob2=C.get_data(f'{DB}/blob/{id}')
         self.assertEqual(blob,blob2)
 
+    def test_10_schema_post(self):
+        C=self.__class__
+        schema={
+            'Test':{
+                'prop': {
+                    'unit':'m'
+                    ,'implicit':{'DataID':'ID_Length','ClassName':'Property'}
+                 },
+                'astr': {'dtype':'str'},
+                'anum': {'dtype':'i'},
+                'sstr1': {'dtype':'str', 'shape':[-1]},
+                'sstr22': {'dtype':'str', 'shape':[2,2]},
+            }
+        }
+        C.post(f'{DB1}/schema',body=schema,query={'force':True})
+        ID=C.post(f'{DB1}/Test',body={'prop':{'value':955,'unit':'mm'},'astr':{'value':'foo'},'anum':{'value':4},'sstr1':{'value':['foo','bar','baz']},'sstr22':{'value':[['foo','bar'],['baz','cha']]}})
+        t=C.get(f'{DB1}/Test/{ID}')
+        pprint(t)
+        self.assertEqual(t['prop']['DataID'],'ID_Length')
+        self.assertEqual(t['prop']['ClassName'],'Property')
+        self.assertEqual(t['sstr22']['value'],[['foo','bar'],['baz','cha']])
+        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr2':[['foo','bar'],['baz']]}))
+        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr2':[['foo'],['baz']]}))
+        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr2':['foo','bar']}))
+
     def test_99_float_error(self):
         C=self.__class__
         beamDta={ # Beam 
@@ -181,11 +212,12 @@ class Test_REST(unittest.TestCase):
             "height": { "value": 12.3456789, "unit":"cm" },
             "density": { "value": 3.456789, "unit":"g/cm3" },
         }
-        ID=C.post(f'{DB}/Beam',**beamDta)
+        ID=C.post(f'{DB}/Beam',body=beamDta)
         b=C.get(f'{DB}/Beam/{ID}',meta=False,tracking=False)
         #
         self.assertEqual(b['height']['unit'],'m')
         self.assertGreater(b['height']['value'],0.1234567)
+
 
 
 class Test_Direct(unittest.TestCase):
@@ -255,7 +287,7 @@ class Test_Direct(unittest.TestCase):
         self.assertFalse(isinstance(M,dict))
         # combined wildcards: each [:] has 2 items, thus 6 is returned
         names=dms3.dms_api_path_get(DB,type='BeamState',id=C.ID0,path='csState[:].rveStates[:].rve.materials[:].name')
-        self.assertEqual(names,3*['mat0','mat1'])
+        self.assertEqual(names,3*[{'value':'mat0'},{'value':'mat1'}])
         # reverse slice and explicit reverse multiindex return the same
         a1=dms3.dms_api_path_get(DB,type='BeamState',id=C.ID0,path='csState[::-1].bendingMoment')
         a2=dms3.dms_api_path_get(DB,type='BeamState',id=C.ID0,path='csState[1,0].bendingMoment')
@@ -321,7 +353,7 @@ class Test_Direct(unittest.TestCase):
     def test_06_filter(self):
         C=self.__class__
         # each wildcard expands to two (6 in total) but only material ending with 0 is filtered
-        RR=dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:].rveStates[:].rve.materials[:|name.endswith("0")].name')
+        RR=dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:].rveStates[:].rve.materials[:|name["value"].endswith("0")].name')
         self.assertEqual(len(RR),3)
         RR=dms3._resolve_path_head(DB,type='BeamState',id=C.ID0,path='csState[:|eps_axial["value"]<800]')
         self.assertEqual(len(RR),1)

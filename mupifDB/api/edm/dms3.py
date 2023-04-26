@@ -55,6 +55,7 @@ class ItemSchema(pydantic.BaseModel):
     unit: Optional[str]=None
     shape: pydantic.conlist(item_type=int,min_items=0,max_items=5)=[]
     link: Optional[str]=None
+    implicit: Dict[str,Union[str,int]]=pydantic.Field(default_factory=dict)
 
     def is_a_quantity(self):
         return self.dtype in ('f','i','?')
@@ -69,11 +70,20 @@ class ItemSchema(pydantic.BaseModel):
         return v
 
     @pydantic.root_validator
+    def dtype_shape(cls,attrs):
+        dtype,shape=attrs['dtype'],attrs['shape']
+        if dtype=='bytes' and shape!=[]: raise ValueError('bytes must have no shape specified')
+        if dtype=='objects' and shape!=[]: raise ValueError('objects must have no shape specified')
+        return attrs
+
+    @pydantic.root_validator
     def link_shape(cls,attrs):
         if attrs['link'] is not None:
             if len(attrs['shape'])>1: raise ValueError('links must be either scalar (shape=[]) or 1d array (shape=[num]).')
             if attrs['unit'] is not None: raise ValueError('unit not permitted with links')
+            if 'implicit' in attrs and len(attrs['implicit'])>0: raise ValueError('implicit values not permitted with links')
         return attrs
+
 
 class SchemaSchema(pydantic.BaseModel):
     'Schema of the schema itself; read via parse_obj'
@@ -94,8 +104,19 @@ class SchemaSchema(pydantic.BaseModel):
                 if i.link not in root.keys(): raise ValueError(f'{T}.{f}: link to undefined collection {i.link}.')
         return values
 
+class StrModel(pydantic.BaseModel):
+    value: Union[str,List[str],List[List[str]],List[List[List[str]]],List[List[List[List[str]]]]]
+    def schema_check(self,prefix,item):
+        assert item.dtype=='str'
+        arr=np.array(self.value,dtype='str') # this check that list dimensions are consistent
+        if len(arr.shape)!=len(item.shape): raise ValueError(f'{prefix}: inconsistent dimensionality (schema: {item.shape}, data: {arr.shape})')
+        for d in range(arr.ndim):
+            if item.shape[d]>0 and arr.shape[d]!=item.shape[d]: raise ValueError(f'{prefix}: dimension {d} invalid (schema: {item.shape[d]}, data: {arr.shape[d]}; overall shape: {item.shape})')
+        return arr.tolist()
 
-
+class BytesModel(pydantic.BaseModel):
+    value: str
+    encoding: str
 
 ##
 ## VARIOUS HELPER FUNCTIONS
@@ -179,7 +200,7 @@ def _validated_quantity_2(
     if item.unit is None: return np_val
     # 2c. has unit, convert to schema unit (will raise exception is units are not compatible) and return au.Quantity
     return (np_val*au.Unit(unit)).to(item.unit)
-                     
+
 def _validated_quantity(itemName: str, item: ItemSchema, data):
     '''
     Gets sequence (value only) or dict as {'value':..} or {'value':..,'unit':..};
@@ -320,7 +341,7 @@ def _resolve_path_head(db: str, type: str, id: str, path: Optional[str]) -> _Res
     '''
     def _descend(*,klass,dbId,path,level,parentId,resolved):
         klassSchema,rec=GG.db_get_schema_object(db,klass,dbId)
-        obj=_db_rec_to_api_value__obj(klass,rec,parent=parentId)
+        obj=_db_rec_to_api_value__obj(klass,klassSchema,rec,parent=parentId)
         obj|=rec
         # pprint(obj)
         import attrdict
@@ -471,15 +492,17 @@ class _ObjectTracker:
         return (len(curr)-common)*'.'+_unparse_path(abspath[common:])
 
 
+
 def _api_value_to_db_rec__attr(item,val,prefix):
     'Convert API value to the DB record (for attribute)'
     assert item.link is None
+    for k,v in item.implicit.items():
+        if k in val and val[k]!=v: raise ValueError(f'{prefix}: implicit field {k} has different value in schema and data ({v} vs. {val[k]})')
     if item.dtype=='str':
-        if not isinstance(val,str): raise TypeError(f'{prefix} must be a str (not a {val.__class__.__name__})')
-        return val
-    elif item.dtype=='bytes':
-        if not isinstance(val,str): raise TypeError('{prefix} must be a str (base64-encoded perhaps).')
-        return val
+        s=StrModel.parse_obj(val)
+        s.schema_check(prefix,item)
+        return s.dict()
+    elif item.dtype=='bytes': return BytesModel.parse_obj(val).dict()
     elif item.dtype=='object':
         return json.loads(json.dumps(val))
     elif item.is_a_quantity():
@@ -487,7 +510,7 @@ def _api_value_to_db_rec__attr(item,val,prefix):
         return _quantity_to_dict(q)
     else: raise NotImplementedError(f'{prefix}: unable to convert API data to database record?? {item=}')
 
-def _api_value_to_db_rec__obj(data):
+def _api_value_to_db_rec__obj(data,klass,klassSchema):
     'Convert API value to DB record, without attribute (for objects)'
     ret={}
     # transfer selected metadata to the new object, if any
@@ -500,14 +523,20 @@ def _api_value_to_db_rec__obj(data):
 def _db_rec_to_api_value__attr(item,dbrec,prefix):
     'Convert DB record to API value (for attribute)'
     assert item.link is None
-    if item.dtype=='str': return dbrec
+    # print(prefix,item)
+    for k,v in item.implicit.items():
+        assert k not in dbrec
+        dbrec[k]=v
+    if item.dtype=='str':
+        if isinstance(dbrec,str): return {'value':dbrec} # backward-compat line, can be safely removed later
+        return dbrec
     elif item.dtype=='bytes': return dbrec
     elif item.dtype=='object': return dbrec
     elif item.is_a_quantity():
         return dbrec
     else: raise NotImplementedError(f'{prefix}: unable to convert record to API data?? {item=}')
 
-def _db_rec_to_api_value__obj(klass,rec,parent):
+def _db_rec_to_api_value__obj(klass,klassSchema,rec,parent):
     'Convert DB record to API value, without any attributes (for objects)'
     ret={}
     meta=ret['meta']=rec.pop('meta',{})
@@ -555,7 +584,7 @@ def dms_api_object_patch(db:str,type:str,id:str,patchData:PatchData):
 def dms_api_object_post(db: str, type:str, data:dict) -> str:
     def _new_object(klass,dta,path,tracker):
         klassSchema=GG.schema_get_type(db,klass)
-        rec=_api_value_to_db_rec__obj(dta)
+        rec=_api_value_to_db_rec__obj(dta,klass,klassSchema)
         for key,val in dta.items():
             if not key in klassSchema: raise AttributeError(f'Invalid attribute {klass}.{key} (hint: {klass} defines: {", ".join(klassSchema.keys())}).')
             item=klassSchema[key]
@@ -639,7 +668,7 @@ def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:
         if max_level>=0 and len(path)>max_level: return {}
         klassSchema,obj=GG.db_get_schema_object(db,klass,dbId)
         # creates API value skeleton (meta etc), without attributes
-        ret=_db_rec_to_api_value__obj(klass,obj,parentId)
+        ret=_db_rec_to_api_value__obj(klass,klassSchema,obj,parentId)
         if not meta: ret.pop('meta')
         for key,val in obj.items():
             if key in ('_id','meta'): continue
