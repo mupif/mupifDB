@@ -814,6 +814,12 @@ def setOntoData(DBName, Type, ID, path, data):
     return response.json()
 
 
+def createOntoData(DBName, Type, data):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type)
+    response = rPost(url=url, data=json.dumps(data))
+    return response.json()
+
+
 def cloneOntoData(DBName, Type, ID, shallow=[]):
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
     response = rGet(url=url, params={"shallow": ' '.join(shallow)})

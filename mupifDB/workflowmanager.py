@@ -581,6 +581,17 @@ def createOutputEDMMappingObjects(eid):
                             shallow=safe_links
                         )
                         restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+            elif obo.get('createNew', None) is not None:
+                edm_name = obo.get('Name', '')
+                valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
+                valid_emdpaths = [p.replace(obo.get('Name') + '.', '') for p in valid_emdpaths]
+
+                new_id = restApiControl.createOntoData(
+                    DBName=obo.get('DBName', ''),
+                    Type=obo.get('EDMEntity', ''),
+                    data=obo.get('createNew')
+                )
+                restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
 
 
 def mapInputs(app, eid):

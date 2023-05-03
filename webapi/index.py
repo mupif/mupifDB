@@ -557,11 +557,20 @@ def setExecutionInputs(weid):
                             restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
                         elif i['Type'] == 'mupif.String':
                             msg += 'Setting %s (ObjID %s) to %s</br>' % (name, objID, value)
+                            valuetype = i.get('ValueType', 'Scalar')
+                            strval = str(value)
+                            if valuetype == 'Vector':
+                                if strval.find('[') >= 0:
+                                    strval = literal_eval(strval)
+                                else:
+                                    strval = strval.split(' ')
+
 
                             object_dict = {
                                 'ClassName': 'String',
                                 'DataID': i['TypeID'].replace('mupif.DataID.', ''),
-                                'Value': str(value)
+                                'Value': strval,
+                                'ValueType': valuetype
                             }
                             restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
                         else:
@@ -685,14 +694,26 @@ def setExecutionInputs(weid):
                     prop = mupif.String.from_db_dict(i['Object'])
                     ival = prop.getValue()
                 except:
-                    ival = ''
-                form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
+                    if i.get('ValueType', 'Scalar') == 'Vector':
+                        ival = []
+                    else:
+                        ival = ''
+                if i.get('ValueType', 'Scalar') == 'Vector':
+                    sval = str(list(ival))
+                else:
+                    sval = str(ival)
+                form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, sval, required)
             else:
                 if i.get('EDMPath', None) is not None:
                     pass
                 else:
-                    if i['Object'].get('Value', None) is not None:
-                        form += str(i['Object']['Value'])
+                    val = i['Object'].get('Value', None)
+                    if val is not None:
+                        if i.get('ValueType', 'Scalar') == 'Vector':
+                            form += str(list(val))
+                        else:
+                            form += str(val)
+
             form += "</td>"
             form += '<td>' + str(i.get('Units')) + '</td>'
 
@@ -737,7 +758,7 @@ def setExecutionInputs(weid):
             obo_id = obo.get('id', '')
             if obo_id is None:
                 obo_id = ''
-            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None:
+            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None and obo.get('createNew', None):
                 # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
                 form += '<td>'
                 form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
