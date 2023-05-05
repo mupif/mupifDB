@@ -604,6 +604,8 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                 )
                                 new_ids.append(new_id)
                             restApiControl.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
+                            for new_id in new_ids:
+                                restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
                         else:
                             new_id = restApiControl.cloneOntoData(
                                 DBName=source_obo.get('DBName', ''),
@@ -612,6 +614,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                 shallow=safe_links
                             )
                             restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+                            restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
 
             elif obo.get('createNew', None) is not None:
                 edm_name = obo.get('Name', '')
@@ -624,6 +627,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                     data=obo.get('createNew')
                 )
                 restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+                restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
 
 
 def mapInputs(app, eid):
@@ -704,7 +708,6 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                         info = i
                 # set the desired object
                 data = prop.to_db_dict(dialect='edm')
-                print(data)
                 # data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
                 if edm_list is True:
                     for edm_id in info.get('ids', []):
@@ -739,7 +742,6 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                     info = i
             # set the desired object
             data = prop.to_db_dict(dialect='edm')
-            print(data)
             if edm_list is True:
                 for edm_id in info.get('ids', []):
                     restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
@@ -765,7 +767,6 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if len(ids) == len(dl.objs):
                 for idx in range(0, len(ids)):
                     data = dl.objs[idx].to_db_dict(dialect='edm')
-                    print(data)
                     restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
             else:
                 raise ValueError('The length of the DataList does not match the length of the EDM objects list. (%d x %s)' % (len(ids), len(dl.objs)))
