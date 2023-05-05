@@ -354,6 +354,17 @@ def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
     return get_execution(uid)
 
 
+class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
+    name: str
+    value: list[str]
+
+
+@app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
+def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}})
+    return get_execution(uid)
+
+
 class M_ModifyExecution(BaseModel):
     key: str
     value: str

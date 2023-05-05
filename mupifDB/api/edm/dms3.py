@@ -209,8 +209,8 @@ def _validated_quantity(itemName: str, item: ItemSchema, data):
     '''
     if isinstance(data,Sequence): return _validated_quantity_2(item,data)
     elif isinstance(data,dict):
-        if extras:=(data.keys()-{'value','unit'}):
-            raise ValueError(f'Quantity has extra keywords: {", ".join(extras)} (only value, unit allowed).')
+        # if extras:=(data.keys()-{'value','unit'}):
+        #     raise ValueError(f'Quantity has extra keywords: {", ".join(extras)} (only value, unit allowed).')
         return _validated_quantity_2(itemName, item,data['value'],data.get('unit',None))
     else: return _validated_quantity_2(itemName, item,value=data,unit=None)
 

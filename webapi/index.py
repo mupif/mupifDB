@@ -705,7 +705,25 @@ def setExecutionInputs(weid):
                 form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, sval, required)
             else:
                 if i.get('EDMPath', None) is not None:
-                    pass
+                    onto_path = i.get('EDMPath')
+                    onto_base_objects = execution_record.get('EDMMapping', [])
+
+                    splitted = onto_path.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
+
+                    # find base object info
+                    info = {}
+                    for ii in onto_base_objects:
+                        if ii['Name'] == base_object_name:
+                            info = ii
+
+                    # get the desired object
+                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    if onto_data is not None and type(onto_data) is dict:
+                        value = onto_data.get('value', None)
+                        if value is not None:
+                            form += str(value)
                 else:
                     val = i['Object'].get('Value', None)
                     if val is not None:
@@ -758,7 +776,7 @@ def setExecutionInputs(weid):
             obo_id = obo.get('id', '')
             if obo_id is None:
                 obo_id = ''
-            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None and obo.get('createNew', None):
+            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None and obo.get('createNew', None) is None:
                 # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
                 form += '<td>'
                 form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
@@ -871,21 +889,16 @@ def getExecutionOutputs(weid):
             form += '<td>' + obo.get('EDMEntity', '') + '</td>'
             form += '<td>' + obo.get('DBName', '') + '</td>'
             obo_id = obo.get('id', '')
-            if obo_id is None:
-                obo_id = ''
-            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None:
-                # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
-                form += '<td>'
-                form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
-                form += '<option value="">-</option>'
-                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('EDMEntity', '')):
-                    form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
-                form += '</select>'
-                form += '</td>'
-            else:
-                form += '<td>' + obo_id + '</td>'
+            if obo.get('EDMList', False) is True:
+                obo_id = obo.get('ids', [])
+            # if obo_id is None:
+            #     obo_id = ''
+            form += '<td>' + str(obo_id) + '</td>'
             form += '<td>' + obo.get('createFrom', '') + '</td>'
-            form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
+            if obo.get('EDMList', False) is True:
+                form += '<td></td>'
+            else:
+                form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
             form += '</tr>'
         form += "</table>"
 

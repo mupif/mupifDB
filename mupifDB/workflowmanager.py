@@ -53,12 +53,16 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
         if i.get('EDMPath', None) is not None:
             irec['EDMPath'] = i.get('EDMPath')
+        if i.get('EDMList', None) is not None:
+            irec['EDMList'] = i.get('EDMList')
         Inputs.append(irec)
     Outputs = []
     for i in workflowOutputs:
         irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
         if i.get('EDMPath', None) is not None:
             irec['EDMPath'] = i.get('EDMPath')
+        if i.get('EDMList', None) is not None:
+            irec['EDMList'] = i.get('EDMList')
         Outputs.append(irec)
     rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
 
@@ -145,6 +149,7 @@ class WorkflowExecutionIODataSet:
                     'Units': io['Units'],
                     'ObjID': objid,
                     'EDMPath': None if no_onto else io.get('EDMPath', None),
+                    'EDMList': False if no_onto else io.get('EDMList', False),
                     'Compulsory': io.get('Compulsory', None),
                     'FileID': None,
                     'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}
@@ -226,6 +231,7 @@ class WorkflowExecutionContext:
                 OBO = []
                 for obo in wdoc.get('EDMMapping', []):
                     obo['id'] = None
+                    obo['ids'] = None
                     OBO.append(obo)
                 rec['EDMMapping'] = OBO
             new_id = restApiControl.insertExecution(rec)
@@ -309,6 +315,9 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
         onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
         if onto_data is not None:
             if object_type == 'mupif.Property':
+                if onto_data.get('value', None) is not None:
+                    return True
+            if object_type == 'mupif.String':
                 if onto_data.get('value', None) is not None:
                     return True
         return False
@@ -451,6 +460,15 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 "Time": None
             })
             app.set(prop, app_obj_id)
+        elif object_type == 'mupif.String':
+            value = onto_data.get('value', None)
+            unit = onto_data.get('unit', '')
+            prop = mupif.String.from_db_dict({
+                "Value": value,
+                "DataID": data_id,
+                "ValueType": value_type
+            })
+            app.set(prop, app_obj_id)
         else:
             raise ValueError('Handling of Onto io param of type %s is not implemented' % object_type)
 
@@ -548,7 +566,7 @@ def getOntoBaseObjectByName(objects, name):
             return i
     return None
 
-def createOutputEDMMappingObjects(eid):
+def createOutputEDMMappingObjects(app, eid, outputs):
     execution = restApiControl.getExecutionRecord(eid)
     OBO = execution.get('EDMMapping', [])
     if len(OBO):
@@ -574,13 +592,27 @@ def createOutputEDMMappingObjects(eid):
                             paths=valid_emdpaths
                         )
 
-                        new_id = restApiControl.cloneOntoData(
-                            DBName=source_obo.get('DBName', ''),
-                            Type=source_obo.get('EDMEntity', ''),
-                            ID=source_obo.get('id'),
-                            shallow=safe_links
-                        )
-                        restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+                        if obo.get('EDMList', False) is True:
+                            num = getEDMListLength(app=app, eid=eid, edm_name=obo.get('Name', ''), outputs=outputs)
+                            new_ids = []
+                            for i in range(0, num):
+                                new_id = restApiControl.cloneOntoData(
+                                    DBName=source_obo.get('DBName', ''),
+                                    Type=source_obo.get('EDMEntity', ''),
+                                    ID=source_obo.get('id'),
+                                    shallow=safe_links
+                                )
+                                new_ids.append(new_id)
+                            restApiControl.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
+                        else:
+                            new_id = restApiControl.cloneOntoData(
+                                DBName=source_obo.get('DBName', ''),
+                                Type=source_obo.get('EDMEntity', ''),
+                                ID=source_obo.get('id'),
+                                shallow=safe_links
+                            )
+                            restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+
             elif obo.get('createNew', None) is not None:
                 edm_name = obo.get('Name', '')
                 valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
@@ -629,7 +661,34 @@ def mapInputs(app, eid):
             )
 
 
-def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}):
+def getEDMListLength(app, eid, edm_name, outputs):
+    for outitem in outputs:
+        if outitem.get('EDMList', False) is True:
+            name = outitem['Name']
+            object_type = outitem['Type']
+            typeID = outitem.get('TypeID', outitem.get('Type_ID'))
+            # try to get raw PID from typeID
+            match = re.search('\w+\Z', typeID)
+            if match:
+                typeID = match.group()
+
+            objID = outitem.get('ObjID', outitem.get('Obj_ID', ''))
+            if not ObjIDIsIterable(objID):
+                objID = [objID]
+
+            for oid in objID:
+                edmpath = outitem.get('EDMPath', None)
+                if edmpath is not None:
+                    edmpath_base = edmpath.split('.')[0] if len(edmpath.split('.')) else None
+                    if edmpath_base == edm_name:
+                        obj = app.get(mupif.DataID[typeID], None, oid)
+                        if obj.isInstance(mupif.DataList):
+                            return len(obj.objs)
+
+    return 0
+
+
+def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}, edm_list=False):
     if object_type == 'mupif.Property':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
 
@@ -644,8 +703,14 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                     if i['Name'] == base_object_name:
                         info = i
                 # set the desired object
-                data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
-                restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                data = prop.to_db_dict(dialect='edm')
+                print(data)
+                # data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
+                if edm_list is True:
+                    for edm_id in info.get('ids', []):
+                        restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
+                else:
+                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
                 restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
@@ -663,7 +728,49 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
 
     elif object_type == 'mupif.String':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
-        restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+        if onto_path is not None:
+            splitted = onto_path.split('.', 1)
+            base_object_name = splitted[0]
+            object_path = splitted[1]
+            # find base object info
+            info = {}
+            for i in onto_base_objects:
+                if i['Name'] == base_object_name:
+                    info = i
+            # set the desired object
+            data = prop.to_db_dict(dialect='edm')
+            print(data)
+            if edm_list is True:
+                for edm_id in info.get('ids', []):
+                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
+            else:
+                restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+        else:
+            restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+
+    elif object_type.startswith('mupif.DataList'):
+        dl = app.get(mupif.DataID[data_id], time, obj_id)
+        if onto_path is not None and edm_list is True:
+            splitted = onto_path.split('.', 1)
+            base_object_name = splitted[0]
+            object_path = splitted[1]
+            # find base object info
+            info = {}
+            for i in onto_base_objects:
+                if i['Name'] == base_object_name:
+                    info = i
+            ids = info.get('ids', [])
+            lids = len(ids)
+            lobjs = len(dl.objs)
+            if len(ids) == len(dl.objs):
+                for idx in range(0, len(ids)):
+                    data = dl.objs[idx].to_db_dict(dialect='edm')
+                    print(data)
+                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
+            else:
+                raise ValueError('The length of the DataList does not match the length of the EDM objects list. (%d x %s)' % (len(ids), len(dl.objs)))
+        else:
+            raise ValueError('Handling of io param of type %s not implemented' % object_type)
 
     # elif object_type == 'mupif.PyroFile':
     #     prop = app.get(mupif.DataID[data_id], time, obj_id)
@@ -793,6 +900,9 @@ def mapOutputs(app, eid, time):
     if api_type == 'granta':
         outputs = workflow_output_templates
 
+    createOutputEDMMappingObjects(app=app, eid=eid, outputs=outputs)
+    execution = restApiControl.getExecutionRecord(eid)
+
     for outitem in outputs:
         name = outitem['Name']
         object_type = outitem['Type']
@@ -830,6 +940,7 @@ def mapOutputs(app, eid, time):
                     object_type=object_type,
                     onto_path=outitem.get('EDMPath', None),
                     onto_base_objects=execution.get('EDMMapping', []),
+                    edm_list=outitem.get('EDMList', False)
                 )
 
     if api_type == 'granta':

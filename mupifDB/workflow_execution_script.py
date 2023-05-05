@@ -57,13 +57,12 @@ if __name__ == "__main__":
 
         workflow = workflow_class()
         workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"], 'Log_URI': logUri}})
-        wfUri=str(daemon.register(workflow))
+        wfUri = str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid,'workflowURI',wfUri)
         mupifDB.restApiControl.setExecutionParameter(weid,'loggerURI',logUri)
-        mupifDB.workflowmanager.createOutputEDMMappingObjects(weid)
-        mupifDB.workflowmanager.mapInputs(workflow, args.id)
+        mupifDB.workflowmanager.mapInputs(workflow, weid)
         workflow.solve()
-        mupifDB.workflowmanager.mapOutputs(workflow, args.id, workflow.getExecutionTargetTime())
+        mupifDB.workflowmanager.mapOutputs(workflow, weid, workflow.getExecutionTargetTime())
         workflow.terminate()
 
     except Exception as err:

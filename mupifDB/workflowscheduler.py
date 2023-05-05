@@ -578,7 +578,7 @@ if __name__ == '__main__':
                             weid = wed['_id']
 
                             # check number of attempts for execution
-                            if int(wed['Attempts']) > 60*10:
+                            if int(wed['Attempts']) > 60*10 and False:
                                 try:
                                     restApiControl.setExecutionStatusCreated(weid)
                                     if api_type != 'granta':
@@ -627,7 +627,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         print("waiting..")
-                        time.sleep(60)
+                        time.sleep(12)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)
