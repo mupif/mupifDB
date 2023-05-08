@@ -757,14 +757,14 @@ class GG(object):
     def schema_invalidate_cache():
         GG._SCH={}
 
-    @pydantic.validate_arguments
+    #@pydantic.validate_arguments
     @staticmethod
     def schema_import(db:str, json_str:str, force=False):
         schema=SchemaSchema.parse_obj(json.loads(json_str))
         dms_api_schema_post(db,schema,force=force)
         GG.schema_invalidate_cache()
 
-    @pydantic.validate_arguments
+    #@pydantic.validate_arguments
     @staticmethod
     def schema_import_maybe(db: str, json_str:str):
         try: s=GG.schema_get(db)
