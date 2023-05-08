@@ -32,6 +32,7 @@ CORS(app, resources={r"/static/*": {"origins": "*"}})
 
 # unless overridden by the environment, use 127.0.0.1:5000
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
+RESTserver.replace('5000', '8005')
 
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
