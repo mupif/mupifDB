@@ -467,13 +467,13 @@ def getExecutionRecord(weid):
     return response.json()
 
 
-def getScheduledExecutions():
+def getScheduledExecutions(num_limit=None):
     if api_type == 'granta':
         return []
-    return getExecutionRecords(status="Scheduled")
+    return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
 
-def getPendingExecutions():
+def getPendingExecutions(num_limit=None):
     if api_type == 'granta':
         url = RESTserver + 'executions/?status=Ready'
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
@@ -488,7 +488,7 @@ def getPendingExecutions():
             execution['Task_ID'] = ''
             res.append(execution)
         return res
-    return getExecutionRecords(status="Pending")
+    return getExecutionRecords(status="Pending", num_limit=num_limit)
 
 
 def scheduleExecution(execution_id):

@@ -538,7 +538,7 @@ if __name__ == '__main__':
                     # import first already scheduled executions
                     log.info("Importing already scheduled executions")
                     try:
-                        scheduled_executions = restApiControl.getScheduledExecutions()
+                        scheduled_executions = restApiControl.getScheduledExecutions(num_limit=50)
                     except Exception as e:
                         log.error(repr(e))
                         scheduled_executions = []
@@ -568,7 +568,7 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
-                            pending_executions = restApiControl.getPendingExecutions()
+                            pending_executions = restApiControl.getPendingExecutions(num_limit=50)
                         except Exception as e:
                             log.error(repr(e))
                             pending_executions = []
