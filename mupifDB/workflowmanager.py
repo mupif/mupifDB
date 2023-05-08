@@ -729,6 +729,29 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                 else:
                     print("hdf5 file was not saved")
 
+    elif object_type == 'mupif.TemporalProperty':
+        prop = app.get(mupif.DataID[data_id], time, obj_id)
+
+        if onto_path is not None:
+            splitted = onto_path.split('.', 1)
+            base_object_name = splitted[0]
+            object_path = splitted[1]
+            # find base object info
+            info = {}
+            for i in onto_base_objects:
+                if i['Name'] == base_object_name:
+                    info = i
+            # set the desired object
+            data = prop.to_db_dict(dialect='edm')
+            # data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
+            if edm_list is True:
+                for edm_id in info.get('ids', []):
+                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
+            else:
+                restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+        else:
+            restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+
     elif object_type == 'mupif.String':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
         if onto_path is not None:
@@ -931,6 +954,19 @@ def mapOutputs(app, eid, time):
                 if output is not None:
                     granta_output_data.append(output)
             else:
+                edmlist = False
+                edmpath = outitem.get('EDMPath', None)
+                edm_base_objects = execution.get('EDMMapping', [])
+                if edmpath is not None:
+                    splitted = edmpath.split('.', 1)
+                    base_object_name = splitted[0]
+                    info = {}
+                    for i in edm_base_objects:
+                        if i['Name'] == base_object_name:
+                            info = i
+                            edmlist = info.get('EDMList', False)
+                            break
+
                 mapOutput(
                     app=app,
                     eid=eid,
@@ -939,9 +975,9 @@ def mapOutputs(app, eid, time):
                     data_id=typeID,
                     time=time,
                     object_type=object_type,
-                    onto_path=outitem.get('EDMPath', None),
-                    onto_base_objects=execution.get('EDMMapping', []),
-                    edm_list=outitem.get('EDMList', False)
+                    onto_path=edmpath,
+                    onto_base_objects=edm_base_objects,
+                    edm_list=edmlist  # outitem.get('EDMList', False)
                 )
 
     if api_type == 'granta':

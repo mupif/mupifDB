@@ -735,6 +735,7 @@ def logMessage(*,name,levelno,pathname,lineno,created,**kw):
 
     Variable extra fields might added in when calling the logging function, e.g. log.error(...,extra={'another-field':123})
     '''
+    # return
     # re-assemble the dictionary
     data = dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
     data['msg'] = data['msg'] % data['args']

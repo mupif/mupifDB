@@ -83,7 +83,7 @@ ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
 
-poolsize = 3
+poolsize = 50
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
@@ -627,7 +627,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         print("waiting..")
-                        time.sleep(12)
+                        time.sleep(30)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)
