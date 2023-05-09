@@ -35,19 +35,19 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, fi
         raise Exception('API returned code ' + str(response.status_code))
     return None
 
-def rGet(*, url, headers=None, auth=None, timeout=10, params={}):
+def rGet(*, url, headers=None, auth=None, timeout=60, params={}):
     return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params)
 
-def rPost(*, url, headers=None, auth=None, data=None, timeout=10, files={}):
+def rPost(*, url, headers=None, auth=None, data=None, timeout=60, files={}):
     return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data, files=files)
 
-def rPatch(*, url, headers=None, auth=None, data=None, timeout=10):
+def rPatch(*, url, headers=None, auth=None, data=None, timeout=60):
     return Request(method='patch', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
 
-def rPut(*, url, headers=None, auth=None, data=None, timeout=10):
+def rPut(*, url, headers=None, auth=None, data=None, timeout=60):
     return Request(method='put', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
 
-def rDelete(*, url, headers=None, auth=None, timeout=10):
+def rDelete(*, url, headers=None, auth=None, timeout=60):
     return Request(method='delete', url=url, headers=headers, auth=auth)
 
 #
