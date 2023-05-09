@@ -514,6 +514,15 @@ def setExecutionOntoBaseObjectID(execution_id, name, value):
     return None
 
 
+def setExecutionOntoBaseObjectIDMultiple(execution_id, data):
+    if api_type == 'granta':
+        return None
+    response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id_multiple/", data=json.dumps({"data": data}))
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+
 def setExecutionOntoBaseObjectIDs(execution_id, name, value):
     if api_type == 'granta':
         return None
