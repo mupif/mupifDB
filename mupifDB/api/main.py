@@ -379,7 +379,7 @@ def modify_execution(uid: str, data: M_ModifyExecution):
 @app.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str):
     execution_record = get_execution(uid)
-    if execution_record['Status'] == 'Created':
+    if execution_record['Status'] == 'Created' or True:
         data = type('', (), {})()
         data.key = "Status"
         data.value = "Pending"
