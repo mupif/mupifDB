@@ -83,7 +83,7 @@ ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
 
-poolsize = 50
+poolsize = 30
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
@@ -538,7 +538,7 @@ if __name__ == '__main__':
                     # import first already scheduled executions
                     log.info("Importing already scheduled executions")
                     try:
-                        scheduled_executions = restApiControl.getScheduledExecutions(num_limit=50)
+                        scheduled_executions = restApiControl.getScheduledExecutions(num_limit=poolsize)
                     except Exception as e:
                         log.error(repr(e))
                         scheduled_executions = []
@@ -568,7 +568,7 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
-                            pending_executions = restApiControl.getPendingExecutions(num_limit=50)
+                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize)
                         except Exception as e:
                             log.error(repr(e))
                             pending_executions = []
