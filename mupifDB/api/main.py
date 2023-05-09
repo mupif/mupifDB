@@ -361,7 +361,7 @@ class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
 @app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
 def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDMultiple):
     for d in data.data:
-        db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": d.name}, {"$set": {"EDMMapping.$.id": d.value}})
+        db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": d['name']}, {"$set": {"EDMMapping.$.id": d['value']}})
     return get_execution(uid)
 
 
