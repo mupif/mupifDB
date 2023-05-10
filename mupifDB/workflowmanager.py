@@ -577,57 +577,58 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                 edmpaths.append(path)
 
         for obo in OBO:
-            if obo.get('createFrom', None) is not None:
-                source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
-                if source_obo is not None:
-                    if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
-                        edm_name = obo.get('Name', '')
-                        valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
-                        valid_emdpaths = [p.replace(obo.get('Name')+'.', '') for p in valid_emdpaths]
+            if not obo.get('id', None) and not obo.get('ids', None):
+                if obo.get('createFrom', None) is not None:
+                    source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
+                    if source_obo is not None:
+                        if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
+                            edm_name = obo.get('Name', '')
+                            valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
+                            valid_emdpaths = [p.replace(obo.get('Name')+'.', '') for p in valid_emdpaths]
 
-                        safe_links = restApiControl.getSafeLinks(
-                            DBName=source_obo.get('DBName', ''),
-                            Type=source_obo.get('EDMEntity', ''),
-                            ID=source_obo.get('id', ''),
-                            paths=valid_emdpaths
-                        )
+                            safe_links = restApiControl.getSafeLinks(
+                                DBName=source_obo.get('DBName', ''),
+                                Type=source_obo.get('EDMEntity', ''),
+                                ID=source_obo.get('id', ''),
+                                paths=valid_emdpaths
+                            )
 
-                        if obo.get('EDMList', False) is True:
-                            num = getEDMListLength(app=app, eid=eid, edm_name=obo.get('Name', ''), outputs=outputs)
-                            new_ids = []
-                            for i in range(0, num):
+                            if obo.get('EDMList', False) is True:
+                                num = getEDMListLength(app=app, eid=eid, edm_name=obo.get('Name', ''), outputs=outputs)
+                                new_ids = []
+                                for i in range(0, num):
+                                    new_id = restApiControl.cloneOntoData(
+                                        DBName=source_obo.get('DBName', ''),
+                                        Type=source_obo.get('EDMEntity', ''),
+                                        ID=source_obo.get('id'),
+                                        shallow=safe_links
+                                    )
+                                    new_ids.append(new_id)
+                                restApiControl.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
+                                for new_id in new_ids:
+                                    restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+                            else:
                                 new_id = restApiControl.cloneOntoData(
                                     DBName=source_obo.get('DBName', ''),
                                     Type=source_obo.get('EDMEntity', ''),
                                     ID=source_obo.get('id'),
                                     shallow=safe_links
                                 )
-                                new_ids.append(new_id)
-                            restApiControl.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
-                            for new_id in new_ids:
+                                restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
                                 restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
-                        else:
-                            new_id = restApiControl.cloneOntoData(
-                                DBName=source_obo.get('DBName', ''),
-                                Type=source_obo.get('EDMEntity', ''),
-                                ID=source_obo.get('id'),
-                                shallow=safe_links
-                            )
-                            restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
-                            restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
 
-            elif obo.get('createNew', None) is not None:
-                edm_name = obo.get('Name', '')
-                valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
-                valid_emdpaths = [p.replace(obo.get('Name') + '.', '') for p in valid_emdpaths]
+                elif obo.get('createNew', None) is not None:
+                    edm_name = obo.get('Name', '')
+                    valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
+                    valid_emdpaths = [p.replace(obo.get('Name') + '.', '') for p in valid_emdpaths]
 
-                new_id = restApiControl.createOntoData(
-                    DBName=obo.get('DBName', ''),
-                    Type=obo.get('EDMEntity', ''),
-                    data=obo.get('createNew')
-                )
-                restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
-                restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+                    new_id = restApiControl.createOntoData(
+                        DBName=obo.get('DBName', ''),
+                        Type=obo.get('EDMEntity', ''),
+                        data=obo.get('createNew')
+                    )
+                    restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
+                    restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
 
 
 def mapInputs(app, eid):
