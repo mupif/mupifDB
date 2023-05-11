@@ -510,7 +510,7 @@ if __name__ == '__main__':
                     # import first already scheduled executions
                     log.info("Importing already scheduled executions")
                     try:
-                        scheduled_executions = restApiControl.getScheduledExecutions(num_limit=poolsize)
+                        scheduled_executions = restApiControl.getScheduledExecutions()
                     except Exception as e:
                         log.error(repr(e))
                         scheduled_executions = []
