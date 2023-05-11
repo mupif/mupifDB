@@ -83,7 +83,7 @@ ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
 
-poolsize = 80
+poolsize = 40
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
