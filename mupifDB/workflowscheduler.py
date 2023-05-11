@@ -89,36 +89,8 @@ stopFlag = False # set to tru to end main scheduler loop
 fd = None
 buf = None
 
-
-def setupLogger(fileName, level=logging.DEBUG):
-    """
-    Set up a logger which prints messages on the screen and simultaneously saves them to a file.
-    The file has the suffix '.log' after a loggerName.
-
-    :param str fileName: file name, the suffix '.log' is appended.
-    :param object level: logging level. Allowed values are CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
-    :rtype: logger instance
-    """
-    logger = logging.getLogger()
-    formatLog = '%(asctime)s %(levelname)s:%(filename)s:%(lineno)d %(message)s \n'
-    formatTime = '%Y-%m-%d %H:%M:%S'
-    formatter = logging.Formatter(formatLog, formatTime)
-    fileHandler = logging.FileHandler(fileName, mode='w')
-    fileHandler.setFormatter(formatter)
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
-    restHandler = restLogger.RestLogHandler()
-
-    logger.setLevel(level)
-    logger.addHandler(fileHandler)
-    logger.addHandler(streamHandler)
-    logger.addHandler(restHandler)
-
-    return logger
-
-
-log = setupLogger(fileName="scheduler.log")
-
+log=logging.getLogger('workflow-scheduler') 
+log.addHandler(restLogger.RestLogHandler())
 
 @Pyro5.api.expose
 class SchedulerMonitor (object):
