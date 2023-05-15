@@ -526,6 +526,19 @@ def get_status():
     return {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
 
 
+@app.get("/execution_statistics/", tags=["Stats"])
+def get_execution_statistics():
+    output = {}
+    output['totalExecutions'] = db.WorkflowExecutions.find().explain().get("executionStats", {}).get("nReturned")
+    output['finishedExecutions'] = db.WorkflowExecutions.find({"Status": "Finished"}).explain().get("executionStats", {}).get("nReturned")
+    output['failedExecutions'] = db.WorkflowExecutions.find({"Status": "Failed"}).explain().get("executionStats", {}).get("nReturned")
+    output['createdExecutions'] = db.WorkflowExecutions.find({"Status": "Created"}).explain().get("executionStats", {}).get("nReturned")
+    output['pendingExecutions'] = db.WorkflowExecutions.find({"Status": "Pending"}).explain().get("executionStats", {}).get("nReturned")
+    output['scheduledExecutions'] = db.WorkflowExecutions.find({"Status": "Scheduled"}).explain().get("executionStats", {}).get("nReturned")
+    output['runningExecutions'] = db.WorkflowExecutions.find({"Status": "Running"}).explain().get("executionStats", {}).get("nReturned")
+    return output
+
+
 @app.get("/scheduler_statistics/", tags=["Stats"])
 def get_scheduler_statistics():
     table = db.Stat

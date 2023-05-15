@@ -771,6 +771,21 @@ def getStatus():
     return response.json()
 
 
+def getExecutionStatistics():
+    if api_type == 'granta':
+        return {
+            'totalExecutions': 0,
+            'finishedExecutions': 0,
+            'failedExecutions': 0,
+            'createdExecutions': 0,
+            'pendingExecutions': 0,
+            'scheduledExecutions': 0,
+            'runningExecutions': 0
+        }
+    response = rGet(url=RESTserver + "execution_statistics/")
+    return response.json()
+
+
 def getStatScheduler():
     if api_type == 'granta':
         return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
