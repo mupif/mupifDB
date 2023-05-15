@@ -528,14 +528,23 @@ def get_status():
 
 @app.get("/execution_statistics/", tags=["Stats"])
 def get_execution_statistics():
+    res = client.MuPIF.WorkflowExecutions.aggregate([
+        {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
+    ])
+    vals = {}
+    tot = 0
+    for r in res:
+        vals[r['_id']] = r['count']
+        tot += r['count']
+
     output = {}
-    output['totalExecutions'] = db.WorkflowExecutions.find().explain().get("executionStats", {}).get("nReturned")
-    output['finishedExecutions'] = db.WorkflowExecutions.find({"Status": "Finished"}).explain().get("executionStats", {}).get("nReturned")
-    output['failedExecutions'] = db.WorkflowExecutions.find({"Status": "Failed"}).explain().get("executionStats", {}).get("nReturned")
-    output['createdExecutions'] = db.WorkflowExecutions.find({"Status": "Created"}).explain().get("executionStats", {}).get("nReturned")
-    output['pendingExecutions'] = db.WorkflowExecutions.find({"Status": "Pending"}).explain().get("executionStats", {}).get("nReturned")
-    output['scheduledExecutions'] = db.WorkflowExecutions.find({"Status": "Scheduled"}).explain().get("executionStats", {}).get("nReturned")
-    output['runningExecutions'] = db.WorkflowExecutions.find({"Status": "Running"}).explain().get("executionStats", {}).get("nReturned")
+    output['totalExecutions'] = tot
+    output['finishedExecutions'] = vals.get('Finished', 0)
+    output['failedExecutions'] = vals.get('Failed', 0)
+    output['createdExecutions'] = vals.get('Created', 0)
+    output['pendingExecutions'] = vals.get('Pending', 0)
+    output['scheduledExecutions'] = vals.get('Scheduled', 0)
+    output['runningExecutions'] = vals.get('Running', 0)
     return output
 
 

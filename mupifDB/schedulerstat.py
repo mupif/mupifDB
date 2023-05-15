@@ -101,37 +101,7 @@ def getMonthlyExecutionStat():
 
 
 def getGlobalStat():
-    totalExecutions = 0
-    finishedExecutions = 0
-    failedExecutions = 0
-    createdExecutions = 0
-    pendingExecutions = 0
-    scheduledExecutions = 0
-    runningExecutions = 0
-    for wed in restApiControl.getExecutionRecords():
-        status = wed['Status']
-        totalExecutions += 1
-        if status == 'Finished':
-            finishedExecutions += 1
-        elif status == 'Failed':
-            failedExecutions += 1
-        elif status == 'Created':
-            createdExecutions += 1
-        elif status == 'Pending':
-            pendingExecutions += 1
-        elif status == 'Scheduled':
-            scheduledExecutions += 1
-        elif status == 'Running':
-            runningExecutions += 1
-    return {
-        'totalExecutions': totalExecutions,
-        'finishedExecutions': finishedExecutions,
-        'failedExecutions': failedExecutions,
-        'createdExecutions': createdExecutions,
-        'pendingExecutions': pendingExecutions,
-        'scheduledExecutions': scheduledExecutions,
-        'runningExecutions': runningExecutions
-    }
+    return restApiControl.getExecutionStatistics()
 
 
 def usage():
