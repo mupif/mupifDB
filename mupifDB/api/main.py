@@ -215,7 +215,7 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
         filtering["label"] = label
     if num_limit == 0:
         num_limit = 999999
-    res = db.WorkflowExecutions.find(filtering).sort('CreatedDate', 1).limit(num_limit)
+    res = db.WorkflowExecutions.find(filtering).limit(num_limit)  # .sort('CreatedDate', 1)
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
