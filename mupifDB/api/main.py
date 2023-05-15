@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, Depends
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 import tempfile
 import gridfs
@@ -58,6 +59,14 @@ tags_metadata = [
 
 
 app = FastAPI(openapi_tags=tags_metadata)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # import and initialize EDM
 if 1:

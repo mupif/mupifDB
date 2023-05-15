@@ -14,7 +14,7 @@
 
     <div> Update interval:
         <select name="updateInterval">
-            <option value="1000">1[s]</option>
+            <option value="2000">2[s]</option>
             <option value="10000" selected="selected">10[s]</option>
             <option value="600000">1[min]</option>
             <option value="3000000">5[min]</option>
@@ -96,16 +96,17 @@
         $.ajax({
             url: '{{RESTserver}}status/',
             type: 'get',
+            crossDomain:true,
             timeout: 2000,
             success: function(newData){
                 //alert(JSON.stringify(newData));
                 var json = $.parseJSON(JSON.stringify(newData));
                 oldData = data.slice(1);
-                oldData.push(json.result.schedulerStat.load)
+                oldData.push(json.schedulerStat.load)
                 data = [].concat(oldData);
                 myChart.data.datasets[0].data = data;
                 oldData = data2.slice(1);
-                oldData.push(json.result.schedulerStat.scheduledTasks)
+                oldData.push(json.schedulerStat.scheduledTasks)
                 data2 = [].concat(oldData);
                 myChart.data.datasets[1].data = data2;
                 myChart.update(0);
