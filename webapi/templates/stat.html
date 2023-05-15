@@ -94,7 +94,7 @@
     // update
     function fetchData() {
         $.ajax({
-            url: '{{RESTserver}}/main?action=get_status',
+            url: '{{RESTserver}}status/',
             type: 'get',
             timeout: 2000,
             success: function(newData){
