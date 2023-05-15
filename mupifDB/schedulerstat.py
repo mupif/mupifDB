@@ -111,6 +111,7 @@ def usage():
 
 
 if __name__ == '__main__':
+    exit(0)  # temporarily disable
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "wh")
