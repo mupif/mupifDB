@@ -22,7 +22,11 @@ class RestLogHandler(logging.StreamHandler):
 
     def emit(self, record):
         with self.lock:
-            restApiControl.logMessage(**(record.__dict__ | self.extraData))
+            # fix for python 3.8
+            try:
+                restApiControl.logMessage(**(record.__dict__ | self.extraData))
+            except:
+                pass
 
 
 if __name__ == '__main__':

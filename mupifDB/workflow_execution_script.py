@@ -34,6 +34,7 @@ if __name__ == "__main__":
         parser.add_argument('-eid', '--executionID', required=True, dest="id")
         args = parser.parse_args()
         weid = args.id
+        mupifDB.restApiControl.setExecutionStatusRunning(weid)
         
         # add REST logging handler for this weid, add 'weid' field to every message automatically
         import mupifDB.restLogger
