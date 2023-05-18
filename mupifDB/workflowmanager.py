@@ -641,7 +641,7 @@ def mapInputs(app, eid):
         workflow_input_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Inputs', [])
 
     for input_template in workflow_input_templates:
-        print("Mapping output " + str(input_template))
+        print("Mapping input " + str(input_template))
         name = input_template['Name']
         object_type = input_template.get('Type', '')
         data_id = input_template.get('TypeID', input_template.get('Type_ID'))

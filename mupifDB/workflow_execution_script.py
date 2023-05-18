@@ -28,7 +28,7 @@ logUri = str(daemon.register(mp.pyrolog.PyroLogReceiver(tailHandler=tailHandler)
 
 if __name__ == "__main__":
     workflow = None
-
+    weid = None
     try:
         parser = argparse.ArgumentParser()
         parser.add_argument('-eid', '--executionID', required=True, dest="id")
