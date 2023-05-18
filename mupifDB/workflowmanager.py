@@ -696,6 +696,20 @@ def getEDMListLength(app, eid, edm_name, outputs):
     return 0
 
 
+def setEDMDataToList(dbname, edmentity, emd_ids, object_path, data):
+    tot = len(info.get('ids', []))
+    cur = 0
+    stage = 0
+    for edm_id in emd_ids:
+        restApiControl.setOntoData(dbname, edmentity, edm_id, object_path, data=data)
+        cur += 1
+        if cur / tot * 100 >= stage:
+            print("%d percent" % stage)
+            while stage < cur / tot * 100:
+                stage += 1
+    print("100 percent")
+
+
 def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}, edm_list=False):
     if object_type == 'mupif.Property':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
@@ -712,8 +726,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                         info = i
                 data = prop.to_db_dict(dialect='edm')
                 if edm_list is True:
-                    for edm_id in info.get('ids', []):
-                        restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
+                    setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data)
                 else:
                     restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
@@ -745,8 +758,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                     info = i
             data = prop.to_db_dict(dialect='edm')
             if edm_list is True:
-                for edm_id in info.get('ids', []):
-                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
+                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data)
             else:
                 restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
@@ -766,8 +778,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             # set the desired object
             data = prop.to_db_dict(dialect='edm')
             if edm_list is True:
-                for edm_id in info.get('ids', []):
-                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
+                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data)
             else:
                 restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
