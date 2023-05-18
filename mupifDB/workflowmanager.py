@@ -696,11 +696,11 @@ def getEDMListLength(app, eid, edm_name, outputs):
     return 0
 
 
-def setEDMDataToList(dbname, edmentity, emd_ids, object_path, data):
+def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
     tot = len(info.get('ids', []))
     cur = 0
     stage = 0
-    for edm_id in emd_ids:
+    for edm_id in edm_ids:
         restApiControl.setOntoData(dbname, edmentity, edm_id, object_path, data=data)
         cur += 1
         if cur / tot * 100 >= stage:
