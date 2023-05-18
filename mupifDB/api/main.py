@@ -605,6 +605,17 @@ def get_ui_file(file_path: str):
     return None
 
 
+class M_FindParams(BaseModel):
+    filter: dict
+
+
+@app.put("/EDM/{db}/{type}/find", tags=["EDM"])
+def edm_find(db: str, type: str, data: M_FindParams):
+    res = client[db][type].find(data.filter)
+    ids = [str(r["_id"]) for r in res]
+    return ids
+
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run('main:app', host='0.0.0.0', port=8080, reload=True)
