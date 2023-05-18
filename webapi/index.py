@@ -782,7 +782,7 @@ def setExecutionInputs(weid):
                 form += '<td>'
                 form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
                 form += '<option value="">-</option>'
-                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('EDMEntity', '')):
+                for option in restApiControl.getEDMEntityIDs(obo.get('DBName', ''), obo.get('EDMEntity', ''), obo.get('OptionsFilter', None)):
                     form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
                 form += '</select>'
                 form += '</td>'
