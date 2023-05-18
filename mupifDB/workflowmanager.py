@@ -697,17 +697,17 @@ def getEDMListLength(app, eid, edm_name, outputs):
 
 
 def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
-    tot = len(info.get('ids', []))
+    tot = len(edm_ids)
     cur = 0
     stage = 0
     for edm_id in edm_ids:
         restApiControl.setOntoData(dbname, edmentity, edm_id, object_path, data=data)
         cur += 1
         if cur / tot * 100 >= stage:
-            print("%d percent" % stage)
+            print("%d %%" % stage)
             while stage < cur / tot * 100:
                 stage += 1
-    print("100 percent")
+    print("100 %%")
 
 
 def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}, edm_list=False):
