@@ -864,3 +864,11 @@ def getSafeLinks(DBName, Type, ID, paths=[]):
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/safe-links"
     response = rGet(url=url, params={"paths": ' '.join(paths)})
     return response.json()
+
+
+def getEDMEntityIDs(DBName, Type, ID, filter=None):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/find"
+    if filter:
+        response = rPut(url=url, data=json.dumps({"filter": filter}))
+    response = rPut(url=url, data=json.dumps({"filter": {}}))
+    return response.json()

@@ -706,8 +706,8 @@ def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
         if cur / tot * 100 >= stage:
             print("%d %%" % stage)
             while stage < cur / tot * 100:
-                stage += 1
-    print("100 %%")
+                stage += 10
+    print("100 %")
 
 
 def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}, edm_list=False):
