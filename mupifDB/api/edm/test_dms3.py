@@ -101,14 +101,7 @@ class Test_REST(unittest.TestCase):
         return json.loads(r.text)
     @classmethod
     def get_data(C,p):
-        with requests.get(f'{REST_URL}/{p}',stream=True) as res:
-            return res.raw.read()
-            # return b''.join(res.iter_content(1024))
-            return res.content
-            ret=bytes()
-            for chunk in res.iter_content(1024):
-                ret+=chunk
-            return ret
+        with requests.get(f'{REST_URL}/{p}',stream=True) as res: return res.content
     @classmethod
     def patch(C,p,patchData):
         r=requests.patch(f'{REST_URL}/{p}',json=patchData)
@@ -117,8 +110,9 @@ class Test_REST(unittest.TestCase):
 
     def test_00_set_schema(self):
         C=self.__class__
-        schema=json.loads(open(os.path.dirname(__file__)+'/dms-schema.json').read())
-        print(schema)
+        schema=json.loads((f:=open(os.path.dirname(__file__)+'/dms-schema.json')).read())
+        f.close()
+        # print(schema)
         C.post(f'{DB}/schema',body=schema,query={'force':True})
     def test_01_post(self):
         C=self.__class__
@@ -138,7 +132,7 @@ class Test_REST(unittest.TestCase):
     def test_03_tracking(self):
         C=self.__class__
         d=C.get(f'{DB}/BeamState/{C.ID_01}',meta=False,tracking=True)
-        pprint(d)
+        #pprint(d)
         # relative link is recovered via object tracking
         self.assertEqual(d['cs'],'.beam.cs')
         self.assertEqual(d['csState'][0]['rveStates'][0]['rve'],'...beam.cs.rve')
@@ -170,13 +164,10 @@ class Test_REST(unittest.TestCase):
 
 
 
-    @unittest.skip('Failing test (TODO)')
     def test_06_blob(self):
         C=self.__class__
         blob=os.urandom(1024*1024)
         id=C.post_data(f'{DB}/blob/upload','blob',blob)
-        # TODO: this is broken 
-        # backend says "gridfs.errors.NoFile: no file in gridfs collection" — but the file is there?!
         blob2=C.get_data(f'{DB}/blob/{id}')
         self.assertEqual(blob,blob2)
 
@@ -197,13 +188,13 @@ class Test_REST(unittest.TestCase):
         C.post(f'{DB1}/schema',body=schema,query={'force':True})
         ID=C.post(f'{DB1}/Test',body={'prop':{'value':955,'unit':'mm'},'astr':{'value':'foo'},'anum':{'value':4},'sstr1':{'value':['foo','bar','baz']},'sstr22':{'value':[['foo','bar'],['baz','cha']]}})
         t=C.get(f'{DB1}/Test/{ID}')
-        pprint(t)
+        # pprint(t)
         self.assertEqual(t['prop']['DataID'],'ID_Length')
         self.assertEqual(t['prop']['ClassName'],'Property')
         self.assertEqual(t['sstr22']['value'],[['foo','bar'],['baz','cha']])
-        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr2':[['foo','bar'],['baz']]}))
-        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr2':[['foo'],['baz']]}))
-        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr2':['foo','bar']}))
+        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr22':[['foo','bar'],['baz']]}))
+        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr22':[['foo'],['baz']]}))
+        self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr22':['foo','bar']}))
 
     def test_99_float_error(self):
         C=self.__class__

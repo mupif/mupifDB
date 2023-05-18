@@ -610,16 +610,14 @@ def dms_api_object_post(db: str, type:str, data:dict) -> str:
 def dms_api_blob_upload(db:str,blob: fastapi.UploadFile) -> str:
     'Streming blob upload'
     fs=gridfs.GridFS(GG.db_get(db))
-    with fs.new_file() as f:
-        shutil.copyfileobj(blob.file,f)
-        return str(f._id)
+    return str(fs.put(blob.file))
 
 @router.get('/{db}/blob/{id}')
 def dms_api_blob_get(db:str,id:str):
     'Streaming blob download'
     fs=gridfs.GridFS(GG.db_get(db))
     def iterfile():
-        yield from fs.get(id)
+        yield from fs.get(bson.objectid.ObjectId(id))
     return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
 
 
