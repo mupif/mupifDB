@@ -570,6 +570,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
     execution = restApiControl.getExecutionRecord(eid)
     OBO = execution.get('EDMMapping', [])
     if len(OBO):
+        print("Creating EDM output objects")
         outputs = restApiControl.getExecutionOutputRecord(eid)
         edmpaths = []
         for path in [out.get('EDMPath', None) for out in outputs]:
@@ -629,6 +630,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                     )
                     restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
                     restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+        print("Creating EDM output objects finished")
 
 
 def mapInputs(app, eid):
@@ -639,6 +641,7 @@ def mapInputs(app, eid):
         workflow_input_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Inputs', [])
 
     for input_template in workflow_input_templates:
+        print("Mapping output " + str(input_template))
         name = input_template['Name']
         object_type = input_template.get('Type', '')
         data_id = input_template.get('TypeID', input_template.get('Type_ID'))
@@ -707,9 +710,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                 for i in onto_base_objects:
                     if i['Name'] == base_object_name:
                         info = i
-                # set the desired object
                 data = prop.to_db_dict(dialect='edm')
-                # data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
                 if edm_list is True:
                     for edm_id in info.get('ids', []):
                         restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
@@ -742,9 +743,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             for i in onto_base_objects:
                 if i['Name'] == base_object_name:
                     info = i
-            # set the desired object
             data = prop.to_db_dict(dialect='edm')
-            # data = {"value": prop.quantity.value.tolist(), "unit": str(prop.quantity.unit)}
             if edm_list is True:
                 for edm_id in info.get('ids', []):
                     restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), edm_id, object_path, data=data)
@@ -929,6 +928,7 @@ def mapOutputs(app, eid, time):
     execution = restApiControl.getExecutionRecord(eid)
 
     for outitem in outputs:
+        print("Mapping output " + str(outitem))
         name = outitem['Name']
         object_type = outitem['Type']
         typeID = outitem.get('TypeID', outitem.get('Type_ID'))
