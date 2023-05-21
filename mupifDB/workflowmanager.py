@@ -312,13 +312,13 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
                 info = i
 
         # get the desired object
-        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
-        if onto_data is not None:
+        edm_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+        if edm_data is not None:
             if object_type == 'mupif.Property':
-                if onto_data.get('value', None) is not None:
+                if edm_data.get('value', None) is not None:
                     return True
             if object_type == 'mupif.String':
-                if onto_data.get('value', None) is not None:
+                if edm_data.get('value', None) is not None:
                     return True
         return False
 
@@ -426,7 +426,43 @@ def checkInputs(eid):
     return True
 
 
-def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects={}, value_type=None):
+# ##################################################
+# Instantiate data from EDM
+
+def getEDMPropertyInstance(edm_data, data_id, value_type):
+    obj = None
+    if value_type in ['Scalar', 'Vector', 'Tensor']:
+        value = edm_data.get('value', None)
+        unit = edm_data.get('unit', '')
+        obj = mupif.ConstantProperty.from_db_dict({
+            "Value": value,
+            "DataID": data_id,
+            "ValueType": value_type,
+            "Unit": unit,
+            "Time": None
+        })
+    elif  value_type in ['ScalarArray', 'VectorArray', 'TensorArray']:
+        raise ValueError('Handling of Onto input Property of ValueType %s is not implemented' % value_type)
+    return obj
+
+
+def getEDMStringInstance(edm_data, data_id, value_type):
+    value = edm_data.get('value', None)
+    unit = edm_data.get('unit', '')
+    obj = mupif.String.from_db_dict({
+        "Value": value,
+        "DataID": data_id,
+        "ValueType": value_type
+    })
+    return obj
+
+
+def getEDMTemporalPropertyInstance(edm_data, data_id, value_type):
+    obj = mupif.TemporalProperty.from_db_dict(edm_data)
+    return obj
+
+
+def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects={}, value_type=None, edm_list=False):
     if linked_output:
         inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
@@ -434,9 +470,10 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
 
     if api_type == 'granta':
         inp_record = restApiControl._getGrantaExecutionInputItem(eid, name)
-    # onto_path is not unused
+
     op = inp_record.get('EDMPath', None)
     if op is not None:
+        # onto_path is used
         splitted = op.split('.', 1)
         base_object_name = splitted[0]
         object_path = splitted[1]
@@ -447,28 +484,52 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
             if i['Name'] == base_object_name:
                 info = i
 
-        # get the desired object
-        onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+        edm_dbname = info.get('DBName', '')
+        edm_entity = info.get('EDMEntity', '')
+        edm_id = info.get('id', '')
+        edm_ids = info.get('ids', [])
+
         if object_type == 'mupif.Property':
-            value = onto_data.get('value', None)
-            unit = onto_data.get('unit', '')
-            prop = mupif.ConstantProperty.from_db_dict({
-                "Value": value,
-                "DataID": data_id,
-                "ValueType": value_type,
-                "Unit": unit,
-                "Time": None
-            })
-            app.set(prop, app_obj_id)
+            edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, edm_id, object_path)
+            obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            app.set(obj, app_obj_id)
+
         elif object_type == 'mupif.String':
-            value = onto_data.get('value', None)
-            unit = onto_data.get('unit', '')
-            prop = mupif.String.from_db_dict({
-                "Value": value,
-                "DataID": data_id,
-                "ValueType": value_type
-            })
-            app.set(prop, app_obj_id)
+            edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, edm_id, object_path)
+            obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            app.set(obj, app_obj_id)
+
+        elif object_type == 'mupif.TemporalProperty':
+            edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, edm_id, object_path)
+            obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            app.set(obj, app_obj_id)
+
+        elif object_type.startswith('mupif.DataList') and edm_list is True:
+            datalist_object_type = object_type.replace(']', '').split('[')[1]
+            obj_list = []
+
+            if datalist_object_type == 'mupif.Property':
+                for e_id in edm_ids:
+                    edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
+                    obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+                    obj_list.append(obj)
+
+            elif datalist_object_type == 'mupif.String':
+                for e_id in edm_ids:
+                    edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
+                    obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+                    obj_list.append(obj)
+
+            elif datalist_object_type == 'mupif.TemporalProperty':
+                for e_id in edm_ids:
+                    edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
+                    obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+                    obj_list.append(obj)
+
+            did = mupif.DataID[data_id.replace('mupif.DataID.', '')]
+            datalist_instance = mupif.DataList(objs=obj_list, dataID=did)
+            app.set(datalist_instance, app_obj_id)
+
         else:
             raise ValueError('Handling of Onto io param of type %s is not implemented' % object_type)
 
@@ -654,6 +715,19 @@ def mapInputs(app, eid):
         if not ObjIDIsIterable(objID):
             objID = [objID]
 
+        edmlist = False
+        edmpath = input_template.get('EDMPath', None)
+        edm_base_objects = execution.get('EDMMapping', [])
+        if edmpath is not None:
+            splitted = edmpath.split('.', 1)
+            base_object_name = splitted[0]
+            info = {}
+            for i in edm_base_objects:
+                if i['Name'] == base_object_name:
+                    info = i
+                    edmlist = info.get('EDMList', False)
+                    break
+
         for oid in objID:
             mapInput(
                 app=app,
@@ -665,7 +739,8 @@ def mapInputs(app, eid):
                 object_type=object_type,
                 onto_path=input_template.get('EDMPath', None),
                 onto_base_objects=execution.get('EDMMapping', []),
-                value_type=input_template.get('ValueType', '')
+                value_type=input_template.get('ValueType', ''),
+                edm_list=edmlist
             )
 
 
