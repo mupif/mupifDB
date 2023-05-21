@@ -873,3 +873,15 @@ def getEDMEntityIDs(DBName, Type, filter=None):
     else:
         response = rPut(url=url, data=json.dumps({"filter": {}}))
     return response.json()
+
+
+def uploadEDMBinaryFile(DBName, binary_data):
+    response = rPost(url=RESTserver + "EDM/" + str(DBName) + "/blob/upload", files={"blob": binary_data})
+    return response.json()
+
+
+def getEDMBinaryFileByID(fid):
+    response = rGet(url=RESTserver + "EDM/" + str(DBName) + "/blob/" + str(fid))
+    d = response.headers['Content-Disposition']
+    filename = re.findall("filename=(.+)", d)[0]
+    return response.content, filename

@@ -15,12 +15,13 @@ import string
 import itertools
 import gridfs
 import shutil
-
+import tempfile
 import attrdict
+import io
 
 
 import fastapi.responses
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Depends
 
 # uvicorn with reload re-imports the module without __name__=='__main__'
 # thus use dms3.py (executable name) to check whether we are being run directly
@@ -606,19 +607,39 @@ def dms_api_object_post(db: str, type:str, data:dict) -> str:
         return idStr
     return _new_object(type,data,path=[],tracker=_ObjectTracker())
 
-@router.post('/{db}/blob/upload')
-def dms_api_blob_upload(db:str,blob: fastapi.UploadFile) -> str:
-    'Streming blob upload'
-    fs=gridfs.GridFS(GG.db_get(db))
-    return str(fs.put(blob.file))
 
-@router.get('/{db}/blob/{id}')
-def dms_api_blob_get(db:str,id:str):
-    'Streaming blob download'
-    fs=gridfs.GridFS(GG.db_get(db))
-    def iterfile():
-        yield from fs.get(bson.objectid.ObjectId(id))
-    return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
+async def get_temp_dir():
+    tdir = tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB')
+    try:
+        yield tdir.name
+    finally:
+        del tdir
+
+
+@router.post('/{db}/blob/upload')
+def dms_api_blob_upload(db: str, blob: fastapi.UploadFile) -> str:
+    'Streming blob upload'
+    fs = gridfs.GridFS(GG.db_get(db))
+    return str(fs.put(blob.file, filename=blob.filename))
+
+
+@router.get('/{db}/blob/{uid}')
+def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir)):
+    fs = gridfs.GridFS(GG.db_get(db))
+    foundfile = fs.get(bson.objectid.ObjectId(uid))
+    wfile = io.BytesIO(foundfile.read())
+    fn = foundfile.filename
+    fullpath = tdir + '/' + fn
+    with open(fullpath, "wb") as f:
+        f.write(wfile.read())
+        f.close()
+        return fastapi.responses.FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
+
+    # 'Streaming blob download'
+    # fs=gridfs.GridFS(GG.db_get(db))
+    # def iterfile():
+    #     yield from fs.get(bson.objectid.ObjectId(id))
+    # return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
 
 
 #

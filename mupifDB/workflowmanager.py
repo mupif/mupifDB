@@ -801,7 +801,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                         info = i
                 data = prop.to_db_dict(dialect='edm')
                 if edm_list is True:
-                    setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data)
+                    setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
                 else:
                     restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
@@ -810,14 +810,42 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                 full_path = tempDir + "/file.h5"
                 prop.saveHdf5(full_path)
-                fileID = None
-                with open(full_path, 'rb') as f:
-                    fileID = restApiControl.uploadBinaryFile(f)
-                    f.close()
-                if fileID is not None:
-                    restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                if onto_path is not None:
+                    splitted = onto_path.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
+                    # find base object info
+                    info = {}
+                    for i in onto_base_objects:
+                        if i['Name'] == base_object_name:
+                            info = i
+                    fileID = None
+                    with open(full_path, 'rb') as f:
+                        fileID = restApiControl.uploadEDMBinaryFile(info.get('DBName', ''), f)
+                        f.close()
+                    if fileID is not None:
+                        data = {
+                            "ClassName": "ConstantProperty",
+                            "FileID": fileID,
+                            "ValueType": prop.valueType.name,
+                            "DataID": prop.propID.name
+                        }
+                        if edm_list is True:
+                            setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
+                        else:
+                            restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                    else:
+                        raise ConnectionError("hdf5 file was not saved")
+
                 else:
-                    print("hdf5 file was not saved")
+                    fileID = None
+                    with open(full_path, 'rb') as f:
+                        fileID = restApiControl.uploadBinaryFile(f)
+                        f.close()
+                    if fileID is not None:
+                        restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                    else:
+                        raise ConnectionError("hdf5 file was not saved")
 
     elif object_type == 'mupif.TemporalProperty':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
@@ -833,7 +861,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                     info = i
             data = prop.to_db_dict(dialect='edm')
             if edm_list is True:
-                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data)
+                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
             else:
                 restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
@@ -853,7 +881,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             # set the desired object
             data = prop.to_db_dict(dialect='edm')
             if edm_list is True:
-                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data)
+                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
             else:
                 restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
