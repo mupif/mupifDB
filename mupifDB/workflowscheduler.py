@@ -540,7 +540,7 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
-                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize)
+                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*2)
                         except Exception as e:
                             log.error(repr(e))
                             pending_executions = []
