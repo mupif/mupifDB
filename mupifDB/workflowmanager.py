@@ -458,7 +458,7 @@ def getEDMStringInstance(edm_data, data_id, value_type):
 
 
 def getEDMTemporalPropertyInstance(edm_data, data_id, value_type):
-    obj = mupif.TemporalProperty.from_db_dict(edm_data)
+    obj = mupif.DbDictable.from_db_dict(edm_data, dialect='edm')
     return obj
 
 
