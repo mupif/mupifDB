@@ -83,7 +83,7 @@ ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
 
-poolsize = 20
+poolsize = 30
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
@@ -540,7 +540,7 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
-                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*2)
+                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
                         except Exception as e:
                             log.error(repr(e))
                             pending_executions = []
@@ -599,7 +599,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         print("waiting..")
-                        time.sleep(20)
+                        time.sleep(30)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)
