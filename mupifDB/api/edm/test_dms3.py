@@ -3,6 +3,7 @@ import requests
 import json
 from rich.pretty import pprint
 from rich import print_json
+import numpy as np
 
 import pymongo
 
@@ -170,6 +171,25 @@ class Test_REST(unittest.TestCase):
         id=C.post_data(f'{DB}/blob/upload','blob',blob)
         blob2=C.get_data(f'{DB}/blob/{id}')
         self.assertEqual(blob,blob2)
+
+    # @unittest.skip('asas')
+    def test_07_largedata(self):
+        C=self.__class__
+        schema={
+            'TestLarge':{
+                'arr': { 'dtype':'f', 'shape':[-1,100] }
+            }
+        }
+        C.post(f'{DB1}/schema',body=schema,query={'force':True})
+        # this is about 25MB worth of BSON, above the 16MB limit
+        a0=np.random.rand(10000,100)
+        ID=C.post(f'{DB1}/TestLarge',body={'arr':{'value':a0.tolist()}})
+        #ID=C.post(f'{DB1}/TestLarge',body={'arr':{'value':[[1,2],[3,4]]}})
+        a1=C.get(f'{DB1}/TestLarge/{ID}')
+        # print(f'{list(a1.keys())=}')
+        self.assertEqual(a0.shape,np.array(a1['arr']['value']).shape)
+
+
 
     def test_10_schema_post(self):
         C=self.__class__

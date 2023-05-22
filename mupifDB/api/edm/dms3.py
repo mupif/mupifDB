@@ -10,6 +10,7 @@ from rich.pretty import pprint
 
 import pymongo
 import bson
+import bson.raw_bson
 import builtins
 import string
 import itertools
@@ -18,6 +19,9 @@ import shutil
 import tempfile
 import attrdict
 import io
+import logging
+log=logging.getLogger(__name__)
+# logging.basicConfig(format='{levelname:7}: {message}', style='{', level=logging.INFO)
 
 
 import fastapi.responses
@@ -158,7 +162,10 @@ from pydantic import StrictInt, StrictFloat
 # validation with plain int (coming before float, as before) will corrode float to int
 # see https://pydantic-docs.helpmanual.io/usage/models/#data-conversion
 # use StrictFloat and StrictInt instead
-@pydantic.validate_arguments()
+
+# THIS takes a long long time on big data, disabling it
+# @pydantic.validate_arguments()
+#
 def _validated_quantity_2(
         itemName: str,
         item: ItemSchema,
@@ -184,9 +191,10 @@ def _validated_quantity_2(
     assert item.link is None
     # 1. create np.array
     # 1a. check numeric type convertibility (must be done item-by-item; perhaps can be optimized later?)
-    if isinstance(value,Sequence):
-        for it in _flatten(value):
-            if not np.can_cast(it,item.dtype,casting='same_kind'): raise ValueError(f'{itemName}: type mismatch: item {it} cannot be cast to dtype {item.dtype} (using same_kind)')
+    if 0:
+        if isinstance(value,Sequence):
+            for it in _flatten(value):
+                if not np.can_cast(it,item.dtype,casting='same_kind'): raise ValueError(f'{itemName}: type mismatch: item {it} cannot be cast to dtype {item.dtype} (using same_kind)')
     np_val=np.array(value,dtype=item.dtype)
     # 1b. check shape
     if len(item.shape) is not None:
@@ -497,6 +505,7 @@ class _ObjectTracker:
 def _api_value_to_db_rec__attr(item,val,prefix):
     'Convert API value to the DB record (for attribute)'
     assert item.link is None
+    # print(f'{prefix=} {item=} {len(str(val))=}')
     for k,v in item.implicit.items():
         if k in val and val[k]!=v: raise ValueError(f'{prefix}: implicit field {k} has different value in schema and data ({v} vs. {val[k]})')
     if item.dtype=='str':
@@ -508,7 +517,8 @@ def _api_value_to_db_rec__attr(item,val,prefix):
         return json.loads(json.dumps(val))
     elif item.is_a_quantity():
         q=_validated_quantity(prefix,item,val)
-        return _quantity_to_dict(q)
+        ret=_quantity_to_dict(q)
+        return ret
     else: raise NotImplementedError(f'{prefix}: unable to convert API data to database record?? {item=}')
 
 def _api_value_to_db_rec__obj(data,klass,klassSchema):
@@ -537,7 +547,7 @@ def _db_rec_to_api_value__attr(item,dbrec,prefix):
         return dbrec
     else: raise NotImplementedError(f'{prefix}: unable to convert record to API data?? {item=}')
 
-def _db_rec_to_api_value__obj(klass,klassSchema,rec,parent):
+def _db_rec_to_api_value__obj(klass,klassSchema,rec:dict,parent):
     'Convert DB record to API value, without any attributes (for objects)'
     ret={}
     meta=ret['meta']=rec.pop('meta',{})
@@ -600,8 +610,23 @@ def dms_api_object_post(db: str, type:str, data:dict) -> str:
                         return tracker.resolve_relpath_to_id(relpath=obj,curr=path)
                     else: raise ValueError('{klass}.{key}: must be dict, object ID or relative path (not a {obj.__class__.__name__})')
                 rec[key]=_apply_link(item,val,_handle_link)
-            else: rec[key]=_api_value_to_db_rec__attr(item,val,f'{klass}.{key}')
-        ins=GG.db_get(db)[klass].insert_one(rec)
+            else:
+                rec[key]=_api_value_to_db_rec__attr(item,val,f'{klass}.{key}')
+        import pympler.asizeof
+        dataSz=pympler.asizeof.asizeof(data)
+        # dataSz is about 3× more than the resulting BSON document (for numerical data at least)
+        # so use that as an estimate; 20MB or more (about 6MB or more worth of BSON) will be
+        # stored in gridfs transparently
+        if dataSz>20*(1<<20):
+            rawBson=bson.raw_bson.RawBSONDocument(bson.encode(rec))
+            log.warning(f'large data: pympler.asizeof {dataSz/(1<<20):.1f} MB, BSON {len(rawBson.raw)/(1<<20):.1f} MB')
+            fs=gridfs.GridFS(GG.db_get(db))
+            gridId=str(fs.put(rawBson.raw))
+            ins=GG.db_get(db)[klass].insert_one({'__gridfs_file__':gridId})
+        else:
+            # it would be better to insert_one(rawBson), since rec has to be re-encoded as BSON;
+            # but then the ID returned is None :/
+            ins=GG.db_get(db)[klass].insert_one(rec)
         idStr=str(ins.inserted_id)
         tracker.add_tracked_object(path,idStr)
         return idStr
@@ -706,6 +731,7 @@ def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:
         return ret
     shallow_=set(shallow.split())
     # print(f'{shallow_=}')
+    # print(f'{id=}')
     RR=_resolve_path_head(db=db,type=type,id=id,path=path)
     ret=[]
     for R in RR:
@@ -753,9 +779,15 @@ class GG(object):
         obj=GG.db_get(db)[klass].find_one({'_id':bson.objectid.ObjectId(dbId)})
         if obj is None: raise KeyError(f'No object {klass} with id={dbId} in the database {db}')
         assert str(obj['_id'])==dbId
-        #if 'meta' not in obj: obj['meta']={}
-        #obj['meta']['id']=dbId
-        #del obj['_id']
+        if (gridId:=obj.get('__gridfs_file__',None)):
+            fs=gridfs.GridFS(GG.db_get(db))
+            rawBson=fs.get(bson.objectid.ObjectId(gridId)).read()
+            # RawBSONDocument implements mapping interface, could be used as a read-only dict
+            # but we need to be removing things like meta and _id from the dict on the way
+            # so convert it to python data
+            objId=obj['_id']
+            obj=bson.decode(rawBson)
+            obj['_id']=objId
         return GG.schema_get_type(db,klass),obj
 
     @staticmethod

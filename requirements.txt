@@ -19,3 +19,4 @@ requests
 parsy
 attrdict3
 asteval
+pympler
