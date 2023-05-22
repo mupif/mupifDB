@@ -509,22 +509,46 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
             obj_list = []
 
             if datalist_object_type == 'mupif.Property':
+                tot = len(edm_ids)
+                cur = 0
+                stage = 0
                 for e_id in edm_ids:
                     edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
+                    cur += 1
+                    if cur / tot * 100 >= stage:
+                        print("%d %%" % stage)
+                        while stage < cur / tot * 100:
+                            stage += 1
 
             elif datalist_object_type == 'mupif.String':
+                tot = len(edm_ids)
+                cur = 0
+                stage = 0
                 for e_id in edm_ids:
                     edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
+                    cur += 1
+                    if cur / tot * 100 >= stage:
+                        print("%d %%" % stage)
+                        while stage < cur / tot * 100:
+                            stage += 1
 
             elif datalist_object_type == 'mupif.TemporalProperty':
+                tot = len(edm_ids)
+                cur = 0
+                stage = 0
                 for e_id in edm_ids:
                     edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
+                    cur += 1
+                    if cur / tot * 100 >= stage:
+                        print("%d %%" % stage)
+                        while stage < cur / tot * 100:
+                            stage += 1
 
             did = mupif.DataID[data_id.replace('mupif.DataID.', '')]
             datalist_instance = mupif.DataList(objs=obj_list, dataID=did)
@@ -782,7 +806,6 @@ def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
             print("%d %%" % stage)
             while stage < cur / tot * 100:
                 stage += 10
-    print("100 %")
 
 
 def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}, edm_list=False):
