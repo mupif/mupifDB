@@ -880,7 +880,7 @@ def uploadEDMBinaryFile(DBName, binary_data):
     return response.json()
 
 
-def getEDMBinaryFileByID(fid):
+def getEDMBinaryFileByID(DBName, fid):
     response = rGet(url=RESTserver + "EDM/" + str(DBName) + "/blob/" + str(fid))
     d = response.headers['Content-Disposition']
     filename = re.findall("filename=(.+)", d)[0]
