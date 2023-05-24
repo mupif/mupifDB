@@ -669,7 +669,7 @@ def setExecutionInputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None and type(onto_data) is dict:
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
@@ -720,7 +720,7 @@ def setExecutionInputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None and type(onto_data) is dict:
                         value = onto_data.get('value', None)
                         if value is not None:
@@ -840,7 +840,7 @@ def getExecutionOutputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None:
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
@@ -908,7 +908,7 @@ def getExecutionOutputs(weid):
 
 @app.route("/entity_browser/<DB>/<Name>/<ID>/")
 def entity_browser(DB, Name, ID):
-    obj = restApiControl.getOntoData(DB, Name, ID, '')
+    obj = restApiControl.getEDMData(DB, Name, ID, '')
     html = json.dumps(obj, indent=4)
     html = html.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>').replace('  "', '  "<b>').replace('":', '</b>":').replace(' ', '&nbsp;')
     return my_render_template('basic.html', body=Markup(html))

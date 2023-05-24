@@ -830,11 +830,11 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # Ontology
 # --------------------------------------------------
 
-def getOntoDataArray(DBName, Type):
+def getEDMDataArray(DBName, Type):
     response = rGet(url=RESTserver + "EDM/" + str(DBName) + "/" + str(Type))
     return response.json()
 
-def getOntoData(DBName, Type, ID, path):
+def getEDMData(DBName, Type, ID, path):
     if ID == '' or ID is None:
         return None
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
@@ -842,19 +842,19 @@ def getOntoData(DBName, Type, ID, path):
     return response.json()
 
 
-def setOntoData(DBName, Type, ID, path, data):
+def setEDMData(DBName, Type, ID, path, data):
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID)
     response = rPatch(url=url, data=json.dumps({"path": str(path), "data": data}))
     return response.json()
 
 
-def createOntoData(DBName, Type, data):
+def createEDMData(DBName, Type, data):
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type)
     response = rPost(url=url, data=json.dumps(data))
     return response.json()
 
 
-def cloneOntoData(DBName, Type, ID, shallow=[]):
+def cloneEDMData(DBName, Type, ID, shallow=[]):
     url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
     response = rGet(url=url, params={"shallow": ' '.join(shallow)})
     return response.json()

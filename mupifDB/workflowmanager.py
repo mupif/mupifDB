@@ -312,7 +312,7 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
                 info = i
 
         # get the desired object
-        edm_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+        edm_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
         if edm_data is not None:
             if object_type == 'mupif.Property':
                 if edm_data.get('value', None) is not None:
@@ -490,17 +490,17 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
         edm_ids = info.get('ids', [])
 
         if object_type == 'mupif.Property':
-            edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, edm_id, object_path)
+            edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
             obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type == 'mupif.String':
-            edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, edm_id, object_path)
+            edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
             obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type == 'mupif.TemporalProperty':
-            edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, edm_id, object_path)
+            edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
             obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
@@ -513,7 +513,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 cur = 0
                 stage = 0
                 for e_id in edm_ids:
-                    edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
+                    edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
@@ -527,7 +527,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 cur = 0
                 stage = 0
                 for e_id in edm_ids:
-                    edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
+                    edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
@@ -541,7 +541,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 cur = 0
                 stage = 0
                 for e_id in edm_ids:
-                    edm_data = restApiControl.getOntoData(edm_dbname, edm_entity, e_id, object_path)
+                    edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
@@ -683,7 +683,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                 num = getEDMListLength(app=app, eid=eid, edm_name=obo.get('Name', ''), outputs=outputs)
                                 new_ids = []
                                 for i in range(0, num):
-                                    new_id = restApiControl.cloneOntoData(
+                                    new_id = restApiControl.cloneEDMData(
                                         DBName=source_obo.get('DBName', ''),
                                         Type=source_obo.get('EDMEntity', ''),
                                         ID=source_obo.get('id'),
@@ -692,29 +692,29 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                     new_ids.append(new_id)
                                 restApiControl.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
                                 for new_id in new_ids:
-                                    restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+                                    restApiControl.setEDMData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
                             else:
-                                new_id = restApiControl.cloneOntoData(
+                                new_id = restApiControl.cloneEDMData(
                                     DBName=source_obo.get('DBName', ''),
                                     Type=source_obo.get('EDMEntity', ''),
                                     ID=source_obo.get('id'),
                                     shallow=safe_links
                                 )
                                 restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
-                                restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+                                restApiControl.setEDMData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
 
                 elif obo.get('createNew', None) is not None:
                     edm_name = obo.get('Name', '')
                     valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
                     valid_emdpaths = [p.replace(obo.get('Name') + '.', '') for p in valid_emdpaths]
 
-                    new_id = restApiControl.createOntoData(
+                    new_id = restApiControl.createEDMData(
                         DBName=obo.get('DBName', ''),
                         Type=obo.get('EDMEntity', ''),
                         data=obo.get('createNew')
                     )
                     restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
-                    restApiControl.setOntoData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+                    restApiControl.setEDMData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
         print("Creating EDM output objects finished")
 
 
@@ -800,7 +800,7 @@ def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
     cur = 0
     stage = 0
     for edm_id in edm_ids:
-        restApiControl.setOntoData(dbname, edmentity, edm_id, object_path, data=data)
+        restApiControl.setEDMData(dbname, edmentity, edm_id, object_path, data=data)
         cur += 1
         if cur / tot * 100 >= stage:
             print("%d %%" % stage)
@@ -826,7 +826,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                 if edm_list is True:
                     setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
                 else:
-                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                    restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
                 restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
@@ -856,7 +856,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                         if edm_list is True:
                             setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
                         else:
-                            restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                            restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
                     else:
                         raise ConnectionError("hdf5 file was not saved")
 
@@ -886,7 +886,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if edm_list is True:
                 setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
             else:
-                restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
             restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
@@ -906,7 +906,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if edm_list is True:
                 setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
             else:
-                restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
             restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
@@ -927,7 +927,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if len(ids) == len(dl.objs):
                 for idx in range(0, len(ids)):
                     data = dl.objs[idx].to_db_dict(dialect='edm')
-                    restApiControl.setOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
+                    restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
             else:
                 raise ValueError('The length of the DataList does not match the length of the EDM objects list. (%d x %s)' % (len(ids), len(dl.objs)))
         else:
