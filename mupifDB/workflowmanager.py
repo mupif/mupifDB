@@ -519,7 +519,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     cur += 1
                     if cur / tot * 100 >= stage:
                         print("%d %%" % stage)
-                        while stage < cur / tot * 100:
+                        while stage <= cur / tot * 100:
                             stage += 10
 
             elif datalist_object_type == 'mupif.String':
@@ -533,7 +533,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     cur += 1
                     if cur / tot * 100 >= stage:
                         print("%d %%" % stage)
-                        while stage < cur / tot * 100:
+                        while stage <= cur / tot * 100:
                             stage += 10
 
             elif datalist_object_type == 'mupif.TemporalProperty':
@@ -547,7 +547,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     cur += 1
                     if cur / tot * 100 >= stage:
                         print("%d %%" % stage)
-                        while stage < cur / tot * 100:
+                        while stage <= cur / tot * 100:
                             stage += 10
 
             did = mupif.DataID[data_id.replace('mupif.DataID.', '')]
@@ -804,7 +804,7 @@ def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
         cur += 1
         if cur / tot * 100 >= stage:
             print("%d %%" % stage)
-            while stage < cur / tot * 100:
+            while stage <= cur / tot * 100:
                 stage += 10
 
 
