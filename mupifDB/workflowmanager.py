@@ -520,7 +520,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     if cur / tot * 100 >= stage:
                         print("%d %%" % stage)
                         while stage < cur / tot * 100:
-                            stage += 1
+                            stage += 10
 
             elif datalist_object_type == 'mupif.String':
                 tot = len(edm_ids)
@@ -534,7 +534,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     if cur / tot * 100 >= stage:
                         print("%d %%" % stage)
                         while stage < cur / tot * 100:
-                            stage += 1
+                            stage += 10
 
             elif datalist_object_type == 'mupif.TemporalProperty':
                 tot = len(edm_ids)
@@ -548,7 +548,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     if cur / tot * 100 >= stage:
                         print("%d %%" % stage)
                         while stage < cur / tot * 100:
-                            stage += 1
+                            stage += 10
 
             did = mupif.DataID[data_id.replace('mupif.DataID.', '')]
             datalist_instance = mupif.DataList(objs=obj_list, dataID=did)
