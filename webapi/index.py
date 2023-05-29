@@ -775,21 +775,29 @@ def setExecutionInputs(weid):
             form += '<td>' + obo.get('EDMEntity', '') + '</td>'
             form += '<td>' + obo.get('DBName', '') + '</td>'
             obo_id = obo.get('id', '')
+            obo_ids = obo.get('ids', [])
             if obo_id is None:
                 obo_id = ''
+            if obo_ids is None:
+                obo_ids = []
             if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None and obo.get('createNew', None) is None:
-                # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
-                form += '<td>'
-                form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
-                form += '<option value="">-</option>'
-                for option in restApiControl.getEDMEntityIDs(obo.get('DBName', ''), obo.get('EDMEntity', ''), obo.get('OptionsFilter', None)):
-                    form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
-                form += '</select>'
-                form += '</td>'
-
-
+                if obo.get('EDMList', False) is False:
+                    # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
+                    form += '<td>'
+                    form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
+                    form += '<option value="">-</option>'
+                    for option in restApiControl.getEDMEntityIDs(obo.get('DBName', ''), obo.get('EDMEntity', ''), obo.get('OptionsFilter', None)):
+                        form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
+                    form += '</select>'
+                    form += '</td>'
             else:
-                form += '<td>' + obo_id + '</td>'
+                if obo.get('EDMList', False) is False:
+                    form += '<td>' + obo_id + '</td>'
+                else:
+                    if len(obo_ids) <= 10:
+                        form += '<td>' + obo_ids + '</td>'
+                    else:
+                        form += '<td>' + obo_ids[0:5] + ' ...(total ' + len(obo_ids) + ')</td>'
             form += '<td>' + obo.get('createFrom', '') + '</td>'
             form += '<td>'
             if obo_id != '':
