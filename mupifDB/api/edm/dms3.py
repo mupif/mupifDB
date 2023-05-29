@@ -507,7 +507,9 @@ def _api_value_to_db_rec__attr(item,val,prefix):
     assert item.link is None
     # print(f'{prefix=} {item=} {len(str(val))=}')
     for k,v in item.implicit.items():
-        if k in val and val[k]!=v: raise ValueError(f'{prefix}: implicit field {k} has different value in schema and data ({v} vs. {val[k]})')
+        if k not in val: continue
+        if val[k]!=v: raise ValueError(f'{prefix}: implicit field {k} has different value in schema and data ({v} vs. {val[k]})')
+        del val[k]
     if item.dtype=='str':
         s=StrModel.parse_obj(val)
         s.schema_check(prefix,item)
@@ -536,8 +538,11 @@ def _db_rec_to_api_value__attr(item,dbrec,prefix):
     assert item.link is None
     # print(prefix,item)
     for k,v in item.implicit.items():
-        assert k not in dbrec
-        dbrec[k]=v
+        if k not in dbrec: 
+            dbrec[k]=v
+        else: # this should not happen, but be permissive to account for older implementaiton with bug
+            log.warning('{prefix}: implicit key "{k}" spuriously saved in DB')
+            if dbrec[k]!=v: raise ValueError(f'{prefix}: implicit key "{k}" has different value between schema and a spurious copy in the database.')
     if item.dtype=='str':
         if isinstance(dbrec,str): return {'value':dbrec} # backward-compat line, can be safely removed later
         return dbrec
