@@ -795,9 +795,9 @@ def setExecutionInputs(weid):
                     form += '<td>' + obo_id + '</td>'
                 else:
                     if len(obo_ids) <= 10:
-                        form += '<td>' + obo_ids + '</td>'
+                        form += '<td>' + str(obo_ids) + '</td>'
                     else:
-                        form += '<td>' + obo_ids[0:5] + ' ...(total ' + len(obo_ids) + ')</td>'
+                        form += '<td>' + str(obo_ids[0:5]) + ' ...(total ' + str(len(obo_ids)) + ')</td>'
             form += '<td>' + obo.get('createFrom', '') + '</td>'
             form += '<td>'
             if obo_id != '':
