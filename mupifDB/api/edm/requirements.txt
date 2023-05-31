@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+networkx
+astropy
+rich
+pytest-rich
+pytest
+pymongo
+requests
+parsy
+attrdict3
+asteval
+python-multipart

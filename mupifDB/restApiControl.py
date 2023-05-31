@@ -15,11 +15,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 #
 
-def Request(*, method, url, headers=None, auth=None, data=None, timeout=None):
+def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}):
     if method == 'get':
-        response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
+        response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data, params=params)
     elif method == 'post':
-        response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
+        response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data, files=files)
     elif method == 'patch':
         response = requests.patch(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
     elif method == 'put':
@@ -35,19 +35,19 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None):
         raise Exception('API returned code ' + str(response.status_code))
     return None
 
-def rGet(*, url, headers=None, auth=None, timeout=10):
-    return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout)
+def rGet(*, url, headers=None, auth=None, timeout=100, params={}):
+    return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params)
 
-def rPost(*, url, headers=None, auth=None, data=None, timeout=10):
-    return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
+def rPost(*, url, headers=None, auth=None, data=None, timeout=100, files={}):
+    return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data, files=files)
 
-def rPatch(*, url, headers=None, auth=None, data=None, timeout=10):
+def rPatch(*, url, headers=None, auth=None, data=None, timeout=100):
     return Request(method='patch', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
 
-def rPut(*, url, headers=None, auth=None, data=None, timeout=10):
+def rPut(*, url, headers=None, auth=None, data=None, timeout=100):
     return Request(method='put', url=url, headers=headers, auth=auth, timeout=timeout, data=data)
 
-def rDelete(*, url, headers=None, auth=None, timeout=10):
+def rDelete(*, url, headers=None, auth=None, timeout=100):
     return Request(method='delete', url=url, headers=headers, auth=auth)
 
 #
@@ -60,8 +60,6 @@ if not RESTserver[-1] == '/':
     RESTserver += '/'
 
 RESTserverMuPIF = RESTserver
-
-RESTserver_onto = RESTserver.replace('8005', '8080')
 
 granta_credentials = {'username': '', 'password': ''}
 
@@ -469,13 +467,13 @@ def getExecutionRecord(weid):
     return response.json()
 
 
-def getScheduledExecutions():
+def getScheduledExecutions(num_limit=None):
     if api_type == 'granta':
         return []
-    return getExecutionRecords(status="Scheduled")
+    return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
 
-def getPendingExecutions():
+def getPendingExecutions(num_limit=None):
     if api_type == 'granta':
         url = RESTserver + 'executions/?status=Ready'
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8'}
@@ -490,7 +488,7 @@ def getPendingExecutions():
             execution['Task_ID'] = ''
             res.append(execution)
         return res
-    return getExecutionRecords(status="Pending")
+    return getExecutionRecords(status="Pending", num_limit=num_limit)
 
 
 def scheduleExecution(execution_id):
@@ -511,6 +509,24 @@ def setExecutionOntoBaseObjectID(execution_id, name, value):
     if api_type == 'granta':
         return None
     response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}))
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+
+def setExecutionOntoBaseObjectIDMultiple(execution_id, data):
+    if api_type == 'granta':
+        return None
+    response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id_multiple/", data=json.dumps({"data": data}))
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+
+def setExecutionOntoBaseObjectIDs(execution_id, name, value):
+    if api_type == 'granta':
+        return None
+    response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_ids/", data=json.dumps({"name": str(name), "value": value}))
     if response.status_code == 200:
         return response.json()
     return None
@@ -728,6 +744,7 @@ def logMessage(*,name,levelno,pathname,lineno,created,**kw):
 
     Variable extra fields might added in when calling the logging function, e.g. log.error(...,extra={'another-field':123})
     '''
+    return
     # re-assemble the dictionary
     data = dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
     data['msg'] = data['msg'] % data['args']
@@ -751,6 +768,21 @@ def getStatus():
     if api_type == 'granta':
         return None
     response = rGet(url=RESTserver + "status/")
+    return response.json()
+
+
+def getExecutionStatistics():
+    if api_type == 'granta':
+        return {
+            'totalExecutions': 0,
+            'finishedExecutions': 0,
+            'failedExecutions': 0,
+            'createdExecutions': 0,
+            'pendingExecutions': 0,
+            'scheduledExecutions': 0,
+            'runningExecutions': 0
+        }
+    response = rGet(url=RESTserver + "execution_statistics/")
     return response.json()
 
 
@@ -798,25 +830,58 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # Ontology
 # --------------------------------------------------
 
-def getOntoDataArray(DBName, Type):
-    response = rGet(url=RESTserver_onto + str(DBName) + "/" + str(Type) + "/")
+def getEDMDataArray(DBName, Type):
+    response = rGet(url=RESTserver + "EDM/" + str(DBName) + "/" + str(Type))
     return response.json()
 
-def getOntoData(DBName, Type, ID, path):
+def getEDMData(DBName, Type, ID, path):
     if ID == '' or ID is None:
         return None
-    url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/?path=" + str(path)
     response = rGet(url=url)
     return response.json()
 
 
-def setOntoData(DBName, Type, ID, path, data):
-    url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID)
+def setEDMData(DBName, Type, ID, path, data):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID)
     response = rPatch(url=url, data=json.dumps({"path": str(path), "data": data}))
     return response.json()
 
 
-def cloneOntoData(DBName, Type, ID):
-    url = RESTserver_onto + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
-    response = rGet(url=url)
+def createEDMData(DBName, Type, data):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type)
+    response = rPost(url=url, data=json.dumps(data))
     return response.json()
+
+
+def cloneEDMData(DBName, Type, ID, shallow=[]):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/clone"
+    response = rGet(url=url, params={"shallow": ' '.join(shallow)})
+    return response.json()
+
+
+def getSafeLinks(DBName, Type, ID, paths=[]):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/" + str(ID) + "/safe-links"
+    response = rGet(url=url, params={"paths": ' '.join(paths)})
+    return response.json()
+
+
+def getEDMEntityIDs(DBName, Type, filter=None):
+    url = RESTserver + "EDM/" + str(DBName) + "/" + str(Type) + "/find"
+    if filter:
+        response = rPut(url=url, data=json.dumps({"filter": filter}))
+    else:
+        response = rPut(url=url, data=json.dumps({"filter": {}}))
+    return response.json()
+
+
+def uploadEDMBinaryFile(DBName, binary_data):
+    response = rPost(url=RESTserver + "EDM/" + str(DBName) + "/blob/upload", files={"blob": binary_data})
+    return response.json()
+
+
+def getEDMBinaryFileByID(DBName, fid):
+    response = rGet(url=RESTserver + "EDM/" + str(DBName) + "/blob/" + str(fid))
+    d = response.headers['Content-Disposition']
+    filename = re.findall("filename=(.+)", d)[0]
+    return response.content, filename

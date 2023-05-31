@@ -1,12 +1,26 @@
 pygal
 python-pidfile
-mupif
+git+https://github.com/mupif/mupif/@master#egg=mupif
 pymongo
 flask_pymongo
 flask_cors
 isodate
-flask
+# see https://stackoverflow.com/a/76116905
+# flask 2.3 does not provide flask.json.JSONEncoder anymore
+# (can be replaced by vanilla json encoder, but our code is not updated (yet?)
+flask==2.2.3
 psutil
 fastapi
 uvicorn[standard]
 python-multipart
+networkx
+astropy
+rich
+pytest-rich
+pytest
+requests
+parsy
+attrdict3
+asteval
+pympler
+rotate-backups

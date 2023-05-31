@@ -3,6 +3,7 @@ import mupif.physics.physicalquantities as PQ
 import logging
 from pymongo import MongoClient
 import argparse
+import sys
 import mupifDB.workflowmanager
 from bson import ObjectId
 

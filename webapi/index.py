@@ -32,6 +32,7 @@ CORS(app, resources={r"/static/*": {"origins": "*"}})
 
 # unless overridden by the environment, use 127.0.0.1:5000
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
+RESTserver = RESTserver.replace('5000', '8005')
 
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
@@ -557,11 +558,20 @@ def setExecutionInputs(weid):
                             restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
                         elif i['Type'] == 'mupif.String':
                             msg += 'Setting %s (ObjID %s) to %s</br>' % (name, objID, value)
+                            valuetype = i.get('ValueType', 'Scalar')
+                            strval = str(value)
+                            if valuetype == 'Vector':
+                                if strval.find('[') >= 0:
+                                    strval = literal_eval(strval)
+                                else:
+                                    strval = strval.split(' ')
+
 
                             object_dict = {
                                 'ClassName': 'String',
                                 'DataID': i['TypeID'].replace('mupif.DataID.', ''),
-                                'Value': str(value)
+                                'Value': strval,
+                                'ValueType': valuetype
                             }
                             restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
                         else:
@@ -659,7 +669,7 @@ def setExecutionInputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None and type(onto_data) is dict:
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
@@ -685,14 +695,44 @@ def setExecutionInputs(weid):
                     prop = mupif.String.from_db_dict(i['Object'])
                     ival = prop.getValue()
                 except:
-                    ival = ''
-                form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
+                    if i.get('ValueType', 'Scalar') == 'Vector':
+                        ival = []
+                    else:
+                        ival = ''
+                if i.get('ValueType', 'Scalar') == 'Vector':
+                    sval = str(list(ival))
+                else:
+                    sval = str(ival)
+                form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, sval, required)
             else:
                 if i.get('EDMPath', None) is not None:
-                    pass
+                    onto_path = i.get('EDMPath')
+                    onto_base_objects = execution_record.get('EDMMapping', [])
+
+                    splitted = onto_path.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
+
+                    # find base object info
+                    info = {}
+                    for ii in onto_base_objects:
+                        if ii['Name'] == base_object_name:
+                            info = ii
+
+                    # get the desired object
+                    onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    if onto_data is not None and type(onto_data) is dict:
+                        value = onto_data.get('value', None)
+                        if value is not None:
+                            form += str(value)
                 else:
-                    if i['Object'].get('Value', None) is not None:
-                        form += str(i['Object']['Value'])
+                    val = i['Object'].get('Value', None)
+                    if val is not None:
+                        if i.get('ValueType', 'Scalar') == 'Vector':
+                            form += str(list(val))
+                        else:
+                            form += str(val)
+
             form += "</td>"
             form += '<td>' + str(i.get('Units')) + '</td>'
 
@@ -735,25 +775,33 @@ def setExecutionInputs(weid):
             form += '<td>' + obo.get('EDMEntity', '') + '</td>'
             form += '<td>' + obo.get('DBName', '') + '</td>'
             obo_id = obo.get('id', '')
+            obo_ids = obo.get('ids', [])
             if obo_id is None:
                 obo_id = ''
-            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None:
-                # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
-                form += '<td>'
-                form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
-                form += '<option value="">-</option>'
-                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('EDMEntity', '')):
-                    form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
-                form += '</select>'
-                form += '</td>'
-
-
+            if obo_ids is None:
+                obo_ids = []
+            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None and obo.get('createNew', None) is None:
+                if obo.get('EDMList', False) is False:
+                    # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
+                    form += '<td>'
+                    form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
+                    form += '<option value="">-</option>'
+                    for option in restApiControl.getEDMEntityIDs(obo.get('DBName', ''), obo.get('EDMEntity', ''), obo.get('OptionsFilter', None)):
+                        form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
+                    form += '</select>'
+                    form += '</td>'
             else:
-                form += '<td>' + obo_id + '</td>'
+                if obo.get('EDMList', False) is False:
+                    form += '<td>' + obo_id + '</td>'
+                else:
+                    if len(obo_ids) <= 10:
+                        form += '<td>' + str(obo_ids) + '</td>'
+                    else:
+                        form += '<td>' + str(obo_ids[0:5]) + ' ...(total ' + str(len(obo_ids)) + ')</td>'
             form += '<td>' + obo.get('createFrom', '') + '</td>'
             form += '<td>'
             if obo_id != '':
-                form += '<a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('Type', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
+                form += '<a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
             form += '</td>'
             form += '</tr>'
         form += "</table>"
@@ -800,7 +848,7 @@ def getExecutionOutputs(weid):
                             info = ii
 
                     # get the desired object
-                    onto_data = restApiControl.getOntoData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                    onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
                     if onto_data is not None:
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
@@ -850,21 +898,16 @@ def getExecutionOutputs(weid):
             form += '<td>' + obo.get('EDMEntity', '') + '</td>'
             form += '<td>' + obo.get('DBName', '') + '</td>'
             obo_id = obo.get('id', '')
-            if obo_id is None:
-                obo_id = ''
-            if execution_record.get('Status') == 'Created' and obo.get('createFrom', None) is None:
-                # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
-                form += '<td>'
-                form += '<select name="obo_id_' + obo.get('Name', '') + '" onchange="this.form.submit()">'
-                form += '<option value="">-</option>'
-                for option in restApiControl.getOntoDataArray(obo.get('DBName', ''), obo.get('EDMEntity', '')):
-                    form += '<option value="' + option + '" ' + ('selected' if obo_id == option else '') + '>' + option + '</option>'
-                form += '</select>'
-                form += '</td>'
-            else:
-                form += '<td>' + obo_id + '</td>'
+            if obo.get('EDMList', False) is True:
+                obo_id = obo.get('ids', [])
+            # if obo_id is None:
+            #     obo_id = ''
+            form += '<td>' + str(obo_id) + '</td>'
             form += '<td>' + obo.get('createFrom', '') + '</td>'
-            form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
+            if obo.get('EDMList', False) is True:
+                form += '<td></td>'
+            else:
+                form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
             form += '</tr>'
         form += "</table>"
 
@@ -873,7 +916,7 @@ def getExecutionOutputs(weid):
 
 @app.route("/entity_browser/<DB>/<Name>/<ID>/")
 def entity_browser(DB, Name, ID):
-    obj = restApiControl.getOntoData(DB, Name, ID, '')
+    obj = restApiControl.getEDMData(DB, Name, ID, '')
     html = json.dumps(obj, indent=4)
     html = html.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>').replace('  "', '  "<b>').replace('":', '</b>":').replace(' ', '&nbsp;')
     return my_render_template('basic.html', body=Markup(html))

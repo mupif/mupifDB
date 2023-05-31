@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, Depends
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 import tempfile
 import gridfs
@@ -22,8 +23,6 @@ import table_structures
 
 client = MongoClient("mongodb://localhost:27017")
 db = client.MuPIF
-
-clientDMS = MongoClient("mongodb://localhost:27024")
 
 tags_metadata = [
     {
@@ -60,6 +59,21 @@ tags_metadata = [
 
 
 app = FastAPI(openapi_tags=tags_metadata)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# import and initialize EDM
+if 1:
+    import mupifDB.api.edm as edm
+    edm.initializeEdm(client)
+    app.include_router(edm.dms3.router)
+
 
 
 def fix_id(record):
@@ -210,7 +224,7 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
         filtering["label"] = label
     if num_limit == 0:
         num_limit = 999999
-    res = db.WorkflowExecutions.find(filtering).sort('CreatedDate', 1).limit(num_limit)
+    res = db.WorkflowExecutions.find(filtering).limit(num_limit)  # .sort('CreatedDate', 1)
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
@@ -349,6 +363,28 @@ def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
     return get_execution(uid)
 
 
+class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
+    data: list[dict]
+
+
+@app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
+def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDMultiple):
+    for d in data.data:
+        db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": d['name']}, {"$set": {"EDMMapping.$.id": d['value']}})
+    return get_execution(uid)
+
+
+class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
+    name: str
+    value: list[str]
+
+
+@app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
+def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}})
+    return get_execution(uid)
+
+
 class M_ModifyExecution(BaseModel):
     key: str
     value: str
@@ -363,7 +399,7 @@ def modify_execution(uid: str, data: M_ModifyExecution):
 @app.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str):
     execution_record = get_execution(uid)
-    if execution_record['Status'] == 'Created':
+    if execution_record['Status'] == 'Created' or True:
         data = type('', (), {})()
         data.key = "Status"
         data.value = "Pending"
@@ -499,6 +535,28 @@ def get_status():
     return {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
 
 
+@app.get("/execution_statistics/", tags=["Stats"])
+def get_execution_statistics():
+    res = client.MuPIF.WorkflowExecutions.aggregate([
+        {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
+    ])
+    vals = {}
+    tot = 0
+    for r in res:
+        vals[r['_id']] = r['count']
+        tot += r['count']
+
+    output = {}
+    output['totalExecutions'] = tot
+    output['finishedExecutions'] = vals.get('Finished', 0)
+    output['failedExecutions'] = vals.get('Failed', 0)
+    output['createdExecutions'] = vals.get('Created', 0)
+    output['pendingExecutions'] = vals.get('Pending', 0)
+    output['scheduledExecutions'] = vals.get('Scheduled', 0)
+    output['runningExecutions'] = vals.get('Running', 0)
+    return output
+
+
 @app.get("/scheduler_statistics/", tags=["Stats"])
 def get_scheduler_statistics():
     table = db.Stat
@@ -545,3 +603,19 @@ def get_ui_file(file_path: str):
         pass
     print(file_path + " not found")
     return None
+
+
+class M_FindParams(BaseModel):
+    filter: dict
+
+
+@app.put("/EDM/{db}/{type}/find", tags=["EDM"])
+def edm_find(db: str, type: str, data: M_FindParams):
+    res = client[db][type].find(data.filter)
+    ids = [str(r["_id"]) for r in res]
+    return ids
+
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run('main:app', host='0.0.0.0', port=8080, reload=True)

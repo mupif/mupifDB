@@ -83,42 +83,14 @@ ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
 
-poolsize = 3
+poolsize = 30
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
 buf = None
 
-
-def setupLogger(fileName, level=logging.DEBUG):
-    """
-    Set up a logger which prints messages on the screen and simultaneously saves them to a file.
-    The file has the suffix '.log' after a loggerName.
-
-    :param str fileName: file name, the suffix '.log' is appended.
-    :param object level: logging level. Allowed values are CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
-    :rtype: logger instance
-    """
-    logger = logging.getLogger()
-    formatLog = '%(asctime)s %(levelname)s:%(filename)s:%(lineno)d %(message)s \n'
-    formatTime = '%Y-%m-%d %H:%M:%S'
-    formatter = logging.Formatter(formatLog, formatTime)
-    fileHandler = logging.FileHandler(fileName, mode='w')
-    fileHandler.setFormatter(formatter)
-    streamHandler = logging.StreamHandler()
-    streamHandler.setFormatter(formatter)
-    restHandler = restLogger.RestLogHandler()
-
-    logger.setLevel(level)
-    logger.addHandler(fileHandler)
-    logger.addHandler(streamHandler)
-    logger.addHandler(restHandler)
-
-    return logger
-
-
-log = setupLogger(fileName="scheduler.log")
-
+log=logging.getLogger('workflow-scheduler') 
+log.addHandler(restLogger.RestLogHandler())
 
 @Pyro5.api.expose
 class SchedulerMonitor (object):
@@ -313,6 +285,7 @@ def executeWorkflow(lock, schedulerStat, we_id):
                 #     tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
                 print("temp dir %s created" % (tempDir,))
                 log.info("temp dir %s created" % (tempDir,))
+                workflowLogName = tempDir+'/workflow.log'
                 # copy workflow source to tempDir
                 try:
                     python_script_filename = workflow_record['modulename'] + ".py"
@@ -374,7 +347,6 @@ def executeWorkflow(lock, schedulerStat, we_id):
                 # uses the same python interpreter as the current process
                 cmd = [sys.executable, execScript, '-eid', str(we_id)]
                 # print(cmd)
-                workflowLogName = tempDir+'/workflow.log'
                 with open(workflowLogName, 'w') as workflowLog:
                     ll = 10*'='
                     workflowLog.write(f'''
@@ -521,8 +493,14 @@ if __name__ == '__main__':
         # run scheduler monitor
         monitor.runServer()
 
-        
-        pool = multiprocessing.Pool(processes=poolsize, initializer=procInit)
+        # https://github.com/mupif/mupifDB/issues/14
+        # explicitly use forking (instead of spawning) so that there are no leftover monitoring processes
+        # if scheduler gets killed externally (such as in the docker by supervisor, which won't reap
+        # orphan processes
+        # even though fork is the default for POSIX, mp.simplejobmanager was setting the (global)
+        # default to spawn, therefore it was used here as well. So better to be explicit (and also
+        # fix the — perhaps unnecessary now? — global setting in simplejobmanager)
+        pool = multiprocessing.get_context('fork').Pool(processes=poolsize, initializer=procInit)
         atexit.register(stop, pool)
         try:
             with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
@@ -562,7 +540,10 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
-                            pending_executions = restApiControl.getPendingExecutions()
+                            if schedulerStat['scheduledTasks'] < 200:
+                                pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
+                            else:
+                                pending_executions = []
                         except Exception as e:
                             log.error(repr(e))
                             pending_executions = []
@@ -572,7 +553,7 @@ if __name__ == '__main__':
                             weid = wed['_id']
 
                             # check number of attempts for execution
-                            if int(wed['Attempts']) > 60*10:
+                            if int(wed['Attempts']) > 60*10 and False:
                                 try:
                                     restApiControl.setExecutionStatusCreated(weid)
                                     if api_type != 'granta':
@@ -606,7 +587,6 @@ if __name__ == '__main__':
                                         except Exception as e:
                                             log.error(repr(e))
 
-                            break
                         # ok, no more jobs to schedule for now, wait
                         # display progress (consider use of tqdm)
                         lt = time.localtime(time.time())
@@ -622,7 +602,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         print("waiting..")
-                        time.sleep(60)
+                        time.sleep(30)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)

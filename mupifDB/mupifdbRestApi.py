@@ -206,7 +206,7 @@ def insert_workflow(data):
 def update_workflow(data):
     table = mongo.db.Workflows
     res = table.find_one_and_update({'wid': data['wid']}, {'$set': data}, return_document=ReturnDocument.AFTER)
-    return jsonify({'result': table_structures.extendRecord(s, table_structures.tableWorkflow)})
+    return jsonify({'result': table_structures.extendRecord(res, table_structures.tableWorkflow)})
 
 
 # --------------------------------------------------
