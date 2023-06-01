@@ -13,6 +13,7 @@ import pidfile
 import zipfile
 import ctypes
 import json
+import jsonpickle
 
 import restApiControl
 import restLogger
@@ -26,7 +27,7 @@ import Pyro5
 import mupif as mp
 
 import logging
-# logging.basicConfig(filename='scheduler.log',level=logging.DEBUG)
+logging.basicConfig(filename='scheduler.log',level=logging.DEBUG) # comment for production run
 
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("urllib3").propagate = False
@@ -66,6 +67,51 @@ class index(enum.IntEnum):
     processedTasks = 3
     load = 4
 
+
+def historyMoveHelper(data, epoch, prefix): 
+    # fill the gap between current index and last valid entry (self.index)
+    indx = int(epoch/data[prefix+'epochDelta'])
+    if (indx == data[prefix+'index']):
+        return
+    elif (indx < data[prefix+'index']):
+        raise IndexError ();
+    else:
+        gap = indx-data[prefix+'index']
+        if (gap>data[prefix+'size']):
+            gap=data[prefix+'size']
+
+        arrays = [prefix+'pooledTasks', prefix+'processedTasks', prefix+'finishedTasks', prefix+'failedTasks', prefix+'load', prefix+'loadTicks']
+        for a in arrays:
+            for i in range(gap):
+               data[a].pop(0)
+               data[a].append(0)
+        data[prefix+'index'] = indx
+
+def historyMove(data, epoch):
+    historyMoveHelper(data, epoch, 's1_')
+    
+def historyUpdateLoad(data, epoch, currentLoad):
+    historyMove(data, epoch)
+    data['s1_load'][-1] = (data['s1_load'][-1]*data['s1_loadTicks'][-1] + currentLoad)/(data['s1_loadTicks'][-1]+1)
+    data['s1_loadTicks'][-1]+=1
+def historyUpdatePooled(data, epoch):
+    historyMove(data,epoch)
+    data['s1_pooledTasks'][-1] += 1
+def historyUpdateRunning(data, epoch):
+    historyMove(data,epoch)
+    data['s1_pooledTasks'][-1] -= 1
+    #data['s1_runningTasks'][-1] += 1
+def historyUpdateFinished(data, epoch):
+    historyMove(data,epoch)
+    data['s1_processedTasks'][-1] += 1
+    data['s1_finishedTasks'][-1] += 1
+    #data['s1_runningTasks'][-1] -= 1
+def historyUpdateFailed(data, epoch):
+    historyMove(data,epoch)
+    data['s1_processedTasks'][-1] +=1
+    data['s1_failedTasks'][-1] += 1
+    #data['s1_runningTasks'][-1] -= 1
+
 # global vars 
 runningTasks = 0
 scheduledTasks = 0
@@ -82,8 +128,7 @@ api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
-
-poolsize = 30
+poolsize = 20
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
@@ -109,14 +154,23 @@ class SchedulerMonitor (object):
             finishedTasks=self.stat['finishedTasks']
             failedTasks=self.stat['failedTasks']
             lastJobs=self.stat['lastJobs']
+            polledTasks48 = self.stat['s1_pooledTasks'][:]
+            processedTasks48 = self.stat['s1_processedTasks'][:]
+            finishedTasks48 = self.stat['s1_finishedTasks'][:]
+            faledTasks48 = self.stat['s1_failedTasks'][:]
+            load48 = self.stat['s1_load'][:]
         return {
             'runningTasks':runningTasks, 
             'scheduledTasks':scheduledTasks,
             'processedTasks': processedTasks,
             'finishedTasks': finishedTasks,
             'failedTasks': failedTasks,
-            'lastJobs': lastJobs 
-            }
+            'lastJobs': lastJobs,
+            'polledTasks48': polledTasks48,
+            'finishedTasks48': finishedTasks48,
+            'load48': load48
+        }
+
     @staticmethod
     def getExecutions(status='Running'):
         try:
@@ -161,8 +215,6 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
         # print (schedulerStat)
         # print ('------------------')
 
-        # restApiControl.setStatScheduler(load=int(100 * int(stats_temp['runningTasks']) / poolsize))
-        #
         schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks']-1
         schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
         # schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
@@ -177,6 +229,14 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
         # print (we_id, wid)
         # print (schedulerStat)
         # print ('=======================')
+        epoch=time.time()
+        l = int(100 * int(schedulerStat['runningTasks']) / poolsize)
+        historyUpdateRunning(schedulerStat,epoch)  
+        restApiControl.setStatScheduler(load=l)
+        schedulerStat['load'] = l
+        restApiControl.setStatScheduler(runningTasks = schedulerStat['runningTasks'])
+        restApiControl.setStatScheduler(scheduledTasks = schedulerStat['scheduledTasks'])
+
 
 
 def updateStatScheduled(lock, schedulerStat):
@@ -184,14 +244,18 @@ def updateStatScheduled(lock, schedulerStat):
         print("updateStatScheduled called")
         #
         schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks'] + 1
+        restApiControl.setStatScheduler(scheduledTasks = schedulerStat['scheduledTasks'])
+        epoch=time.time()
+        historyUpdatePooled(schedulerStat, epoch)
+
 
 def updateStatFinished(lock, schedulerStat, retCode, we_id):
     try:
         with lock:
             print("updateStatFinished called")
 
-            stats_temp = restApiControl.getStatScheduler()
-            restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
+            #stats_temp = restApiControl.getStatScheduler()
+            #restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
             #
             schedulerStat['runningTasks']=schedulerStat['runningTasks']-1
             if (retCode == 0):
@@ -200,6 +264,11 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
             elif (retCode == 1):
                 schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
                 schedulerStat['failedTasks'] =schedulerStat['failedTasks']+1
+            l = int(100 * int(schedulerStat['runningTasks']) / poolsize)            
+            restApiControl.setStatScheduler(load=l)
+            restApiControl.setStatScheduler(runningTasks=schedulerStat['runningTasks'])
+            restApiControl.setStatScheduler(processedTasks=schedulerStat['processedTasks'])
+
             jobs = []
             for i in range(len(schedulerStat['lastJobs'])):
                 if (schedulerStat['lastJobs'][i][0] == we_id):
@@ -211,6 +280,8 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
                     jobs.append(schedulerStat['lastJobs'][i])
             schedulerStat['lastJobs'] = jobs
 
+            epoch=time.time()
+            historyUpdateFinished(schedulerStat, epoch)
             # print (schedulerStat)
     except Exception as e:
         log.error(repr(e))
@@ -221,8 +292,13 @@ def updateStatPersistent (schedulerStat):
     if (False):
         return
     else:
+        localStat = schedulerStat.copy()
+        arrayToCopy = ['s1_pooledTasks', 's1_processedTasks', 's1_finishedTasks', 's1_failedTasks', 's1_load', 's1_loadTicks']
+        for i in arrayToCopy:
+           localStat[i] = schedulerStat[i][:]
+        
         jsonFile= open(schedulerStatFile, 'w')
-        json.dump(schedulerStat.copy(), jsonFile)
+        json.dump(localStat, jsonFile)
         jsonFile.close()
         # print("Update:", stat)
         # print("updateStatPersistent finished")
@@ -454,13 +530,13 @@ if __name__ == '__main__':
 
     if (Path(schedulerStatFile).is_file()):
         with open(schedulerStatFile,'r') as f:
-            stat=json.load(f)
+            stat = json.load(f)
             # print (stat)
     else:
         # create empty stat
         stat={'runningTasks':0, 'scheduledTasks': 0, 'load':0, 'processedTasks':0, 'finishedTasks':0, 'failedTasks':0}
-        with open(schedulerStatFile,'w') as f:
-            json.dump(stat, f)
+        #with open(schedulerStatFile,'w') as f:
+        #    f.write(jsonpickle.encode(stat))
 
     import requests.adapters
     import urllib3
@@ -487,9 +563,23 @@ if __name__ == '__main__':
         schedulerStat['finishedTasks'] = stat.get('finishedTasks', 0)
         schedulerStat['failedTasks'] = stat.get('failedTasks', 0)
         schedulerStat['lastJobs'] = []  # manager.list()
+        # 48hrs statistics
+        schedulerStat['s1_size']=48
+        schedulerStat['s1_index']=0
+        schedulerStat['s1_epochDelta']=60*60
+        schedulerStat['s1_pooledTasks']=manager.list(stat.get('s1_pooledTasks', [0]*schedulerStat['s1_size']))
+        schedulerStat['s1_processedTasks']=manager.list(stat.get('s1_processedTasks', [0]*schedulerStat['s1_size']))
+        schedulerStat['s1_finishedTasks']=manager.list(stat.get('s1_finishedTasks', [0]*schedulerStat['s1_size']))
+        schedulerStat['s1_failedTasks']=manager.list(stat.get('s1_failedTasks', [0]*schedulerStat['s1_size']))
+        schedulerStat['s1_load']=manager.list(stat.get('s1_load', [0]*schedulerStat['s1_size']))
+        schedulerStat['s1_loadTicks']=manager.list(stat.get('s1_loadTicks', [0]*schedulerStat['s1_size']))
+        
+        updateStatPersistent (schedulerStat)
+
         statusLock = manager.Lock()
 
         monitor = SchedulerMonitor(ns, schedulerStat, statusLock)
+
         # run scheduler monitor
         monitor.runServer()
 
@@ -540,6 +630,7 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
+                            # pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize)
                             if schedulerStat['scheduledTasks'] < 200:
                                 pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
                             else:
@@ -588,13 +679,19 @@ if __name__ == '__main__':
                                             log.error(repr(e))
 
                         # ok, no more jobs to schedule for now, wait
+                        l = int(100*int(schedulerStat['runningTasks'])/poolsize)
+                        with statusLock:
+                             restApiControl.setStatScheduler(load=l)
+                             historyUpdateLoad(schedulerStat, time.time(), l)
+
                         # display progress (consider use of tqdm)
                         lt = time.localtime(time.time())
                         if api_type != 'granta':
                             try:
-                                stats = restApiControl.getStatScheduler()
+                                #stats = restApiControl.getStatScheduler()
+                                # bp HUHUHUHUHUHUUH
                                 print(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                                    str(stats['scheduledTasks'])+"/"+str(stats['runningTasks'])+"/"+str(stats['load']))
+                                    str(schedulerStat['scheduledTasks'])+"/"+str(schedulerStat['runningTasks'])+"/"+str(schedulerStat['load']))
                             except Exception as e:
                                 log.error(repr(e))
 
@@ -602,7 +699,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         print("waiting..")
-                        time.sleep(30)
+                        time.sleep(20)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)
