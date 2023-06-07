@@ -612,7 +612,8 @@ def get_status2():
 
 @app.get("/scheduler-status2/", tags=["Stats"])
 def get_scheduler_status2():
-    return mp.monitor.schedulerInfo()
+    ns = mp.pyroUtil.connectNameserver();
+    return mp.monitor.schedulerInfo(ns)
 
 
 
