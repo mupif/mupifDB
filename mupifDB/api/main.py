@@ -602,7 +602,7 @@ def get_status2():
             s = Pyro5.api.Proxy(uri)
             st = s.getStatistics()
             schedulerStatus = 'OK'
-    except as e:
+    except Exception as e:
         print(str(e))
     
     # get DMS status
