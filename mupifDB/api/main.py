@@ -587,7 +587,7 @@ def set_scheduler_statistics(data: M_ModifyStatistics):
 def get_status2():
     ns = None
     try:
-        ns = mp.pyroUtil.connectNameserver();
+        ns = mp.pyroutil.connectNameserver();
         nameserverStatus = 'OK'
     except:
         nameserverStatus = 'Failed'
@@ -612,7 +612,7 @@ def get_status2():
 
 @app.get("/scheduler-status2/", tags=["Stats"])
 def get_scheduler_status2():
-    ns = mp.pyroUtil.connectNameserver();
+    ns = mp.pyroutil.connectNameserver();
     return mp.monitor.schedulerInfo(ns)
 
 
