@@ -154,10 +154,10 @@ class SchedulerMonitor (object):
             finishedTasks=self.stat['finishedTasks']
             failedTasks=self.stat['failedTasks']
             lastJobs=self.stat['lastJobs']
-            polledTasks48 = self.stat['s1_pooledTasks'][:]
+            pooledTasks48 = self.stat['s1_pooledTasks'][:]
             processedTasks48 = self.stat['s1_processedTasks'][:]
             finishedTasks48 = self.stat['s1_finishedTasks'][:]
-            faledTasks48 = self.stat['s1_failedTasks'][:]
+            failedTasks48 = self.stat['s1_failedTasks'][:]
             load48 = self.stat['s1_load'][:]
         return {
             'runningTasks':runningTasks, 
@@ -166,8 +166,9 @@ class SchedulerMonitor (object):
             'finishedTasks': finishedTasks,
             'failedTasks': failedTasks,
             'lastJobs': lastJobs,
-            'polledTasks48': polledTasks48,
+            'pooledTasks48': pooledTasks48,
             'finishedTasks48': finishedTasks48,
+            'failedTasks48': failedTasks48,
             'load48': load48
         }
 
