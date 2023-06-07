@@ -593,6 +593,7 @@ def get_status2():
         nameserverStatus = 'Failed'
     
     # get Scheduler status
+    schedulerStatus = 'Failed'
     query = ns.yplookup(meta_any={"type:scheduler"})
     try:
         for name, (uri, metadata) in query.items():
@@ -601,7 +602,6 @@ def get_status2():
             schedulerStatus = 'OK'
     except as e:
         print(str(e))
-        schedulerStatus = 'Failed'
     
     # get DMS status
     if (client):
