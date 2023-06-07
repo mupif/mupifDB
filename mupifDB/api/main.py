@@ -598,8 +598,9 @@ def get_status2():
         for name, (uri, metadata) in query.items():
             s = Pyro5.api.Proxy(uri)
             st = s.getStatistics()
-        schedulerStatus = 'OK'
-    except:
+            schedulerStatus = 'OK'
+    except as e:
+        print(str(e))
         schedulerStatus = 'Failed'
     
     # get DMS status
