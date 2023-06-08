@@ -166,6 +166,7 @@ class SchedulerMonitor (object):
             'finishedTasks': finishedTasks,
             'failedTasks': failedTasks,
             'lastJobs': lastJobs,
+            'processedTasks48': processedTasks48,
             'pooledTasks48': pooledTasks48,
             'finishedTasks48': finishedTasks48,
             'failedTasks48': failedTasks48,
