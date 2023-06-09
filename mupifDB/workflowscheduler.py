@@ -128,7 +128,7 @@ api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
 ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
-poolsize = 20
+poolsize = 30
 stopFlag = False # set to tru to end main scheduler loop
 
 fd = None
@@ -632,11 +632,11 @@ if __name__ == '__main__':
                     while stopFlag is not True:
                         # retrieve weids with status "Scheduled" from DB
                         try:
-                            # pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize)
-                            if schedulerStat['scheduledTasks'] < 200:
-                                pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
-                            else:
-                                pending_executions = []
+                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*10)
+                            # if schedulerStat['scheduledTasks'] < 200:
+                            #     pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
+                            # else:
+                            #     pending_executions = []
                         except Exception as e:
                             log.error(repr(e))
                             pending_executions = []
