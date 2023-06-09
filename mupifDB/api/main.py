@@ -625,7 +625,7 @@ def get_ns_status2():
 
 @app.get("/vpn-status2/", tags=["Stats"])
 def get_vpn_status2():
-    return mp.monitor.vpnInfo(hidePriv=false);
+    return mp.monitor.vpnInfo(hidePriv=False)
 
 
 
