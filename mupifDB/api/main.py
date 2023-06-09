@@ -618,10 +618,10 @@ def get_scheduler_status2():
     ns = mp.pyroutil.connectNameserver();
     return mp.monitor.schedulerInfo(ns)
 
-
-
-
-
+@app.get("/ns-status2/", tags=["Stats"])
+def get_ns_status2():
+    ns = mp.pyroutil.connectNameserver();
+    return mp.monitor.nsInfo(ns)
 
 
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
