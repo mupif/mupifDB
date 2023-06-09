@@ -623,6 +623,11 @@ def get_ns_status2():
     ns = mp.pyroutil.connectNameserver();
     return mp.monitor.nsInfo(ns)
 
+@app.get("/vpn-status2/", tags=["Stats"])
+def get_vpn_status2():
+    return mp.monitor.vpnInfo(hidePriv=false);
+
+
 
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
 def ui():
