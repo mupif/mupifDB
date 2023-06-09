@@ -567,7 +567,7 @@ if __name__ == '__main__':
         schedulerStat['lastJobs'] = []  # manager.list()
         # 48hrs statistics
         schedulerStat['s1_size']=48
-        schedulerStat['s1_index']=0
+        schedulerStat['s1_index']=stat.get('s1_index', 0)
         schedulerStat['s1_epochDelta']=60*60
         schedulerStat['s1_pooledTasks']=manager.list(stat.get('s1_pooledTasks', [0]*schedulerStat['s1_size']))
         schedulerStat['s1_processedTasks']=manager.list(stat.get('s1_processedTasks', [0]*schedulerStat['s1_size']))
