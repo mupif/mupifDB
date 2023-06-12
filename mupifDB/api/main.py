@@ -627,6 +627,10 @@ def get_ns_status2():
 def get_vpn_status2():
     return mp.monitor.vpnInfo(hidePriv=False)
 
+@app.get("/jobmans-status2/", tags=["Stats"])
+def get_jobmans_status2():
+    ns = mp.pyroutil.connectNameserver();
+    return mp.monitor.jobmanInfo(ns)
 
 
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
