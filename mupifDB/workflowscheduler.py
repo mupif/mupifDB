@@ -154,6 +154,7 @@ class SchedulerMonitor (object):
             finishedTasks=self.stat['finishedTasks']
             failedTasks=self.stat['failedTasks']
             lastJobs=self.stat['lastJobs']
+            load = self.stat['load']
             pooledTasks48 = self.stat['s1_pooledTasks'][:]
             processedTasks48 = self.stat['s1_processedTasks'][:]
             finishedTasks48 = self.stat['s1_finishedTasks'][:]
@@ -166,6 +167,7 @@ class SchedulerMonitor (object):
             'finishedTasks': finishedTasks,
             'failedTasks': failedTasks,
             'lastJobs': lastJobs,
+            'currentLoad': load,
             'processedTasks48': processedTasks48,
             'pooledTasks48': pooledTasks48,
             'finishedTasks48': finishedTasks48,
@@ -268,6 +270,7 @@ def updateStatFinished(lock, schedulerStat, retCode, we_id):
                 schedulerStat['failedTasks'] =schedulerStat['failedTasks']+1
             l = int(100 * int(schedulerStat['runningTasks']) / poolsize)            
             restApiControl.setStatScheduler(load=l)
+            schedulerStat['load'] = l
             restApiControl.setStatScheduler(runningTasks=schedulerStat['runningTasks'])
             restApiControl.setStatScheduler(processedTasks=schedulerStat['processedTasks'])
 
