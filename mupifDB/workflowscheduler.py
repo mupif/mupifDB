@@ -94,9 +94,9 @@ def historyUpdateLoad(data, epoch, currentLoad):
     historyMove(data, epoch)
     data['s1_load'][-1] = (data['s1_load'][-1]*data['s1_loadTicks'][-1] + currentLoad)/(data['s1_loadTicks'][-1]+1)
     data['s1_loadTicks'][-1]+=1
-def historyUpdatePooled(data, epoch):
+def historyUpdatePooled(data, epoch, numberOfPendingExecution):
     historyMove(data,epoch)
-    data['s1_pooledTasks'][-1] += 1
+    data['s1_pooledTasks'][-1] = numberOfPendingExecution
 def historyUpdateRunning(data, epoch):
     historyMove(data,epoch)
     data['s1_pooledTasks'][-1] -= 1
@@ -243,14 +243,14 @@ def updateStatRunning(lock, schedulerStat, we_id, wid):
 
 
 
-def updateStatScheduled(lock, schedulerStat):
+def updateStatScheduled(lock, schedulerStat, numberOfPendingExecutions):
     with lock:
         print("updateStatScheduled called")
         #
-        schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks'] + 1
-        restApiControl.setStatScheduler(scheduledTasks = schedulerStat['scheduledTasks'])
+        schedulerStat['scheduledTasks'] = numberOfPendingExecutions
+        restApiControl.setStatScheduler(scheduledTasks = numberOfPendingExecutions)
         epoch=time.time()
-        historyUpdatePooled(schedulerStat, epoch)
+        historyUpdatePooled(schedulerStat, epoch, numberOfPendingExecutions)
 
 
 def updateStatFinished(lock, schedulerStat, retCode, we_id):
@@ -644,6 +644,7 @@ if __name__ == '__main__':
                             log.error(repr(e))
                             pending_executions = []
 
+                        updateStatScheduled(statusLock, schedulerStat, len(pending_executions))  # update status
                         for wed in pending_executions:
                             print(str(wed['_id']) + " found as pending")
                             weid = wed['_id']
@@ -670,7 +671,7 @@ if __name__ == '__main__':
                                         print("Could not update execution status")
                                     else:
                                         print("Updated status of execution")
-                                    updateStatScheduled(statusLock, schedulerStat)  # update status
+                                    
                                     result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat, weid), callback=procFinish, error_callback=procError)
                                     # log.info(result.get())
                                     log.info("WEID %s added to the execution pool" % weid)
