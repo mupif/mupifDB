@@ -659,6 +659,7 @@ if __name__ == '__main__':
                                     log.error(repr(e))
 
                             else:
+                                time.sleep(2)
                                 if checkExecutionResources(weid):
                                     # add the correspoding weid to the pool, change status to scheduled
                                     res = False
