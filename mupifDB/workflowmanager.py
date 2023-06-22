@@ -1007,9 +1007,8 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
             full_path = tempDir + "/file.h5"
             if isinstance(hs, Pyro5.api.Proxy):
-                hs_copy = hs.copyRemote()
-            else:
-                hs_copy = hs.deepcopy()
+                hs = hs.copyRemote()
+            hs_copy = hs.deepcopy()
             hs_copy.moveStorage(full_path)
             fileID = None
             with open(full_path, 'rb') as f:
