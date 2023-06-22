@@ -17,6 +17,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import mupifDB
 import mupif as mp
+import Pyro5.api
+
 
 import table_structures
 
@@ -581,6 +583,54 @@ def set_scheduler_statistics(data: M_ModifyStatistics):
         res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
         return True
     return False
+
+
+@app.get("/status2/", tags=["Stats"])
+def get_status2():
+    ns = None
+    try:
+        ns = mp.pyroutil.connectNameserver();
+        nameserverStatus = 'OK'
+    except:
+        nameserverStatus = 'Failed'
+    
+    # get Scheduler status
+    schedulerStatus = 'Failed'
+    query = ns.yplookup(meta_any={"type:scheduler"})
+    try:
+        for name, (uri, metadata) in query.items():
+            s = Pyro5.api.Proxy(uri)
+            st = s.getStatistics()
+            schedulerStatus = 'OK'
+    except Exception as e:
+        print(str(e))
+    
+    # get DMS status
+    if (client):
+        DMSStatus = 'OK'
+    else:
+        DMSStatus = 'Failed'
+    
+    return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name':os.environ["MUPIF_VPN_NAME"]}
+
+@app.get("/scheduler-status2/", tags=["Stats"])
+def get_scheduler_status2():
+    ns = mp.pyroutil.connectNameserver();
+    return mp.monitor.schedulerInfo(ns)
+
+@app.get("/ns-status2/", tags=["Stats"])
+def get_ns_status2():
+    ns = mp.pyroutil.connectNameserver();
+    return mp.monitor.nsInfo(ns)
+
+@app.get("/vpn-status2/", tags=["Stats"])
+def get_vpn_status2():
+    return mp.monitor.vpnInfo(hidePriv=False)
+
+@app.get("/jobmans-status2/", tags=["Stats"])
+def get_jobmans_status2():
+    ns = mp.pyroutil.connectNameserver();
+    return mp.monitor.jobmanInfo(ns)
 
 
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
