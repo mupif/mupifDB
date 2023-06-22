@@ -15,11 +15,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 #
 
-def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}):
+def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}, allow_redirects=False):
     if method == 'get':
-        response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data, params=params)
+        response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data, params=params, allow_redirects=allow_redirects)
     elif method == 'post':
-        response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data, files=files)
+        response = requests.post(url=url, timeout=timeout, headers=headers, auth=auth, data=data, files=files, allow_redirects=allow_redirects)
     elif method == 'patch':
         response = requests.patch(url=url, timeout=timeout, headers=headers, auth=auth, data=data)
     elif method == 'put':
@@ -35,8 +35,8 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, fi
         raise Exception('API returned code ' + str(response.status_code))
     return None
 
-def rGet(*, url, headers=None, auth=None, timeout=100, params={}):
-    return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params)
+def rGet(*, url, headers=None, auth=None, timeout=100, params={}, allow_redirects=False):
+    return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params, allow_redirects=allow_redirects)
 
 def rPost(*, url, headers=None, auth=None, data=None, timeout=100, files={}):
     return Request(method='post', url=url, headers=headers, auth=auth, timeout=timeout, data=data, files=files)
@@ -162,6 +162,7 @@ def fix_json(val):
     import re
     val = re.sub(",[ \t\r\n]+}", "}", val)
     val = re.sub(",[ \t\r\n]+\]", "]", val)
+    val = val.replace("False", "false").replace("True", "true")
     val
     return val
 
@@ -189,6 +190,7 @@ def getWorkflowRecordGeneral(wid, version):
         for gmd in gmds:
             if gmd['name'] == 'muPIF metadata':
                 md = json.loads(fix_json(gmd['value']))
+                print(md)
                 workflow['metadata'] = md
                 workflow['classname'] = md['ClassName']
                 workflow['modulename'] = md['ModuleName']
@@ -328,7 +330,7 @@ def _getGrantaExecutionInputItem(eid, name):
                         'ValueType': 'Scalar',
                         'Link': {},
                         'Object': {
-                            'FileID': inp['value'].split('/')[-1]
+                            'FileID': inp['value']['url'].split('/')[-1]
                         }
                     }
 
