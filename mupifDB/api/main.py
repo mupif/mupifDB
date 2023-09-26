@@ -283,6 +283,11 @@ def get_execution_outputs(uid: str):
 @app.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
 def get_execution_livelog(uid: str, num: int):
     if (rec:=db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})) and (uri:=rec.get('loggerURI',None)):
+        import Pyro5.api
+        import serpent
+        import pickle
+        import logging
+        fmt=logging.Formatter(fmt='%(asctime)s %(levelname)s %(filename)s:%(lineno)s %(message)s')
         proxy=Pyro5.api.Proxy(uri)
         proxy._pyroTimeout=5
         ll=proxy.tail(num,raw=True)
