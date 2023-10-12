@@ -216,6 +216,16 @@ class Test_REST(unittest.TestCase):
         self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr22':[['foo'],['baz']]}))
         self.assertRaises(RuntimeError,lambda: C.post(f'{DB1}/Test',body={'sstr22':['foo','bar']}))
 
+    def test_11_schema_graphviz(self):
+        C=self.__class__
+        # C.post(f'{DB1}/schema',body=dta,query={'force':True})
+        gr=C.get(f'{DB1}/schema/graphviz')
+        print(gr)
+        self.assertTrue(gr.startswith('digraph '))
+
+
+
+
     def test_99_float_error(self):
         C=self.__class__
         beamDta={ # Beam 

@@ -463,6 +463,27 @@ def dms_api_schema_post(db: str, schema: SchemaSchema, force:bool=False):
 def dms_api_schema_get(db: str, include_id:bool=False):
     return GG.schema_get(db,include_id=include_id)
 
+@router.get('/{db}/schema/graphviz')
+def dms_api_schema_graphviz(db: str):
+    sch=GG.schema_get(db,include_id=False).__root__ # root convertes from SchemaSchema to dict
+    graph='digraph g {\n   graph [rankdir="LR"];\n'
+    links=[]
+    for klass in sch:
+        l=f'<_head> {klass}'
+        for name,sub in sch[klass].items():
+            shapeStr=(' ['+'×'.join([str(s) for s in sub['shape']])+']') if 'shape' in sub else ''
+            dtypeStr=(' ('+sub['dtype']+')') if 'dtype' in sub else ''
+            unitStr=(' ['+sub['unit']+']') if 'unit' in sub else ''
+            if 'link' in sub:
+                l+=f'| <{name}> {name}{shapeStr} →'
+                links.append(f'"{klass}":{name} -> "{sub["link"]}":_head;')
+            else:
+                l+=f'| <{name}> {name}{dtypeStr}{shapeStr}{unitStr}'
+        graph+=f'   "{klass}" [ label = "{l}"; shape="record" ];\n'
+    graph+='\n   '+'\n   '.join(links)
+    graph+='\n}'
+    return graph
+
 @pydantic.dataclasses.dataclass
 class _ObjectTracker:
     path2id: dict=pydantic.dataclasses.Field(default_factory=dict)
