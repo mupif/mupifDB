@@ -1,6 +1,6 @@
 pygal
 python-pidfile
-git+https://github.com/mupif/mupif/@master#egg=mupif
+mupif
 pymongo
 flask_pymongo
 flask_cors
