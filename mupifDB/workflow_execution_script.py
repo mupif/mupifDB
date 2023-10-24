@@ -9,6 +9,7 @@ import logging
 import argparse
 import mupifDB
 import mupif as mp
+import Pyro5.errors
 
 
 log = logging.getLogger('workflow_execution_script')
@@ -69,6 +70,8 @@ if __name__ == "__main__":
 
     except Exception as err:
         log.exception(err)
+        if hasattr(err,'_pyroTraceback'):
+            log.error(''.join(Pyro5.errors.get_pyro_traceback()))
         try:
             workflow.terminate()
         except:
