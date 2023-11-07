@@ -9,4 +9,5 @@ sphinx:
   configuration: doc/source/conf.py
 python:
   install:
+    - requirements: requirements-mupif.txt
     - requirements: requirements.txt
