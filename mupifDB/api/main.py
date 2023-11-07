@@ -73,7 +73,10 @@ app.add_middleware(
 # import and initialize EDM
 if 1:
     import mupifDB.api.edm as edm
-    edm.initializeEdm(client)
+    # when imported at readthedocs, don't try to connect to the DB (no DB running there)
+    if not 'MUPIFDB_DRY_RUN' in os.environ:
+        edm.initializeEdm(client)
+    else: print('MUPIFDB_DRY_RUN defined, not initializing EDM DB connection.')
     app.include_router(edm.dms3.router)
 
 

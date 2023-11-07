@@ -105,7 +105,9 @@ html_context=dict(
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
-
+# for readthedocs.org, don't try to connect to the DB when importing mupifDB.api.main
+import os
+os.environ['MUPIFDB_DRY_RUN']='1'
 
 # Generate OpenAPI json description prior to running sphinx
 #
