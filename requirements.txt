@@ -31,3 +31,5 @@ rotate-backups
 pydantic==1.10.0
 oauthlib
 requests_oauthlib
+sphinxcontrib-openapi
+myst-nb

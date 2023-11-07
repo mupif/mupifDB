@@ -34,6 +34,8 @@ release = '0.x'
 extensions = [
     # 'sphinx.ext.autodoc',
     # 'sphinxcontrib.apidoc'
+    'sphinxcontrib.openapi',
+    'myst_nb',
 ]
 
 import sys, os.path
@@ -45,6 +47,14 @@ thisDir=os.path.dirname(os.path.abspath(__file__))
 #apidoc_toc_file='api'
 #apidoc_excluded_paths=[]
 #apidoc_module_first=True
+
+source_suffix={
+    '.rst':'restructuredtext',
+    '.ipynb':'myst-nb',
+}
+# don't run notebooks at readthedocs, without REST API server
+# just put it inline as it is
+nb_execution_mode='off'
 
 
 sys.path.append(thisDir+'/../..')
@@ -103,3 +113,26 @@ html_context=dict(
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+
+
+
+# Generate OpenAPI json description prior to running sphinx
+#
+# https://github.com/tiangolo/fastapi/issues/1173
+import fastapi.openapi.utils
+import mupifDB.api.main
+import json
+with open('mupifdb-rest-api.openapi.json', 'w') as f:
+    app=mupifDB.api.main.app
+    json.dump(fastapi.openapi.utils.get_openapi(
+        title='MupifDB REST API',
+        version=app.version,
+        openapi_version=app.openapi_version,
+        description=app.description,
+        routes=app.routes,
+        # openapi_prefix=app.openapi_prefix,
+    ),f)
+
+# copy files from outside of the doc subdirectory here so that they can be included in the docs
+import shutil
+shutil.copyfile('../../mupifDB/api/edm/jupyter/04-dms-data.ipynb','04-dms-data.ipynb')
