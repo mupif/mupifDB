@@ -1047,6 +1047,15 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                     "type": "hyperlink"
                 }
 
+    elif object_type == 'mupif.PiecewiseLinFunction':
+        obj = app.get(mupif.DataID[data_id], time, obj_id)
+        return {
+            "name": str(name),
+            "value": {"x": obj.x, "y": obj.y},
+            "type": "series",
+            "unit": str(obj.y_unit)
+        }
+
     return None
 
 

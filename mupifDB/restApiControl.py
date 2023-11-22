@@ -87,7 +87,7 @@ def getAuthToken():
     global bearer_token_expires_at
     time_now = datetime.datetime.now()
     time_secs = time_now.timestamp()
-    if time_secs > bearer_token_expires_at - 3:
+    if time_secs > bearer_token_expires_at - 10:
         URL = 'https://auth.musicode.cloud/realms/musicode/protocol/openid-connect/token'
         CLIENT_ID = granta_credentials['username']
         CLIENT_SECRET = granta_credentials['password']
