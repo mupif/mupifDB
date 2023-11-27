@@ -1,7 +1,11 @@
 import fastapi
+import pymongo
 import mupif as mp
 
 app = fastapi.FastAPI(openapi_tags=[{'name':'Stats'}])
+
+mongoClient = pymongo.MongoClient("mongodb://localhost:27017")
+
 
 
 @app.get("/status2/", tags=["Stats"])
@@ -25,7 +29,7 @@ def get_status2():
         print(str(e))
 
     # get DMS status
-    if (client): DMSStatus = 'OK'
+    if mongoClient: DMSStatus = 'OK'
     else: DMSStatus = 'Failed'
 
     return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name':os.environ["MUPIF_VPN_NAME"]}
