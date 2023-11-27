@@ -1,6 +1,7 @@
 import fastapi
 import pymongo
 import mupif as mp
+import os
 
 app = fastapi.FastAPI(openapi_tags=[{'name':'Stats'}])
 
