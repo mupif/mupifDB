@@ -17,7 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'MuPIF'
+project = 'MuPIF services' 
 copyright = '2023, Bořek Patzák, Václav Šmilauer'
 author = 'Bořek Patzák, Václav Šmilauer'
 # (Czech Technical University, Faculty of Civil Engineering, Department of Mechanics, Thákurova 7, 16629, Prague, Czech Republic.)'
@@ -34,6 +34,9 @@ release = '0.x'
 extensions = [
     # 'sphinx.ext.autodoc',
     # 'sphinxcontrib.apidoc'
+    'sphinxcontrib.openapi',
+    'myst_nb',
+    'sphinx_rtd_theme',
 ]
 
 import sys, os.path
@@ -45,6 +48,14 @@ thisDir=os.path.dirname(os.path.abspath(__file__))
 #apidoc_toc_file='api'
 #apidoc_excluded_paths=[]
 #apidoc_module_first=True
+
+source_suffix={
+    '.rst':'restructuredtext',
+    '.ipynb':'myst-nb',
+}
+# don't run notebooks at readthedocs, without REST API server
+# just put it inline as it is
+nb_execution_mode='off'
 
 
 sys.path.append(thisDir+'/../..')
@@ -72,17 +83,7 @@ latex_documents=[('index','mupifdb.tex','MuPIF DB Documentation',
 
 # -- Options for HTML output -------------------------------------------------
 
-# https://readthedocsorg.readthedocs.io/en/latest/theme.html#how-do-i-use-this-locally-and-on-read-the-docs
-
-# use ReadTheDocs theme both locally and when building docs at readthedocs.io
-import os
-on_rtd=os.environ.get('READTHEDOCS',None)=='True'
-if not on_rtd:
-    import sphinx_rtd_theme
-    html_theme='sphinx_rtd_theme'
-    html_theme_path=[sphinx_rtd_theme.get_html_theme_path()]
-else:
-    html_theme='default'
+html_theme='sphinx_rtd_theme'
 
 #html_theme_options=dict(
 #    github_banner=True,
@@ -103,3 +104,28 @@ html_context=dict(
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+
+# for readthedocs.org, don't try to connect to the DB when importing mupifDB.api.main
+import os
+os.environ['MUPIFDB_DRY_RUN']='1'
+
+# Generate OpenAPI json description prior to running sphinx
+#
+# https://github.com/tiangolo/fastapi/issues/1173
+import fastapi.openapi.utils
+import mupifDB.api.main
+import json
+with open('mupifdb-rest-api.openapi.json', 'w') as f:
+    app=mupifDB.api.main.app
+    json.dump(fastapi.openapi.utils.get_openapi(
+        title='MupifDB REST API',
+        version=app.version,
+        openapi_version=app.openapi_version,
+        description=app.description,
+        routes=app.routes,
+        # openapi_prefix=app.openapi_prefix,
+    ),f)
+
+# copy files from outside of the doc subdirectory here so that they can be included in the docs
+import shutil
+shutil.copyfile('../../mupifDB/api/edm/jupyter/04-dms-data.ipynb','04-dms-data.ipynb')

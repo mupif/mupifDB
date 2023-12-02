@@ -16,6 +16,7 @@ This is a preliminary MupifDB documentation.
    :numbered:
 
    infrastructure.rst
+   rest-api.rst
 
 
 .. .. toctree::

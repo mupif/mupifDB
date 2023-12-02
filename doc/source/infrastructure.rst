@@ -23,9 +23,6 @@ Wireguard VPN
 ==============
 
 
-REST API
-=========
-
 Database
 ---------
 
