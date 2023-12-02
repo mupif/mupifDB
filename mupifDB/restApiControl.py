@@ -216,7 +216,7 @@ def getWorkflowRecordGeneral(wid, version):
         for gmd in gmds:
             if gmd['name'] == 'muPIF metadata':
                 md = json.loads(fix_json(gmd['value']))
-                print(md)
+                # print(md)
                 workflow['metadata'] = md
                 workflow['classname'] = md['ClassName']
                 workflow['modulename'] = md['ModuleName']
@@ -289,10 +289,12 @@ def _getGrantaExecutionInputItem(eid, name):
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
                 data_id = 'Unknown'
+                valueType = 'Unknown'
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
-                        units = w_i['Units']
-                        data_id = w_i['Type_ID']
+                        units = w_i.get('Units', 'Unknown')
+                        data_id = w_i.get('Type_ID', 'Unknown')
+                        valueType = w_i.get('ValueType', 'Scalar')
                 return {
                     'Compulsory': True,
                     'Description': '',
@@ -301,11 +303,11 @@ def _getGrantaExecutionInputItem(eid, name):
                     'Type': 'mupif.Property',
                     'TypeID': data_id,
                     'Units': units,  # todo
-                    'ValueType': 'Scalar',
+                    'ValueType': valueType,
                     'Link': {},
                     'Object': {
                         'ClassName': 'ConstantProperty',
-                        'ValueType': 'Scalar',
+                        'ValueType': valueType,
                         'DataID': data_id.replace('mupif.DataID.', ''),
                         'Unit': units,  # todo
                         'Value': inp['value'],
@@ -318,23 +320,28 @@ def _getGrantaExecutionInputItem(eid, name):
                 execution_record = getExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
+                data_id = 'Unknown'
+                valueType = 'Unknown'
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
-                        units = w_i['Units']
+                        units = w_i.get('Units', 'Unknown')
+                        data_id = w_i.get('Type_ID', 'Unknown')
+                        valueType = w_i.get('ValueType', 'Scalar')
                 return {
                     'Compulsory': True,
                     'Description': '',
                     'Name': inp['name'],
                     'ObjID': inp['name'],
                     'Type': 'mupif.String',
-                    'TypeID': w_i['Type_ID'],
+                    'TypeID': data_id,
                     'Units': units,  # todo
-                    'ValueType': 'Scalar',
+                    'ValueType': valueType,
                     'Link': {},
                     'Object': {
                         'ClassName': 'String',
-                        'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
-                        'Value': inp['value']
+                        'DataID': data_id.replace('mupif.DataID.', ''),
+                        'Value': inp['value'],
+                    'ValueType': valueType
                     }
                 }
 
@@ -342,10 +349,14 @@ def _getGrantaExecutionInputItem(eid, name):
                 execution_record = getExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
+                data_id = 'Unknown'
+                valueType = 'Unknown'
                 obj_type = ''
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
-                        units = w_i['Units']
+                        units = w_i.get('Units', 'Unknown')
+                        data_id = w_i.get('Type_ID', 'Unknown')
+                        valueType = w_i.get('ValueType', 'Scalar')
                         obj_type = w_i['Type']
 
                 if obj_type == 'mupif.HeavyStruct':
@@ -355,9 +366,9 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.HeavyStruct',
-                        'TypeID': w_i['Type_ID'],
+                        'TypeID': data_id,
                         'Units': '',
-                        'ValueType': 'Scalar',
+                        'ValueType': valueType,
                         'Link': {},
                         'Object': {
                             'FileID': inp['value']['url'].split('/')[-1]
@@ -371,9 +382,9 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.PyroFile',
-                        'TypeID': w_i['Type_ID'],
+                        'TypeID': data_id,
                         'Units': '',
-                        'ValueType': 'Scalar',
+                        'ValueType': valueType,
                         'Link': {},
                         'Object': {
                             'FileID': inp['value'].split('/')[-1]
@@ -387,9 +398,9 @@ def _getGrantaExecutionInputItem(eid, name):
                         'Name': inp['name'],
                         'ObjID': inp['name'],
                         'Type': 'mupif.Field',
-                        'TypeID': w_i['Type_ID'],
+                        'TypeID': data_id,
                         'Units': '',
-                        'ValueType': 'Scalar',
+                        'ValueType': valueType,
                         'Link': {},
                         'Object': {
                             'FileID': inp['value'].split('/')[-1]
