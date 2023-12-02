@@ -280,6 +280,7 @@ def _getGrantaExecutionInputItem(eid, name):
     token = getAuthToken()
     headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
     r = rGet(url=url, headers=headers)
+
     for inp in r.json():
         if name == inp['name']:
             if inp['type'] == 'float':
@@ -287,23 +288,25 @@ def _getGrantaExecutionInputItem(eid, name):
                 execution_record = getExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
+                data_id = 'Unknown'
                 for w_i in w_inputs:
                     if w_i['Name'] == name:
                         units = w_i['Units']
+                        data_id = w_i['Type_ID']
                 return {
                     'Compulsory': True,
                     'Description': '',
                     'Name': inp['name'],
                     'ObjID': inp['name'],
                     'Type': 'mupif.Property',
-                    'TypeID': w_i['Type_ID'],
+                    'TypeID': data_id,
                     'Units': units,  # todo
                     'ValueType': 'Scalar',
                     'Link': {},
                     'Object': {
                         'ClassName': 'ConstantProperty',
                         'ValueType': 'Scalar',
-                        'DataID': w_i['Type_ID'].replace('mupif.DataID.', ''),
+                        'DataID': data_id.replace('mupif.DataID.', ''),
                         'Unit': units,  # todo
                         'Value': inp['value'],
                         'Time': None
