@@ -956,7 +956,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
         field = app.get(mupif.DataID[data_id], time, obj_id)
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
             full_path = tempDir + "/file.h5"
-            field.toHdf5(full_path)
+            field.toHdf5(fileName=full_path)
             fileID = None
             with open(full_path, 'rb') as f:
                 fileID = restApiControl.uploadBinaryFile(f)
@@ -1030,7 +1030,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
         field = app.get(mupif.DataID[data_id], time, obj_id)
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
             full_path = tempDir + "/file.h5"
-            field.toHdf5(full_path)
+            field.toHdf5(fileName=full_path)
             fileID = None
             with open(full_path, 'rb') as f:
                 fileID = restApiControl.uploadBinaryFile(f)
