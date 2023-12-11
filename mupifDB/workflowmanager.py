@@ -1047,7 +1047,29 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
                     "type": "hyperlink"
                 }
 
-    elif object_type == 'mupif.PiecewiseLinFunction':
+    elif object_type == 'mupif.PyroFile':
+        pf = app.get(mupif.DataID[data_id], time, obj_id)
+        fn = pf.getBasename()
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            full_path = tempDir + "/" + fn
+            mupif.PyroFile.copy(pf, full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFile(f)
+                f.close()
+            if fileID is None:
+                print("hdf5 file was not saved")
+            else:
+                return {
+                    "name": str(name),
+                    "value": {
+                        "url": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
+                        "description": None
+                    },
+                    "type": "hyperlink"
+                }
+
+    elif object_type == 'mupif.Function':
         obj = app.get(mupif.DataID[data_id], time, obj_id)
         return {
             "name": str(name),
