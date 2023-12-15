@@ -312,15 +312,6 @@ def updateStatPersistent (schedulerStat):
 def copyLogToDB (we_id, workflowLogName):
     try:
         log.info("Copying log files to database")
-        # if os.path.exists(tempDir+'/mupif.log'):
-        # temp
-        with open(workflowLogName, 'rb') as f:
-            d = f.read()
-            f.close()
-            f = open('./temp_log.log', 'wb')
-            f.write(d)
-            f.close()
-
         with open(workflowLogName, 'rb') as f:
             logID = restApiControl.uploadBinaryFile(f)
             if logID is not None:
