@@ -1075,7 +1075,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
             "name": str(name),
             "value": {"x": obj.x, "y": obj.y},
             "type": "series",
-            "unit": str(obj.y_unit)
+            "unit": str(obj.unit)
         }
 
     return None
