@@ -1073,7 +1073,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
         obj = app.get(mupif.DataID[data_id], time, obj_id)
         return {
             "name": str(name),
-            "value": {"x": obj.x, "y": obj.y},
+            "value": {"x": obj.x.value, "y": obj.y.value},
             "type": "series",
             "unit": str(obj.unit)
         }
