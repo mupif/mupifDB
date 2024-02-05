@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 #
 
-def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}, allow_redirects=False):
+def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}, allow_redirects=True):
     if method == 'get':
         response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data, params=params, allow_redirects=allow_redirects)
     elif method == 'post':
