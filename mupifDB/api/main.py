@@ -468,11 +468,12 @@ def get_file(uid: str, tdir=Depends(get_temp_dir)):
     foundfile = fs.get(bson.objectid.ObjectId(uid))
     wfile = io.BytesIO(foundfile.read())
     fn = foundfile.filename
-    fullpath = tdir + '/' + fn
-    with open(fullpath, "wb") as f:
-        f.write(wfile.read())
-        f.close()
-        return FileResponse(path=fullpath, media_type='application/octet-stream', headers={"Content-Disposition": "attachment; filename=" + fn})
+    return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
+    # fullpath = tdir + '/' + fn
+    # with open(fullpath, "wb") as f:
+    #     f.write(wfile.read())
+    #     f.close()
+    #     return FileResponse(path=fullpath, media_type='application/octet-stream', headers={"Content-Disposition": "attachment; filename=" + fn})
 
 
 @app.post("/file/", tags=["Files"])
