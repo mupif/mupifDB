@@ -229,7 +229,7 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
         filtering["label"] = label
     if num_limit == 0:
         num_limit = 999999
-    res = db.WorkflowExecutions.find(filtering).limit(num_limit)  # .sort('CreatedDate', 1)
+    res = db.WorkflowExecutions.find(filtering).sort('SubmittedDate', 1).limit(num_limit)
     if res:
         for s in res:
             output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
@@ -472,7 +472,7 @@ def get_file(uid: str, tdir=Depends(get_temp_dir)):
     with open(fullpath, "wb") as f:
         f.write(wfile.read())
         f.close()
-        return FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
+        return FileResponse(path=fullpath, media_type='application/octet-stream', headers={"Content-Disposition": "attachment; filename=" + fn})
 
 
 @app.post("/file/", tags=["Files"])
