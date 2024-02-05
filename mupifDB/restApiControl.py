@@ -39,7 +39,7 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, fi
         raise Exception('API returned code ' + str(response.status_code))
     return None
 
-def rGet(*, url, headers=None, auth=None, timeout=100, params={}, allow_redirects=False):
+def rGet(*, url, headers=None, auth=None, timeout=100, params={}, allow_redirects=True):
     return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params, allow_redirects=allow_redirects)
 
 def rPost(*, url, headers=None, auth=None, data=None, timeout=100, files={}):
