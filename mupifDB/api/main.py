@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
