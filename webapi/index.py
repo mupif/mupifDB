@@ -415,7 +415,7 @@ def executions():
     html = '<h3>List of workflow executions:</h3>'
     html += '<form id="filtering_form" action="" style="font-size:12px;" method="get">'
     html += 'WorkflowID: <input type="text" name="filter_workflow_id" value="' + filter_workflow_id + '" style="width:100px;"> '
-    html += 'ver.: <input type="text" name="filter_workflow_version" value="' + filter_workflow_version + '" style="width:20px;"> '
+    html += 'version: <input type="text" name="filter_workflow_version" value="' + filter_workflow_version + '" style="width:20px;"> '
     html += 'label: <input type="text" name="filter_label" value="' + filter_label + '" style="width:100px;"> '
     html += 'status: <select name="filter_status">'
     html += '<option value="">Any</option>'
@@ -424,7 +424,7 @@ def executions():
         selected = ' selected' if filter_status == st else ''
         html += '<option value="' + st + '"' + selected + '>' + st + '</option>'
     html += '</select> '
-    html += 'number of records: <input type="text" name="filter_num_lim" value="' + filter_num_lim + '" style="width:40px;"> '
+    html += 'limit: <input type="text" name="filter_num_lim" value="' + filter_num_lim + '" style="width:40px;"> '
     html += '<input type="submit" value="filter">'
     html += '</form><br>'
 
