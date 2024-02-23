@@ -64,3 +64,19 @@ body {
     overflow: auto;
 }
 
+
+
+
+
+table.tableType1 {
+
+}
+table.tableType1 td{
+    padding: 3px 6px;
+
+}
+table.tableType1 th{
+    padding: 3px 6px;
+
+}
+

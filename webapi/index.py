@@ -138,7 +138,7 @@ def usecases():
     data = restApiControl.getUsecaseRecords()
 
     html = '<h3>UseCases:</h3>'
-    html += '<table>'
+    html += '<table class=\"tableType1\">'
     html += '<tr><th>ID</th><th>Description</th><th></th><th></th></tr>'
     for uc in data:
         html += '<tr>'
@@ -184,7 +184,7 @@ def addUseCase():
         html = message
         html += "<h3>Add new UseCase:</h3>"
         if admin_rights:
-            html += "<table>"
+            html += "<table class=\"tableType1\">"
             html += '<tr><td>UseCase ID (string)</td><td><input type="text" name="usecase_id" value="'+str(usecase_id)+'"></td></tr>'
             html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
             html += "</table>"
@@ -214,7 +214,7 @@ def workflowNoVersion(wid):
 @app.route('/workflows/<wid>/<version>')
 def workflow(wid, version):
     wdata = restApiControl.getWorkflowRecordGeneral(wid=wid, version=int(version))
-    html = '<table>'
+    html = '<table class=\"tableType1\">'
     html += '<tr><td>WorkflowID:</td><td>'+str(wdata['wid'])+'</td></tr>'
     html += '<tr><td>Version:</td><td>'+str(wdata['Version'])+'</td></tr>'
     html += '<tr><td>UseCase:</td><td>'+str(wdata['UseCase'])+'</td></tr>'
@@ -223,9 +223,9 @@ def workflow(wid, version):
 
     html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(wdata['Version'])+'">Initialize new execution record</a>'
     if len(wdata.get('EDMMapping', [])):
-        html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata['Version']) + '?no_onto">Optionally without ontology based objects</a>'
+        html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata['Version']) + '?no_onto">Optionally without EDM objects</a>'
     html += '<br><br>Inputs'
-    html += '<table>'
+    html += '<table class=\"tableType1\">'
     html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>EDMPath</th></thead>'
     for item in wdata["IOCard"]["Inputs"]:
         html += '<tr>'
@@ -242,7 +242,7 @@ def workflow(wid, version):
     html += '</table>'
 
     html += '<br>Outputs'
-    html += '<table>'
+    html += '<table class=\"tableType1\">'
     html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>EDMPath</th></thead>'
     for item in wdata["IOCard"]["Outputs"]:
         html += '<tr>'
@@ -262,7 +262,7 @@ def workflow(wid, version):
     OBO = wdata.get('EDMMapping', [])
     if len(OBO):
         html += "<br>EDM Mapping:"
-        html += "<table>"
+        html += "<table class=\"tableType1\">"
         html += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>createFrom</th></tr>"
         for obo in OBO:
             html += '<tr>'
@@ -374,7 +374,7 @@ def addWorkflow(usecaseid):
         html += "<h3>Add new workflow:</h3>"
         if admin_rights:
             html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
-            html += "<table>"
+            html += "<table class=\"tableType1\">"
 
             html += '<input type="hidden" name="somedata" value="">'
 
@@ -428,7 +428,7 @@ def executions():
     html += '<input type="submit" value="filter">'
     html += '</form><br>'
 
-    html += '<table><tr><td>Status</td><td></td><td>Workflow</td><td>CreatedDate</td><td>SubmittedDate</td><td>StartDate</td><td>EndDate</td></tr>'
+    html += '<table class=\"tableType1\"><tr><td>Status</td><td></td><td>Workflow</td><td>CreatedDate</td><td>StartDate</td><td>EndDate</td></tr>'
     param_filter_workflow_id = filter_workflow_id if filter_workflow_id != '' else None
     param_filter_workflow_version = filter_workflow_version if filter_workflow_version != '' else None
     param_filter_label = filter_label if filter_label != '' else None
@@ -439,7 +439,7 @@ def executions():
         html += '<td><a href="'+request.host_url+'workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
         html += '<td>'+execution['WorkflowID']+'(v'+str(execution['WorkflowVersion'])+')</td>'
         html += '<td style="font-size:12px;">'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
-        html += '<td style="font-size:12px;">'+str(execution['SubmittedDate']).replace('None', '')[:19]+'</td>'
+        # html += '<td style="font-size:12px;">'+str(execution['SubmittedDate']).replace('None', '')[:19]+'</td>'
         html += '<td style="font-size:12px;">'+str(execution['StartDate']).replace('None', '')[:19]+'</td>'
         html += '<td style="font-size:12px;">'+str(execution['EndDate']).replace('None', '')[:19]+'</td>'
         html += '</tr>'
@@ -468,8 +468,8 @@ def executionStatus(weid):
     html += '<script type="text/javascript" src="/main.js"></script>'
     if data['Status'] == 'Pending' or data['Status'] == 'Running' or data['Status'] == 'Scheduled':
         html += '<script type="text/javascript">let timer_refresh = setInterval(reloadIfExecStatusIsChanged, 15000);</script>'
-    html += '<table style="font-size:14px;">'
-    html += '<tr><td>Execution record ID:</td><td>' + str(weid) + '</td></tr>'
+    html += '<table style="font-size:14px;" class=\"tableType1\">'
+    html += '<tr><td>Execution ID:</td><td>' + str(weid) + '</td></tr>'
     html += '<tr><td>Workflow ID:</td><td>' + str(data['WorkflowID']) + '</td></tr>'
     html += '<tr><td>Workflow version:</td><td>' + str(data['WorkflowVersion']) + '</td></tr>'
     html += '<tr><td>Task ID:</td><td>' + str(data['Task_ID']) + '</td></tr>'
@@ -479,8 +479,8 @@ def executionStatus(weid):
     html += '<tr><td colspan="2" style="height:10px;"></td></tr>'
 
     html += '<tr><td>Status:</td><td>' + str(data['Status']) + '</td></tr>'
-    html += '<tr><td>Start Date:</td><td>' + str(data['StartDate']) + '</td></tr>'
-    html += '<tr><td>End Date:</td><td>' + str(data['EndDate']) + '</td></tr>'
+    html += '<tr><td>Start Date:</td><td>' + str(data['StartDate']).replace('None', '')[:19] + '</td></tr>'
+    html += '<tr><td>End Date:</td><td>' + str(data['EndDate']).replace('None', '')[:19] + '</td></tr>'
     html += '</table>'
     html += '<br>'
     html += 'Actions:<br>'
@@ -556,6 +556,7 @@ def setExecutionInputs(weid):
                                 'Time': None
                             }
                             restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
+
                         elif i['Type'] == 'mupif.String':
                             msg += 'Setting %s (ObjID %s) to %s</br>' % (name, objID, value)
                             valuetype = i.get('ValueType', 'Scalar')
@@ -565,7 +566,6 @@ def setExecutionInputs(weid):
                                     strval = literal_eval(strval)
                                 else:
                                     strval = strval.split(' ')
-
 
                             object_dict = {
                                 'ClassName': 'String',
@@ -597,28 +597,60 @@ def setExecutionInputs(weid):
     # generate input form
     form = "<a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a><br>"
 
-    form += "<h3>Workflow: %s</h3><br>" % wid
+    form += f"<h3>Workflow: {wid}</h3><br>"
 
-    form += "Task_ID: "
+    form += "<table class=\"tableType1\">"
+    form += "<tr>"
+    form += "<td>Task_ID:</td>"
+    form += "<td>"
     if execution_record["Status"] == "Created":
         form += "<input type=\"text\" name=\"Task_ID\" value=\"%s\" /><br>" % execution_record["Task_ID"]
     else:
         form += "%s<br>" % execution_record["Task_ID"]
+    form += "</td>"
+    form += "</tr>"
 
-    form += "Label: "
+    form += "<td>Label:</td>"
+    form += "<td>"
     if execution_record["Status"] == "Created":
         form += "<input type=\"text\" name=\"label\" value=\"%s\" /><br>" % execution_record["label"]
     else:
         form += "%s<br>" % execution_record["label"]
+    form += "</td>"
+    form += "</tr>"
 
-    form += "E-mail address: "
+    form += "<td>E-mail address:</td>"
+    form += "<td>"
     if execution_record["Status"] == "Created":
-        form += "<input type=\"text\" name=\"RequestedBy\" value=\"%s\" /><br>" % execution_record["RequestedBy"]
+        form += f"<input type=\"text\" name=\"RequestedBy\" value=\"{execution_record['RequestedBy']}\" /><br>"
     else:
-        form += "%s<br>" % execution_record["RequestedBy"]
+        form += f"{execution_record['RequestedBy']}<br>"
+    form += "</td>"
+    form += "</tr>"
 
-    form += "<br>Input record for weid %s<table>" % weid
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th><th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th><th>EDMPath</th></tr>"
+    form += "</table>"
+
+    args = {}
+    for key, value in request.args.items():
+        args[key] = value
+    any_edm_path = False
+    any_execution_link = False
+    for i in execution_inputs:
+        if i.get('EDMPath', None):
+            any_edm_path = True
+        if i.get('Link', {}).get('ExecID', None) or i.get('Link', {}).get('Name', None) or i.get('Link', {}).get('ObjID', None):
+            any_execution_link = True
+
+    show_execution_links = any_execution_link or args.get('show_execution_links', False)
+
+    form += "<br>Input record for weid %s<table class=\"tableType1\">" % weid
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th>"
+    if show_execution_links:
+        form += "<th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th>"
+    if any_edm_path:
+        form += "<th>EDMPath</th>"
+    form += "</tr>"
+
     c = 0
     for i in execution_inputs:
         name = i['Name']
@@ -746,27 +778,29 @@ def setExecutionInputs(weid):
             form += '<td>' + str(i.get('Object', {}).get('Value', '')) + '</td>'
             form += '<td>' + str(i.get('Units')) + '</td>'
 
-        if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
-            form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"%s\" style=\"width:100px;\" /></td>" % (c, i['Link']['ExecID'])
-            form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['Name'])
-            form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['ObjID'])
-        else:
-            form += "<td>" + str(i['Link']['ExecID']) + "</td>"
-            form += "<td>" + str(i['Link']['Name']) + "</td>"
-            form += "<td>" + str(i['Link']['ObjID']) + "</td>"
+        if show_execution_links:
+            if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
+                form += "<td><input type=\"text\" name=\"c_eid_%d\" value=\"%s\" style=\"width:100px;\" /></td>" % (c, i['Link']['ExecID'])
+                form += "<td><input type=\"text\" name=\"c_name_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['Name'])
+                form += "<td><input type=\"text\" name=\"c_objid_%d\" value=\"%s\" style=\"width:60px;\" /></td>" % (c, i['Link']['ObjID'])
+            else:
+                form += "<td>" + str(i['Link']['ExecID']) + "</td>"
+                form += "<td>" + str(i['Link']['Name']) + "</td>"
+                form += "<td>" + str(i['Link']['ObjID']) + "</td>"
 
-        form += '<td>' + str(i.get('EDMPath', '')) + '</td>'
+        if any_edm_path:
+            form += '<td>' + str(i.get('EDMPath', '')).replace('None', '') + '</td>'
 
         form += "</tr>"
         c += 1
 
     form += "</table>"
-    form += "<input type=\"hidden\" name=\"eid\" value=\"%s\"/>" % weid
+    form += f"<input type=\"hidden\" name=\"eid\" value=\"{weid}\"/>"
 
     OBO = execution_record.get('EDMMapping', [])
     if len(OBO):
-        form += "<br>Ontology Base Objects:"
-        form += "<table>"
+        form += "<br>EDM Base Objects:"
+        form += "<table class=\"tableType1\">"
         form += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>ID</th><th>createFrom</th><th>inspect</th></tr>"
         for obo in OBO:
 
@@ -810,7 +844,12 @@ def setExecutionInputs(weid):
         form += "</table>"
 
     if execution_record["Status"] == "Created":
-        form += "<br><input type=\"submit\" value=\"Submit\" />"
+        form += "<br><input type=\"submit\" value=\"Save\" />"
+        if show_execution_links:
+            form += f"<br><br><a href=\"/workflowexecutions/{weid}/inputs\">Hide execution output links</a>"
+        else:
+            form += f"<br><br><a href=\"/workflowexecutions/{weid}/inputs?show_execution_links=1\">Show execution output links</a>"
+
 
     return my_render_template('form.html', form=form)
 
@@ -827,8 +866,8 @@ def getExecutionOutputs(weid):
 
     form = "<a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
 
-    form += "<h3>Workflow: %s</h3>Output record for weid %s<table>" % (wid, weid)
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Units</th><th>Value</th><th>EDMPath</th></tr>"
+    form += f"<h3>Workflow: {wid}</h3>Output record for weid {weid}<table class=\"tableType1\">"
+    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Value</th><th>Units</th><th>EDMPath</th></tr>"
     for i in execution_outputs:
         val = ''
 
@@ -856,7 +895,7 @@ def getExecutionOutputs(weid):
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
                         if value is not None:
-                            val = str(value) + ' ' + str(unit)
+                            val = str(value)# + ' ' + str(unit)
                 else:
                     try:
                         prop = mupif.ConstantProperty.from_db_dict(i['Object'])
@@ -865,11 +904,32 @@ def getExecutionOutputs(weid):
                         pass
 
         if i['Type'] == 'mupif.String':
-            try:
-                prop = mupif.String.from_db_dict(i['Object'])
-                val = prop.getValue()
-            except:
-                pass
+            if i.get('EDMPath', None) is not None:
+                onto_path = i.get('EDMPath')
+                onto_base_objects = execution_record.get('EDMMapping', [])
+
+                splitted = onto_path.split('.', 1)
+                base_object_name = splitted[0]
+                object_path = splitted[1]
+
+                # find base object info
+                info = {}
+                for ii in onto_base_objects:
+                    if ii['Name'] == base_object_name:
+                        info = ii
+
+                # get the desired object
+                onto_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+                if onto_data is not None:
+                    value = onto_data.get('value', None)
+                    if value is not None:
+                        val = str(value)
+            else:
+                try:
+                    prop = mupif.String.from_db_dict(i['Object'])
+                    val = prop.getValue()
+                except:
+                    pass
 
         if i['Type'] == 'mupif.Field':
             try:
@@ -884,15 +944,15 @@ def getExecutionOutputs(weid):
         form += '<td>' + str(i.get('ValueType', '')) + '</td>'
         form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
         form += '<td>' + str(i['ObjID']) + '</td>'
-        form += '<td>' + str(escape(i.get('Units'))) + '</td>'
         form += '<td>' + str(val) + '</td>'
+        form += '<td>' + str(escape(i.get('Units'))) + '</td>'
         form += '<td>' + str(i.get('EDMPath', '')) + '</td>'
     form += "</table>"
 
     OBO = execution_record.get('EDMMapping', [])
     if len(OBO):
-        form += "<br>Ontology Base Objects:"
-        form += "<table>"
+        form += "<br>EDM Base Objects:"
+        form += "<table class=\"tableType1\">"
         form += "<tr><th>Name</th><th>Type</th><th>DBName</th><th>ID</th><th>createFrom</th><th>inspect</th></tr>"
         for obo in OBO:
 
@@ -939,7 +999,7 @@ def propertyArrayView(file_id, page):
         prop = mp.ConstantProperty.loadHdf5(full_path)
         propval = prop.getValue()
 
-        html += '<table style="font-size:14px;">'
+        html += '<table style="font-size:14px;" class=\"tableType1\">'
         html += '<tr><td>Type_ID:</td><td>' + str(prop.propID) + '</td></tr>'
         html += '<tr><td>Units:</td><td>' + str(prop.getUnit().to_string()) + '</td></tr>'
         html += '<tr><td>ValueType:</td><td>' + str(prop.valueType) + '</td></tr>'
@@ -965,7 +1025,7 @@ def propertyArrayView(file_id, page):
                 html += '<a href="/property_array_view/' + file_id + '/' + str(page + 1) + '">></a>'
             html += '</h4>'
 
-        html += '<table style="font-size:12px;margin-top:10px;">'
+        html += '<table style="font-size:12px;margin-top:10px;" class=\"tableType1\">'
         html += '<td></td>'
         num_cols = 1
         if len(propval[0].shape) > 0:
@@ -986,7 +1046,7 @@ def propertyArrayView(file_id, page):
                         html += '<td>' + str(subelem) + '</td>'
             html += '</tr>'
             row_id += 1
-        html += '<table><br><br><br><br><br><br><br><br><br><br>'
+        html += '</table><br><br><br><br><br><br><br><br><br><br>'
 
     return my_render_template('basic.html', body=Markup(html))
 
@@ -1112,7 +1172,7 @@ def workflow_check():
 
         html += "<h4>Upload the workflow Python file (and consecutive Python modules):</h4>"
         html += "<h5>(The workflow module file should contain only one class implementation.):</h5>"
-        html += "<table>"
+        html += "<table class=\"tableType1\">"
 
         html += '<input type="hidden" name="somedata" value="">'
 
