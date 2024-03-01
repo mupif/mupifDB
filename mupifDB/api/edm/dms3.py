@@ -680,11 +680,7 @@ def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir)):
     foundfile = fs.get(bson.objectid.ObjectId(uid))
     wfile = io.BytesIO(foundfile.read())
     fn = foundfile.filename
-    fullpath = tdir + '/' + fn
-    with open(fullpath, "wb") as f:
-        f.write(wfile.read())
-        f.close()
-        return fastapi.responses.FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
+    return fastapi.responses.StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
 
     # 'Streaming blob download'
     # fs=gridfs.GridFS(GG.db_get(db))
