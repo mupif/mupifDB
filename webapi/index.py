@@ -412,7 +412,7 @@ def executions():
     if 'filter_status' in args:
         filter_status = str(args['filter_status'])
 
-    html = '<h3>List of workflow executions:</h3>'
+    html = '<h3>List of workflow executions</h3>'
     html += '<form id="filtering_form" action="" style="font-size:12px;" method="get">'
     html += 'WorkflowID: <input type="text" name="filter_workflow_id" value="' + filter_workflow_id + '" style="width:100px;"> '
     html += 'version: <input type="text" name="filter_workflow_version" value="' + filter_workflow_version + '" style="width:20px;"> '
@@ -586,7 +586,7 @@ def setExecutionInputs(weid):
                     if obo_id is not None:
                         restApiControl.setExecutionOntoBaseObjectID(weid, name=obo.get('Name', ''), value=obo_id)
 
-            msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a>"
+            msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution detail</a>"
             # return my_render_template("basic.html", body=Markup(msg))
 
     execution_record = restApiControl.getExecutionRecord(weid)
@@ -595,11 +595,18 @@ def setExecutionInputs(weid):
     workflow_record = restApiControl.getWorkflowRecord(wid)
     winprec = workflow_record["IOCard"]["Inputs"]
     # generate input form
-    form = "<a href=\"/workflowexecutions/"+weid+"\">Back to Execution record "+weid+"</a><br>"
+    form = "<a href=\"/workflowexecutions/"+weid+"\">Back to Execution detail</a><br>"
 
-    form += f"<h3>Workflow: {wid}</h3><br>"
+    # form += f"<h3>Execution inputs: {wid}</h3><br>"
 
-    form += "<table class=\"tableType1\">"
+    form += "<table style=\"margin-top: 16px;\" class=\"tableType1\">"
+    form += "<tr>"
+    form += "<td>Workflow_ID:</td>"
+    form += "<td>"
+    form += str(wid)
+    form += "</td>"
+    form += "</tr>"
+
     form += "<tr>"
     form += "<td>Task_ID:</td>"
     form += "<td>"
@@ -643,8 +650,9 @@ def setExecutionInputs(weid):
 
     show_execution_links = any_execution_link or args.get('show_execution_links', False)
 
-    form += "<br>Input record for weid %s<table class=\"tableType1\">" % weid
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>Description</th><th>ObjID</th><th>Value</th><th>Units</th>"
+    form += "<h3>Execution inputs</h3>"
+    form += "<table class=\"tableType1\">"
+    form += "<tr><th>Type</th><th>ValueType</th><th>DataID</th><th>Value</th><th>Units</th><th>Name</th><th>Description</th><th>ObjID</th>"
     if show_execution_links:
         form += "<th>Link_EID</th><th>Link_Name</th><th>Link_ObjID</th>"
     if any_edm_path:
@@ -669,14 +677,12 @@ def setExecutionInputs(weid):
             required = ""
 
         form += '<tr>'
+        form += '<td>' + str(i['Type']).replace('mupif.', '') + '</td>'
+        form += '<td>' + str(i.get('ValueType', '')) + '</td>'
+        form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
 
         if input_type == "mupif.Property":
-            form += '<td>' + str(i['Name']) + '</td>'
-            form += '<td>' + str(i['Type']) + '</td>'
-            form += '<td>' + str(i.get('ValueType', '')) + '</td>'
-            form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-            form += '<td>' + str(description) + '</td>'
-            form += '<td>' + str(i['ObjID']) + '</td>'
+
             form += '<td>'
             if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
                 try:
@@ -706,21 +712,15 @@ def setExecutionInputs(weid):
                         value = onto_data.get('value', None)
                         unit = onto_data.get('unit', '')
                         if value is not None:
-                            form += str(value) + ' ' + str(unit)
+                            form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(value), required)
+                            # form += str(value) + ' ' + str(unit)
 
                 else:
                     if i['Object'].get('Value', None) is not None:
                         form += str(i['Object']['Value'])
             form += "</td>"
-            form += '<td>' + str(i.get('Units')) + '</td>'
 
         elif input_type == "mupif.String":
-            form += '<td>' + str(i['Name']) + '</td>'
-            form += '<td>' + str(i['Type']) + '</td>'
-            form += '<td>' + str(i.get('ValueType', '')) + '</td>'
-            form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-            form += '<td>' + str(description) + '</td>'
-            form += '<td>' + str(i['ObjID']) + '</td>'
             form += '<td>'
             if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
                 try:
@@ -766,17 +766,15 @@ def setExecutionInputs(weid):
                             form += str(val)
 
             form += "</td>"
-            form += '<td>' + str(i.get('Units')) + '</td>'
 
         else:
-            form += '<td>' + str(i['Name']) + '</td>'
-            form += '<td>' + str(i['Type']) + '</td>'
-            form += '<td>' + str(i.get('ValueType', '')) + '</td>'
-            form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-            form += '<td>' + str(description) + '</td>'
-            form += '<td>' + str(i['ObjID']) + '</td>'
             form += '<td>' + str(i.get('Object', {}).get('Value', '')) + '</td>'
-            form += '<td>' + str(i.get('Units')) + '</td>'
+
+        form += '<td>' + str(i.get('Units')) + '</td>'
+        form += '<td>' + str(i['Name']) + '</td>'
+
+        form += '<td>' + str(description) + '</td>'
+        form += '<td>' + str(i['ObjID']) + '</td>'
 
         if show_execution_links:
             if execution_record["Status"] == "Created" and i.get('EDMPath', None) is None:
@@ -864,10 +862,11 @@ def getExecutionOutputs(weid):
 
     # generate result table form
 
-    form = "<a href=\"/workflowexecutions/" + weid + "\">Back to Execution record " + weid + "</a>"
+    form = "<a href=\"/workflowexecutions/" + weid + "\">Back to Execution detail</a>"
 
-    form += f"<h3>Workflow: {wid}</h3>Output record for weid {weid}<table class=\"tableType1\">"
-    form += "<tr><th>Name</th><th>Type</th><th>ValueType</th><th>DataID</th><th>ObjID</th><th>Value</th><th>Units</th><th>EDMPath</th></tr>"
+    form += "<h3>Execution outputs</h3>"
+    form += "<table class=\"tableType1\">"
+    form += "<tr><th>Type</th><th>ValueType</th><th>DataID</th><th>Value</th><th>Units</th><th>Name</th><th>ObjID</th><th>EDMPath</th></tr>"
     for i in execution_outputs:
         val = ''
 
@@ -902,6 +901,9 @@ def getExecutionOutputs(weid):
                         val = prop.inUnitsOf(i.get('Units', '')).getValue()
                     except:
                         pass
+
+        if i['Type'] == 'mupif.TemporalProperty':
+            val = '[...]'
 
         if i['Type'] == 'mupif.String':
             if i.get('EDMPath', None) is not None:
@@ -938,14 +940,21 @@ def getExecutionOutputs(weid):
             except:
                 pass
 
+        if i['Type'] == 'mupif.PyroFile':
+            try:
+                if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
+                    val = '<a href="' + RESTserver + 'file/' + str(i['Object'].get('FileID')) + '">download</a>'
+            except:
+                pass
+
         form += '<tr>'
-        form += '<td>' + str(i['Name']) + '</td>'
         form += '<td>' + str(i['Type']) + '</td>'
         form += '<td>' + str(i.get('ValueType', '')) + '</td>'
         form += '<td>' + str(i.get('TypeID', '[unknown]')).replace('mupif.DataID.', '') + '</td>'
-        form += '<td>' + str(i['ObjID']) + '</td>'
         form += '<td>' + str(val) + '</td>'
         form += '<td>' + str(escape(i.get('Units'))) + '</td>'
+        form += '<td>' + str(i['Name']) + '</td>'
+        form += '<td>' + str(i['ObjID']) + '</td>'
         form += '<td>' + str(i.get('EDMPath', '')) + '</td>'
     form += "</table>"
 

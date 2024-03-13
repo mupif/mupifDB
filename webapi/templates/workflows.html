@@ -1,8 +1,9 @@
 {% extends "layout.html" %}
 {% block title %} {{ title }} {% endblock %}
-{% block content %} 
+{% block content %}
+<h3>List of workflows</h3>
 <table class="tableType1">
-    <tr><th>WID</th><th>UseCaseID</th><th>Description</th><th>Details</th></tr>
+    <tr><th>WorkflowID</th><th>UseCaseID</th><th>Description</th><th>Detail</th></tr>
     {% for item in items %}
     <TR>
        <TD class="c1">{{item.wid}}</TD>

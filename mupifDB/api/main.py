@@ -1,3 +1,5 @@
+import time
+
 from fastapi import FastAPI, UploadFile, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import HTMLResponse
@@ -469,11 +471,6 @@ def get_file(uid: str, tdir=Depends(get_temp_dir)):
     wfile = io.BytesIO(foundfile.read())
     fn = foundfile.filename
     return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
-    # fullpath = tdir + '/' + fn
-    # with open(fullpath, "wb") as f:
-    #     f.write(wfile.read())
-    #     f.close()
-    #     return FileResponse(path=fullpath, media_type='application/octet-stream', headers={"Content-Disposition": "attachment; filename=" + fn})
 
 
 @app.post("/file/", tags=["Files"])
@@ -506,7 +503,7 @@ def get_property_array_data(fid: str, i_start: int, i_count: int):
 
 
 @app.get("/field_as_vtu/{fid}", tags=["Additional"])
-def get_property_array_data(fid: str, tdir=Depends(get_temp_dir)):
+def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir)):
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
     full_path = tdir + "/file.h5"
     f = open(full_path, 'wb')

@@ -933,9 +933,20 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
         else:
             raise ValueError('Handling of io param of type %s not implemented' % object_type)
 
-    # elif object_type == 'mupif.PyroFile':
-    #     prop = app.get(mupif.DataID[data_id], time, obj_id)
-    #     restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+    elif object_type == 'mupif.PyroFile':
+        pf = app.get(mupif.DataID[data_id], time, obj_id)
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+            fn = pf.getBasename()
+            full_path = tempDir + "/" + fn
+            mupif.PyroFile.copy(pf, full_path)
+            fileID = None
+            with open(full_path, 'rb') as f:
+                fileID = restApiControl.uploadBinaryFile(f)
+                f.close()
+            if fileID is not None:
+                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+            else:
+                print("PyroFile file was not saved")
 
     elif object_type == 'mupif.HeavyStruct':
         hs = app.get(mupif.DataID[data_id], time, obj_id)
