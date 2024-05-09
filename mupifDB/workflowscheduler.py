@@ -521,8 +521,6 @@ def checkExecutionResources(eid):
 
 
 if __name__ == '__main__':
-    # for testing
-    # restApiControl.setExecutionStatusPending('a6e623e7-12a5-4da3-8d40-fc1e7ec00811')
 
     if (Path(schedulerStatFile).is_file()):
         with open(schedulerStatFile,'r') as f:
@@ -641,7 +639,7 @@ if __name__ == '__main__':
                             weid = wed['_id']
 
                             # check number of attempts for execution
-                            if int(wed['Attempts']) > 60*10 and False:
+                            if int(wed['Attempts']) > 10:
                                 try:
                                     restApiControl.setExecutionStatusCreated(weid)
                                     if api_type != 'granta':
