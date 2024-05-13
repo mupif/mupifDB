@@ -401,7 +401,7 @@ def checkInputs(eid):
         valueType = input_template['ValueType']
         data_id = input_template['TypeID']
         # try to get raw PID from typeID
-        match = re.search('\w+\Z', data_id)
+        match = re.search(r'\w+\Z', data_id)
         if match:
             data_id = match.group()
 
@@ -731,7 +731,7 @@ def mapInputs(app, eid):
         object_type = input_template.get('Type', '')
         data_id = input_template.get('TypeID', input_template.get('Type_ID'))
         # try to get raw PID from typeID
-        match = re.search('\w+\Z', data_id)
+        match = re.search(r'\w+\Z', data_id)
         if match:
             data_id = match.group()
 
@@ -775,7 +775,7 @@ def getEDMListLength(app, eid, edm_name, outputs):
             object_type = outitem['Type']
             typeID = outitem.get('TypeID', outitem.get('Type_ID'))
             # try to get raw PID from typeID
-            match = re.search('\w+\Z', typeID)
+            match = re.search(r'\w+\Z', typeID)
             if match:
                 typeID = match.group()
 
@@ -1114,7 +1114,7 @@ def mapOutputs(app, eid, time):
         object_type = outitem['Type']
         typeID = outitem.get('TypeID', outitem.get('Type_ID'))
         # try to get raw PID from typeID
-        match = re.search('\w+\Z', typeID)
+        match = re.search(r'\w+\Z', typeID)
         if match:
             typeID = match.group()
 

@@ -185,8 +185,8 @@ def updateWorkflow(data):
 
 def fix_json(val):
     import re
-    val = re.sub(",[ \t\r\n]+}", "}", val)
-    val = re.sub(",[ \t\r\n]+\]", "]", val)
+    val = re.sub(r",[ \t\r\n]+}", "}", val)
+    val = re.sub(r",[ \t\r\n]+\]", "]", val)
     val = val.replace("False", "false").replace("True", "true")
     val
     return val
