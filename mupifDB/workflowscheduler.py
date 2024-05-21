@@ -321,10 +321,15 @@ def copyLogToDB (we_id, workflowLogName):
         log.error(repr(e))
 
 
-def executeWorkflow(lock, schedulerStat, we_id):
+def executeWorkflow(lock, schedulerStat, we_id) -> None:
     try:
         log.info("executeWorkflow invoked")
+        executeWorkflow_inner(lock, schedulerStat, we_id)
+    except Exception as e:
+        log.error("Execution of workflow %s failed." % we_id)
+        log.error(repr(e))
 
+def executeWorkflow_inner(lock, schedulerStat, we_id) -> None: 
         we_rec = restApiControl.getExecutionRecord(we_id)
         if we_rec is None:
             log.error("Workflow Execution record %s not found" % we_id)
@@ -470,10 +475,6 @@ def executeWorkflow(lock, schedulerStat, we_id):
         else:
             log.error("WEID %s not scheduled for execution" % we_id)
             raise KeyError("WEID %s not scheduled for execution" % we_id)
-    except Exception as e:
-        log.error("Execution of workflow %s failed." % we_id)
-        log.error(repr(e))
-
 
 def stop(var_pool):
     try:
