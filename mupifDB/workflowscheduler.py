@@ -99,10 +99,10 @@ def historyUpdateLoad(data, epoch, currentLoad):
     data['s1_loadTicks'][-1]+=1
 def historyUpdatePooled(data, epoch, numberOfPendingExecution):
     historyMove(data,epoch)
-    data['s1_pooledTasks'][-1] = numberOfPendingExecution
+    data['s1_pooledTasks'][-1] += numberOfPendingExecution
 def historyUpdateRunning(data, epoch):
     historyMove(data,epoch)
-    data['s1_pooledTasks'][-1] -= 1
+    #data['s1_pooledTasks'][-1] -= 1 # history tracks accumulated values
     #data['s1_runningTasks'][-1] += 1
 def historyUpdateFinished(data, epoch):
     historyMove(data,epoch)
