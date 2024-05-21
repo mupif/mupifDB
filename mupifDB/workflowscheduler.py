@@ -371,7 +371,7 @@ def executeWorkflow_inner2(lock, schedulerState, we_id: str, we_rec, workflow_re
                 workflowLogName = tempDir+'/workflow.log'
                 execScript = Path(tempDir+'/workflow_execution_script.py')
                 # copy workflow source to tempDir
-                if not executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript):
+                if not executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript,workflowLogName):
                     return we_id, ExecutionResult.Failed
                 # execute
                 log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
@@ -439,7 +439,7 @@ def executeWorkflow_inner2(lock, schedulerState, we_id: str, we_rec, workflow_re
                 pass
 
 
-def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> bool:
+def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript,workflowLogName) -> bool:
                 try:
                     python_script_filename = workflow_record['modulename'] + ".py"
 
@@ -480,6 +480,7 @@ def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> bool
                     restApiControl.setExecutionStatusFailed(we_id)
                     my_email.sendEmailAboutExecutionStatus(we_id)
                     try:
+                        # XXX: there is no log yet, what is this support to copy??
                         copyLogToDB(we_id, workflowLogName)
                     except:
                         log.info("Copying log files was not successful")
