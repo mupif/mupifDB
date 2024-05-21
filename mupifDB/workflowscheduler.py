@@ -14,6 +14,7 @@ import zipfile
 import ctypes
 import json
 import jsonpickle
+import textwrap
 from typing import Tuple
 
 import restApiControl
@@ -384,9 +385,9 @@ def executeWorkflow_inner2(lock, schedulerState, we_id: str, we_rec, workflow_re
                 # log.info(cmd)
                 with open(workflowLogName, 'w') as workflowLog:
                     ll = 10*'='
-                    workflowLog.write(f'''
-    {ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
-    {ll} command is {cmd} {ll}''')
+                    workflowLog.write(textwrap.dedent(f'''
+                        {ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+                        {ll} command is {cmd} {ll}'''))
                     env = os.environ.copy()
                     if 'PYTHONPATH' in env:
                         env['PYTHONPATH'] += f'{os.pathsep}{mupifDBSrcDir}'
@@ -396,10 +397,10 @@ def executeWorkflow_inner2(lock, schedulerState, we_id: str, we_rec, workflow_re
                     env['MUPIFDB_REST_SERVER_TYPE'] = api_type
 
                     completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
-                    workflowLog.write(f'''
-    {ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
-    {ll} duration: {str((dt:=(t1-t0))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
-    {ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS'}) {ll}''')
+                    workflowLog.write(textwrap.dedent(f'''
+                        {ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+                        {ll} duration: {str((dt:=(t1-t0))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
+                        {ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS'}) {ll}'''))
 
                 # log.info(tempDir)
                 log.info('command:' + str(cmd) + ' Return Code:'+str(completed))
