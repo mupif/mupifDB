@@ -98,12 +98,13 @@ class User(UserMixin):
     @staticmethod
     def get(user_id, user_email=None):
         u = get_user(user_id)
-        if u is None:
+        if u is None and user_email is not None:
             # for the first login by email to remember the user's id
             u = get_user_by_email(user_email, user_id)
+            u = get_user(user_id)
         if u is not None:
             user = User(
-                id_=u['id'],
+                id_=u.get('id', None),
                 name=u.get('name', 'Unknown'),
                 email=u.get('email', 'Unknown'),
                 profile_pic=u.get('profile_pic', 'Unknown'),
@@ -235,15 +236,16 @@ def callback():
         users_email = userinfo_response.json()["email"]
         picture = userinfo_response.json()["picture"]
         users_name = userinfo_response.json()["name"]
-        user = User.get(unique_id, users_email)
-        if user is not None:
-            login_user(user)
-            if user.name != users_name:
-                update_user_name(unique_id, users_name)
+        if unique_id is not None and len(unique_id) > 0:
+            user = User.get(unique_id, users_email)
+            if user is not None and user.id == unique_id:
                 login_user(user)
-            if user.profile_pic != picture:
-                update_user_picture_url(unique_id, picture)
-                login_user(user)
+                if user.name != users_name:
+                    update_user_name(unique_id, users_name)
+                    login_user(user)
+                if user.profile_pic != picture:
+                    update_user_picture_url(unique_id, picture)
+                    login_user(user)
 
     if user is None:
         return "User email not available or not verified by Google.", 400
