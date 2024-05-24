@@ -7,11 +7,14 @@
         {% endblock %}
     </head>
     <body>
-        <div>
-        <img src="/static/images/project-logo.png" height="60px" align="left" hspace="20">
-        <img src="/static/images/ctu-logo.png" height="60px" align="right" hspace="20">
-        <img src="/static/images/mupif-logo.png" height="60px" align="right" hspace="20">
-        <p>MuPIFDB web interface</p>
+        <div style="display: flex;flex-direction: row;justify-content: space-between;">
+            <div style="display: flex;flex-direction: row;gap: 10px;">
+                <img src="/static/images/mupif-logo.png" height="60px" align="right">
+                <img src="/static/images/ctu-logo.png" height="60px" align="right">
+                <img src="/static/images/project-logo.png" height="60px" align="left">
+                <div><p>MuPIFDB web interface</p></div>
+            </div>
+            <div class="block_login">{% block login %}{% endblock %}</div>
         </div>
         <div class="main">
             {% include 'navigation.html' %}

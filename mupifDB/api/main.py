@@ -103,12 +103,12 @@ def read_root():
 # Users
 # --------------------------------------------------
 
-@app.get("/users/{user_ip}", tags=["Users"])
-def get_user(user_ip: str):
-    res = db.Users.find_one({'IP': user_ip})
-    if res:
-        return fix_id(res)
-    return None
+# @app.get("/users/{user_ip}", tags=["Users"])
+# def get_user(user_ip: str):
+#     res = db.Users.find_one({'IP': user_ip})
+#     if res:
+#         return fix_id(res)
+#     return None
 
 
 # --------------------------------------------------

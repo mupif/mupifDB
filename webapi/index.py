@@ -14,6 +14,52 @@ import inspect
 import mupif as mp
 import requests
 from ast import literal_eval
+from flask_login import (
+    LoginManager,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+    UserMixin
+)
+from oauthlib.oauth2 import WebApplicationClient
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+from pymongo import MongoClient
+client = MongoClient("mongodb://localhost:27017")
+db = client.MuPIF
+
+def fix_id(record):
+    if record:
+        if '_id' in record:
+            record['_id'] = str(record['_id'])
+    return record
+
+def get_user(user_id: str):
+    if user_id:
+        res = db.Users.find_one({'id': user_id})
+        if res:
+            return fix_id(res)
+    return None
+
+def get_user_by_email(user_email: str, user_id: str):
+    if user_email:
+        res = db.Users.find_one({'email': user_email, 'id': None})
+        if res:
+            db.Users.update_one({'email': user_email, 'id': None}, { "$set": { 'id': user_id } })
+            return fix_id(res)
+    return None
+
+persistentPath = "/var/lib/mupif/persistent"
+googleConfigPath = persistentPath + "/google_auth_config.json"
+login_config = {}
+with open(googleConfigPath) as config_json:
+    login_config = json.load(config_json)
+GOOGLE_CLIENT_ID = login_config.get("GOOGLE_CLIENT_ID", None)
+GOOGLE_CLIENT_SECRET = login_config.get("GOOGLE_CLIENT_SECRET", None)
+GOOGLE_REDIRECT_URI = login_config.get("GOOGLE_REDIRECT_URI", None)
+GOOGLE_DISCOVERY_URL = login_config.get("GOOGLE_DISCOVERY_URL", None)
+AUTH_APP_SECRET_KEY = login_config.get("AUTH_APP_SECRET_KEY", None) or os.urandom(24)
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
@@ -27,10 +73,46 @@ import mupifDB
 
 
 app = Flask(__name__)
+app.secret_key = AUTH_APP_SECRET_KEY
 CORS(app, resources={r"/static/*": {"origins": "*"}})
+login_manager = LoginManager()
+login_manager.init_app(app)
+client = WebApplicationClient(GOOGLE_CLIENT_ID)
 
 
-# unless overridden by the environment, use 127.0.0.1:5000
+class User(UserMixin):
+    def __init__(self, id_, email, name, profile_pic, rights):
+        self.id = id_
+        self.email = email
+        self.name = name
+        self.profile_pic = profile_pic
+        self.rights = rights
+        super(User).__init__()
+
+    @staticmethod
+    def get(user_id, user_email=None):
+        u = get_user(user_id)
+        if u is None:
+            # for the first login by email to remember the user's id
+            u = get_user_by_email(user_email, user_id)
+        if u is not None:
+            user = User(
+                id_=u['id'],
+                name=u.get('name', 'Unknown'),
+                email=u.get('email', 'Unknown'),
+                profile_pic=u.get('profile_pic', 'Unknown'),
+                rights=u.get('Rights', 0)
+            )
+            return user
+        return None
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.get(user_id)
+
+
+# unless overridden by the environment, use 127.0.0.1:8005
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
 RESTserver = RESTserver.replace('5000', '8005')
 
@@ -65,10 +147,8 @@ def getUserIPAddress():
 
 
 def getRightsOfCurrentUser():
-    user = restApiControl.getUserByIP(getUserIPAddress())
-    if user is not None:
-        if 'Rights' in user:
-            return int(user['Rights'])
+    if current_user.is_authenticated:
+        return current_user.rights
     return 0
 
 
@@ -81,9 +161,111 @@ def my_render_template(*args,**kw):
     return render_template(*args,title='MuPIFDB web interface',server=request.host_url,RESTserver=RESTserver,**kw)
 
 
+def login_header_html():
+    html = ''
+    if current_user.is_authenticated:
+        html += f'<div style="display:flex;flex-direction: column;gap: 2px;align-items: flex-start;"><div style="font-size: 12px;line-height: 14px;">{current_user.name}</div><div style="font-size: 12px;line-height: 14px;">{current_user.email}</div><a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/logout">Logout</a></div>'
+        html = '<div style="display:flex;flex-direction: row; gap: 10px;">' + html + f'<img src="{current_user.profile_pic}" style="height: 54px;border-radius:27px;"></div>'
+    else:
+        html += '<a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/login">Login</a>'
+    return Markup(html)
+
+
 @app.route('/')
 def homepage():
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup("<h3>Welcome to MuPIFDB web interface</h3>"))
+    html = "<h3>Welcome to MuPIFDB web interface</h3><br>"
+    if not current_user.is_authenticated:
+        html += '<p>You need to authenticate to use this application.</p>'
+
+    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html), login=login_header_html())
+
+
+@app.login_manager.unauthorized_handler
+def unauth_handler():
+    html = '<p>You need to authenticate with </p><a class="button" href="/login">Google Login</a>'
+    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html), login=login_header_html())
+
+
+def get_google_provider_cfg():
+    return requests.get(GOOGLE_DISCOVERY_URL).json()
+
+@app.route("/login")
+def login():
+    # Find out what URL to hit for Google login
+    google_provider_cfg = get_google_provider_cfg()
+    authorization_endpoint = google_provider_cfg["authorization_endpoint"]
+
+    # Use library to construct the request for Google login and provide
+    # scopes that let you retrieve user's profile from Google
+    request_uri = client.prepare_request_uri(
+        authorization_endpoint,
+        redirect_uri=request.base_url + "/callback",
+        scope=["openid", "email", "profile"],
+    )
+    return redirect(request_uri)
+
+@app.route("/login/callback")
+def callback():
+    # Get authorization code Google sent back to you
+    code = request.args.get("code")
+    # print(code)
+    google_provider_cfg = get_google_provider_cfg()
+    token_endpoint = google_provider_cfg["token_endpoint"]
+    token_url, headers, body = client.prepare_token_request(
+        token_endpoint,
+        authorization_response=request.url,
+        redirect_url=request.base_url,
+        code=code
+    )
+    token_response = requests.post(
+        token_url,
+        headers=headers,
+        data=body,
+        auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+    )
+
+    client.parse_request_body_response(json.dumps(token_response.json()))
+
+    userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
+    uri, headers, body = client.add_token(userinfo_endpoint)
+    userinfo_response = requests.get(uri, headers=headers, data=body)
+    print(userinfo_response.json())
+    user = None
+    if userinfo_response.json().get("email_verified"):
+        unique_id = userinfo_response.json()["sub"]
+        users_email = userinfo_response.json()["email"]
+        picture = userinfo_response.json()["picture"]
+        users_name = userinfo_response.json()["given_name"]
+        user = User.get(unique_id, users_email)
+    if user is not None:
+        login_user(user)
+    else:
+        return "User email not available or not verified by Google.", 400
+    # print(user)
+    # Create a user in your db with the information provided
+    # by Google
+    # user = User(
+    #     id_=unique_id, name=users_name, email=users_email, profile_pic=picture
+    # )
+
+    # Doesn't exist? Add it to the database.
+    # if not User.get(unique_id):
+    #     User.create(unique_id, users_name, users_email, picture)
+
+    # Begin user session by logging the user in
+    # login_user(user)
+
+    # Send user back to homepage
+    return redirect("/")
+
+    return homepage()
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect("/")
 
 
 @app.route('/about')
@@ -93,10 +275,11 @@ def about():
         <p><a href=\"http://www.mupif.org\">MuPIF</a> is open-source, modular, object-oriented integration platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. <a href=\"https://github.com/mupif/mupifDB\">MuPIFDB</a> is database layer (based on MongoDB) and workflow manager/scheduler for MuPIF with REST API.</p>
         <p>The MuPIFDB web interface allows to use MupifDB REST API from web browser in a user friendly way, allowing to inspect all the stored data and to intialize, schedule and monitor individual workflow executions.</p> 
     """
-    return my_render_template('basic.html', body=Markup(msg))
+    return my_render_template('basic.html', body=Markup(msg), login=login_header_html())
 
 
 @app.route('/status')
+@login_required
 def status():
     data = restApiControl.getStatus()
     stat = data['totalStat']
@@ -107,10 +290,11 @@ def status():
     msg += "    <dd>Finished executions:"+str(stat['finishedExecutions'])+"</dd>"
     msg += "    <dd>Failed executions:"+str(stat['failedExecutions'])+"</dd>"
     msg += "</dl></div>"
-    return my_render_template('stat.html', body=Markup(msg))
+    return my_render_template('stat.html', body=Markup(msg), login=login_header_html())
 
 
 @app.route("/schedulerStats/weekly.svg")
+@login_required
 def schedulerStatWeekly():
     # https://stackoverflow.com/questions/67591467/flask-shows-typeerror-send-from-directory-missing-1-required-positional-argum
     # https://flask.palletsprojects.com/en/2.0.x/api/#flask.send_from_directory
@@ -118,6 +302,7 @@ def schedulerStatWeekly():
 
 
 @app.route("/schedulerStats/hourly.svg")
+@login_required
 def schedulerStatHourly():
     return send_from_directory(directory=path_of_this_file + "/static/images", path="scheduler_hourly_stat.svg")
 
@@ -128,10 +313,11 @@ def contact():
         <p>MuPIF and MuPIFDB have been developped at <a href=\"https://www.cvut.cz/en\">Czech Technical University in Prague</a> by a research team at the Department of Mechanics of the <a href=\"https://web.fsv.cvut.cz/en/\">Faculty of Civil Engineering</a>.</p>
         <p>For more information and help please contact Borek Patzak (borek.patzak@fsv.cvut.cz)</p>  
     """
-    return my_render_template('basic.html', body=Markup(msg))
+    return my_render_template('basic.html', body=Markup(msg), login=login_header_html())
 
 
 @app.route('/usecases')
+@login_required
 def usecases():
     admin_rights = getUserHasAdminRights()
 
@@ -153,10 +339,11 @@ def usecases():
     html += '</table>'
     if admin_rights:
         html += '<br><a href="/usecase_add">Register new UseCase</a>'
-    return my_render_template('basic.html', body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 @app.route('/usecase_add', methods=('GET', 'POST'))
+@login_required
 def addUseCase():
     admin_rights = getUserHasAdminRights()
 
@@ -177,7 +364,7 @@ def addUseCase():
         if new_usecase_id is not None:
             html = '<h5 style="color:green;">UseCase has been registered</h5>'
             html += '<a href="/usecases">Go back to UseCases</a>'
-            return my_render_template('basic.html', body=Markup(html))
+            return my_render_template('basic.html', body=Markup(html), login=login_header_html())
         else:
             message += '<h5 style="color:red;">UseCase was not registered</h5>'
     if new_usecase_id is None:
@@ -191,27 +378,31 @@ def addUseCase():
             html += "<input type=\"submit\" value=\"Submit\" />"
         else:
             html += "<h5>You don't have permission to visit this page.</h5>"
-        return my_render_template('form.html', form=html)
+        return my_render_template('form.html', form=html, login=login_header_html())
 
 
 @app.route('/usecases/<ucid>/workflows')
+@login_required
 def usecaseworkflows(ucid):
     data = restApiControl.getWorkflowRecordsWithUsecase(ucid)
-    return my_render_template('workflows.html', items=data)
+    return my_render_template('workflows.html', items=data, login=login_header_html())
 
 
 @app.route('/workflows')
+@login_required
 def worflows():
     data = restApiControl.getWorkflowRecords()
-    return my_render_template('workflows.html', items=data)
+    return my_render_template('workflows.html', items=data, login=login_header_html())
 
 
 @app.route('/workflows/<wid>')
+@login_required
 def workflowNoVersion(wid):
     return workflow(wid, -1)
 
 
 @app.route('/workflows/<wid>/<version>')
+@login_required
 def workflow(wid, version):
     wdata = restApiControl.getWorkflowRecordGeneral(wid=wid, version=int(version))
     html = '<table class=\"tableType1\">'
@@ -279,7 +470,7 @@ def workflow(wid, version):
     if admin_rights:
         html += '<br><br><a href="'+RESTserver+'file/'+str(wdata['GridFSID'])+'" target="_blank">Download file</a>'
 
-    return my_render_template('basic.html', body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 def allowed_file(filename):
@@ -288,6 +479,7 @@ def allowed_file(filename):
 
 
 @app.route('/workflow_add/<usecaseid>', methods=('GET', 'POST'))
+@login_required
 def addWorkflow(usecaseid):
     admin_rights = getUserHasAdminRights()
 
@@ -367,7 +559,7 @@ def addWorkflow(usecaseid):
     if new_workflow_id is not None:
         html = '<h3>Workflow has been registered</h3>'
         html += '<a href="/workflows/'+str(wid)+'">Go to workflow detail</a>'
-        return my_render_template('basic.html', body=Markup(html))
+        return my_render_template('basic.html', body=Markup(html), login=login_header_html())
     else:
         # generate input form
         html = message
@@ -386,10 +578,11 @@ def addWorkflow(usecaseid):
             html += "<input type=\"submit\" value=\"Submit\" />"
         else:
             html += "<h5>You don't have permission to visit this page.</h5>"
-        return my_render_template('form.html', form=html)
+        return my_render_template('form.html', form=html, login=login_header_html())
 
 
 @app.route('/workflowexecutions')
+@login_required
 def executions():
     filter_workflow_id = ''
     filter_workflow_version = ''
@@ -445,10 +638,11 @@ def executions():
         html += '</tr>'
 
     html += '</table>'
-    return my_render_template('basic.html', body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 @app.route('/workflowexecutions/init/<wid>/<version>')
+@login_required
 def initexecution(wid, version, methods=('GET')):
     disable_onto = 'no_onto' in request.args
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
@@ -456,10 +650,11 @@ def initexecution(wid, version, methods=('GET')):
         weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)
         return redirect(url_for("executionStatus", weid=weid))
     else:
-        return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'))
+        return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'), login=login_header_html())
 
 
 @app.route('/workflowexecutions/<weid>')
+@login_required
 def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.get('ExecutionLog')
@@ -501,10 +696,11 @@ def executionStatus(weid):
         html += '<li> <a href="' + RESTserver + 'file/' + str(logID) + '"> Execution log</a></li>'
     html += '</ul>'
 
-    return my_render_template('basic.html', body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 @app.route('/executeworkflow/<weid>')
+@login_required
 def executeworkflow(weid):
     restApiControl.scheduleExecution(weid)
     data = restApiControl.getExecutionRecord(weid)
@@ -513,6 +709,7 @@ def executeworkflow(weid):
 
 
 @app.route('/workflowexecutions/<weid>/inputs', methods=('GET', 'POST'))
+@login_required
 def setExecutionInputs(weid):
     execution_record = restApiControl.getExecutionRecord(weid)
     wid = execution_record["WorkflowID"]
@@ -587,7 +784,7 @@ def setExecutionInputs(weid):
                         restApiControl.setExecutionOntoBaseObjectID(weid, name=obo.get('Name', ''), value=obo_id)
 
             msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution detail</a>"
-            # return my_render_template("basic.html", body=Markup(msg))
+            # return my_render_template("basic.html", body=Markup(msg), login=login_header_html())
 
     execution_record = restApiControl.getExecutionRecord(weid)
     wid = execution_record["WorkflowID"]
@@ -849,10 +1046,11 @@ def setExecutionInputs(weid):
             form += f"<br><br><a href=\"/workflowexecutions/{weid}/inputs?show_execution_links=1\">Show execution output links</a>"
 
 
-    return my_render_template('form.html', form=form)
+    return my_render_template('form.html', form=form, login=login_header_html())
 
 
 @app.route("/workflowexecutions/<weid>/outputs")
+@login_required
 def getExecutionOutputs(weid):
     execution_record = restApiControl.getExecutionRecord(weid)
     wid = execution_record["WorkflowID"]
@@ -983,18 +1181,20 @@ def getExecutionOutputs(weid):
             form += '</tr>'
         form += "</table>"
 
-    return my_render_template('basic.html', body=Markup(form))
+    return my_render_template('basic.html', body=Markup(form), login=login_header_html())
 
 
 @app.route("/entity_browser/<DB>/<Name>/<ID>/")
+@login_required
 def entity_browser(DB, Name, ID):
     obj = restApiControl.getEDMData(DB, Name, ID, '')
     html = json.dumps(obj, indent=4)
     html = html.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>').replace('  "', '  "<b>').replace('":', '</b>":').replace(' ', '&nbsp;')
-    return my_render_template('basic.html', body=Markup(html))
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 @app.route("/property_array_view/<file_id>/<page>")
+@login_required
 def propertyArrayView(file_id, page):
     page = int(page)
     html = '<h3>Content of mupif.Property stored in file id %s</h3>' % file_id
@@ -1057,20 +1257,17 @@ def propertyArrayView(file_id, page):
             row_id += 1
         html += '</table><br><br><br><br><br><br><br><br><br><br>'
 
-    return my_render_template('basic.html', body=Markup(html))
-
-
-@app.route('/hello/<name>')
-def hello(name=None):
-    return my_render_template('hello.html', name=name, content="Welcome to MuPIFDB web interface")
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 @app.route('/main.js')
+@login_required
 def mainjs():
     return send_from_directory(directory='./', path='main.js')
 
 
 @app.route('/api/')
+@login_required
 def restapi():
     full_url = str(request.url)
     print(full_url)
@@ -1082,6 +1279,7 @@ def restapi():
 
 
 @app.route('/workflow_check', methods=('GET', 'POST'))
+@login_required
 def workflow_check():
     html = ''
     html += "<h3>Testing workflow implementation</h3>"
@@ -1174,7 +1372,7 @@ def workflow_check():
         if noproblem is True:
             html += '<h5 style="color:green;">No problems found in the workflow implementation.</h5>'
 
-        return my_render_template('basic.html', body=Markup(html))
+        return my_render_template('basic.html', body=Markup(html), login=login_header_html())
     else:
         # generate input form
         html = ''
@@ -1192,7 +1390,7 @@ def workflow_check():
         html += "</table>"
         html += "<input type=\"submit\" value=\"Submit\" />"
 
-        return my_render_template('form.html', form=html)
+        return my_render_template('form.html', form=html, login=login_header_html())
 
 
 if __name__ == '__main__':

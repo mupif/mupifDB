@@ -103,11 +103,11 @@ def getAuthToken():
 # Users
 # --------------------------------------------------
 
-def getUserByIP(ip):
-    if api_type == 'granta':
-        return None
-    response = rGet(url=RESTserver + "users/" + str(ip))
-    return response.json()
+# def getUserByIP(ip):
+#     if api_type == 'granta':
+#         return None
+#     response = rGet(url=RESTserver + "users/" + str(ip))
+#     return response.json()
 
 
 # --------------------------------------------------
