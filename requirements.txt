@@ -4,6 +4,7 @@ mupif
 pymongo
 flask_pymongo
 flask_cors
+flask_login
 isodate
 # see https://stackoverflow.com/a/76116905
 # flask 2.3 does not provide flask.json.JSONEncoder anymore

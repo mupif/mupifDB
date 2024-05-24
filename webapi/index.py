@@ -50,6 +50,12 @@ def get_user_by_email(user_email: str, user_id: str):
             return fix_id(res)
     return None
 
+def update_user_picture_url(user_id: str, val):
+    db.Users.update_one({'id': user_id}, { "$set": { 'profile_pic': val } })
+
+def update_user_name(user_id: str, val):
+    db.Users.update_one({'id': user_id}, { "$set": { 'name': val } })
+
 persistentPath = "/var/lib/mupif/persistent"
 googleConfigPath = persistentPath + "/google_auth_config.json"
 login_config = {}
@@ -191,12 +197,8 @@ def get_google_provider_cfg():
 
 @app.route("/login")
 def login():
-    # Find out what URL to hit for Google login
     google_provider_cfg = get_google_provider_cfg()
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
-
-    # Use library to construct the request for Google login and provide
-    # scopes that let you retrieve user's profile from Google
     request_uri = client.prepare_request_uri(
         authorization_endpoint,
         redirect_uri=request.base_url + "/callback",
@@ -206,9 +208,7 @@ def login():
 
 @app.route("/login/callback")
 def callback():
-    # Get authorization code Google sent back to you
     code = request.args.get("code")
-    # print(code)
     google_provider_cfg = get_google_provider_cfg()
     token_endpoint = google_provider_cfg["token_endpoint"]
     token_url, headers, body = client.prepare_token_request(
@@ -229,33 +229,25 @@ def callback():
     userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
     uri, headers, body = client.add_token(userinfo_endpoint)
     userinfo_response = requests.get(uri, headers=headers, data=body)
-    print(userinfo_response.json())
     user = None
     if userinfo_response.json().get("email_verified"):
         unique_id = userinfo_response.json()["sub"]
         users_email = userinfo_response.json()["email"]
         picture = userinfo_response.json()["picture"]
-        users_name = userinfo_response.json()["given_name"]
+        users_name = userinfo_response.json()["name"]
         user = User.get(unique_id, users_email)
-    if user is not None:
-        login_user(user)
-    else:
+        if user is not None:
+            login_user(user)
+            if user.name != users_name:
+                update_user_name(unique_id, users_name)
+                login_user(user)
+            if user.profile_pic != picture:
+                update_user_picture_url(unique_id, picture)
+                login_user(user)
+
+    if user is None:
         return "User email not available or not verified by Google.", 400
-    # print(user)
-    # Create a user in your db with the information provided
-    # by Google
-    # user = User(
-    #     id_=unique_id, name=users_name, email=users_email, profile_pic=picture
-    # )
 
-    # Doesn't exist? Add it to the database.
-    # if not User.get(unique_id):
-    #     User.create(unique_id, users_name, users_email, picture)
-
-    # Begin user session by logging the user in
-    # login_user(user)
-
-    # Send user back to homepage
     return redirect("/")
 
     return homepage()
