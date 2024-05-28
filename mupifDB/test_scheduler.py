@@ -26,7 +26,7 @@ restApiControl.setRESTserver(MUPIFDB_REST_SERVER)
 #mupifExamplesDir=mp.__path__[0]+'/examples/'
 
 sys.path.append(mupifDB.__path__[0]+'/..')
-import workflows.workflowdemo01 as wfdemo01
+import workflows.mini01 as wfmini01
 
 @pytest.fixture
 def nameserver(xprocess):
@@ -123,15 +123,19 @@ def test_suite_cleanup():
 
 class TestFoo:
     def test_workflowdemo01(self,scheduler):
-        wf=wfdemo01.workflowdemo()
+        wf=wfmini01.MiniWorkflow1()
         md=lambda k: wf.getMetadata(k)
         wid=md('ID')
-        id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md('Description'),source=wfdemo01.__file__,useCase='useCase1',workflowInputs=md('Inputs'),workflowOutputs=md('Outputs'),modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md('Models'))
+        id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md('Description'),source=wfmini01.__file__,useCase='useCase1',workflowInputs=md('Inputs'),workflowOutputs=md('Outputs'),modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md('Models'))
         print(f'Workflow inserted, {id=}')
         wrec=restApiControl.getWorkflowRecord(wid)
         assert wrec['wid']==wid
         # print_json(data=wrec)
         weid=restApiControl.createExecution(wid,version='1',ip='localhost')
+        #for inp in [
+        #    mp.ConstantProperty(value=16., propID=DataID.PID_Concentration,valueType=ValueType.Scalar,unit=mp.U['m'])
+        #]:
+        #    restApiControl.setExecutionInputObject(weid,
         print(f'Execution created, {weid=}')
         restApiControl.scheduleExecution(weid)
         print(f'Execution scheduled, {weid=}')
@@ -139,7 +143,7 @@ class TestFoo:
             data=restApiControl.getExecutionRecord(weid)
             print(f'Execution status: {data["Status"]}')
             time.sleep(1)
-        assert data['Status'] in ('Failed',)
+        assert data['Status']=='Finished'
 
 
         # time.sleep(10)
