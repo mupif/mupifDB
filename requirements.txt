@@ -22,6 +22,7 @@ astropy
 rich
 pytest-rich
 pytest
+pytest-xprocess
 requests
 parsy
 attrdict3

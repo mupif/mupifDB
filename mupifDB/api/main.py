@@ -24,8 +24,7 @@ import Pyro5.api
 
 import table_structures
 
-
-client = MongoClient("mongodb://localhost:27017")
+client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27107'))
 db = client.MuPIF
 
 tags_metadata = [
@@ -684,4 +683,6 @@ def edm_find(db: str, type: str, data: M_FindParams):
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run('main:app', host='0.0.0.0', port=8080, reload=True)
+    host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
+    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
+    uvicorn.run('main:app', host=host, port=port, reload=True)

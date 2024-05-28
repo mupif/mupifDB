@@ -65,6 +65,12 @@ if not RESTserver[-1] == '/':
 
 RESTserverMuPIF = RESTserver
 
+def setRESTserver(r):
+    'Used in tests to set RESTserver after import'
+    global RESTserver
+    global RESTserverMuPIF
+    RESTserver=RESTserverMuPIF=r+'/'
+
 granta_credentials = {'username': '', 'password': ''}
 
 bearer_token = None
