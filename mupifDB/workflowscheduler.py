@@ -37,6 +37,8 @@ log.addHandler(restLogger.RestLogHandler())
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("urllib3").propagate = False
 
+LOOP_SLEEP_SEC=20
+
 # try to import schedulerconfig.py
 authToken = None
 try:
@@ -313,6 +315,8 @@ def updateStatPersistent (schedulerStat):
 
 def copyLogToDB (we_id, workflowLogName):
     try:
+        with open(workflowLogName,'r') as f:
+            for l in f: log.info('WORKFLOW LOG: '+l[:-1])
         log.info("Copying log files to database")
         with open(workflowLogName, 'rb') as f:
             logID = restApiControl.uploadBinaryFile(f)
@@ -328,8 +332,8 @@ def executeWorkflow(lock, schedulerStat, we_id: str) -> None:
         log.info("executeWorkflow invoked")
         return executeWorkflow_inner1(lock, schedulerStat, we_id)
     except Exception as e:
-        log.error("Execution of workflow %s failed." % we_id)
-        log.error(repr(e))
+        log.exception("Execution of workflow %s failed." % we_id)
+
 
 def executeWorkflow_inner1(lock, schedulerStat, we_id: str) -> None:
         we_rec = restApiControl.getExecutionRecord(we_id)
@@ -355,9 +359,9 @@ def executeWorkflow_inner1(lock, schedulerStat, we_id: str) -> None:
             log.error("WEID %s not scheduled for execution" % we_id)
             raise KeyError("WEID %s not scheduled for execution" % we_id)
 
-def executeWorkflow_inner2(lock, schedulerState, we_id: str, we_rec, workflow_record) -> None:
+def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_record) -> None:
             '''Process workflow which is already scheduled'''
-            wid = we_rec['WorkflowId']
+            wid = we_rec['WorkflowID']
             completed = 1  # todo check
             log.info("we_rec status is Scheduled, processing")
             # execute the selected workflow
@@ -521,8 +525,7 @@ def checkExecutionResources(eid):
         return False
 
 
-if __name__ == '__main__':
-
+def main():
     if (Path(schedulerStatFile).is_file()):
         with open(schedulerStatFile,'r') as f:
             stat = json.load(f)
@@ -696,7 +699,7 @@ if __name__ == '__main__':
                         with statusLock:
                             updateStatPersistent(schedulerStat)
                         log.info("waiting..")
-                        time.sleep(20)
+                        time.sleep(LOOP_SLEEP_SEC)
                 except Exception as err:
                     log.info("Error: " + repr(err))
                     stop(pool)
@@ -707,3 +710,7 @@ if __name__ == '__main__':
             log.error('Already running.')
 
     log.info("Exiting MupifDB Workflow Scheduler\n")
+
+if __name__ == '__main__':
+    main()
+
