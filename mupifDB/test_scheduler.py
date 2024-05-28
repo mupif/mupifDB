@@ -63,6 +63,7 @@ def restApi(xprocess,mongodb,nameserver):
             'MUPIFDB_RESTAPI_HOST':'localhost',
             'MUPIFDB_RESTAPI_PORT':PORTS['restApi'],
             'MUPIFDB_REST_SERVER':MUPIFDB_REST_SERVER,
+            'PYTHONPATH':mupifDB.__path__[0]+'/..',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
         args = [ sys.executable, 'main.py' ]
