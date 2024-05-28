@@ -1,16 +1,11 @@
 import mupif
-import mupif.physics.physicalquantities as PQ
+import mupif as mp
 import logging
-from pymongo import MongoClient
-import argparse
-import sys
-import mupifDB.workflowmanager
-from bson import ObjectId
 
 log = logging.getLogger()
 
 class workflowdemo (mupif.workflow.Workflow):
-    def __init__(self, metaData={}):
+    def __init__(self, metadata={}):
         """
         Initializes the workflow.
         """
@@ -20,34 +15,35 @@ class workflowdemo (mupif.workflow.Workflow):
             'Description': 'Demo thermal problem using finite elements on rectangular domain',
             'Model_refs_ID': [],
             'Inputs': [
-                {'Name': 'Effective conductivity', 'Type': 'mupif.Property', 'Required': False, 'Type_ID': 'mupif.PropertyID.PID_effective_conductivity', 'Units':'W/m/K'},
-                {'Name': 'Dimension', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_Dimension', 'Units':'m', 'Obj_ID': [0,1]},
-                {'Name': 'Prescribed temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_dirichletBC', 'Units':'K', 'Obj_ID': [0,1,2,3]},
-                {'Name': 'External temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_conventionExternalTemperature', 'Units':'K', 'Obj_ID': [0,1,2,3]},
-                {'Name': 'Convention coefficient', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.PropertyID.PID_conventionCoefficient', 'Units':'none', 'Obj_ID': [0,1,2,3]}
+                {'Name': 'Effective conductivity', 'Type': 'mupif.Property', 'Required': False, 'Type_ID': 'mupif.DataID.PID_HeatConductivityLiquid', 'Units':'W/m/K', 'Set_at':'timestep'},
+                {'Name': 'Dimension', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.DataID.PID_Dimension', 'Units':'m', 'Obj_ID': [0,1], 'Set_at':'timestep'},
+                {'Name': 'Prescribed temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.DataID.PID_dirichletBC', 'Units':'K', 'Obj_ID': [0,1,2,3], 'Set_at':'timestep'},
+                {'Name': 'External temperature', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.DataID.PID_conventionExternalTemperature', 'Units':'K', 'Obj_ID': [0,1,2,3], 'Set_at':'timestep'},
+                {'Name': 'Convention coefficient', 'Type': 'mupif.Property', 'Required': False,'Type_ID': 'mupif.DataID.PID_conventionCoefficient', 'Units':'none', 'Obj_ID': [0,1,2,3], 'Set_at':'timestep'}
             ],
             'Outputs': [
-                {'Name':'Temperature field', 'Type': 'mupif.Field', 'Required':True,'Type_ID':'mupif.FieldID.FID_Temperature', 'Units':'T'}
-            ]
+                {'Name':'Temperature field', 'Type': 'mupif.Field', 'Required':True,'Type_ID':'mupif.DataID.FID_Temperature', 'Units':'T'}
+            ],
+            'Models': [],
         }
-        super(workflowdemo, self).__init__(metaData=MD)
-        self.updateMetadata(metaData)
+        super().__init__(metadata=MD)
+        self.updateMetadata(metadata)
 
 
-    def initialize(self, file='', workdir='', targetTime=PQ.PhysicalQuantity(0., 's'), metaData={}, validateMetaData=True, **kwargs):
-        super(workflowdemo, self).initialize(file, workdir, targetTime, metaData, validateMetaData, **kwargs)
+    def initialize(self, workdir='', metadata=None, validateMetaData=True, **kwargs):
+        super().initialize(workdir=workdir, metadata=metadata, validateMetaData=validateMetaData, **kwargs)
 
     def solveStep(self, istep, stageID=0, runInBackground=False):
         log.info ('Workflow02 solveStep finished')
 
     def getField(self, fieldID, time, objectID=0):
-        if fieldID == mupif.FieldID.FID_Temperature:
+        if fieldID == mupif.DataID.FID_Temperature:
             return mupif.field.Field(mupif.mesh.UnstructuredMesh(), mupif.FieldID.FID_Temperature,mupif.ValueType.Scalar, 'none', time)
         else:
             pass
 
     def getCriticalTimeStep(self):
-        return PQ.PhysicalQuantity(1.0, 's')
+        return 1*mp.U['s']
 
     def terminate(self):
          super(workflowdemo, self).terminate()
@@ -60,6 +56,11 @@ class workflowdemo (mupif.workflow.Workflow):
 
 
 if __name__ == "__main__":
+    import argparse
+    import sys
+    import mupifDB.workflowmanager
+    from bson import ObjectId
+
     # execute only if run as a script
     client = MongoClient()
     db = client.MuPIF
