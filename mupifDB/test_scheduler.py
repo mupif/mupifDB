@@ -80,7 +80,7 @@ def scheduler(xprocess,restApi):
     class Starter(ProcessStarter):
         env = {
             'PYTHONUNBUFFERED':'1',
-            'PYTHONPATH':mupifDB.__path__[0],
+            'PYTHONPATH':mupifDB.__path__[0]+':'+:mupifDB.__path__[0]+'/..',
             'MUPIF_NS':f'localhost:'+PORTS['nameserver'],
             'MUPIF_LOG_LEVEL':'DEBUG',
             'MUPIFDB_REST_SERVER':'http://localhost:'+PORTS['restApi'],
