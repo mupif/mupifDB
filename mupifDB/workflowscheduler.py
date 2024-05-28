@@ -348,11 +348,11 @@ def executeWorkflow(lock, schedulerStat, we_id: str) -> None:
             log.info("executeWorkflow invoked")
             executeWorkflow_inner1(lock, schedulerStat, we_id)
         else:
-            log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+            log.info("WEID %s cannot be scheduled due to unavailable resources" % we_id)
             if api_type!='granta':
-                we_rec = restApiControl.getExecutionRecord(weid)
+                we_rec = restApiControl.getExecutionRecord(we_id)
                 if int(we_rec['Attempts']) < MAX_ATTEMPT_LEVEL:
-                    restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
+                    restApiControl.setExecutionAttemptsCount(we_id, int(we_rec['Attempts']) + 1)
     except Exception as e:
         log.exception("Execution of workflow %s failed." % we_id)
 
@@ -466,7 +466,7 @@ def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_rec
                 return we_id, ExecutionResult.Failed # XXX ??
             elif completed == 2:
                 log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
-                updateStatNoResources(lock, schedulerStat, complete, we_id)
+                updateStatNoResources(lock, schedulerStat, completed, we_id)
                 restApiControl.setExecutionStatusPending(we_id, True)
             else:
                 pass
