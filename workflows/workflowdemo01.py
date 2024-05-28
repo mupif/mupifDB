@@ -62,6 +62,7 @@ if __name__ == "__main__":
     from bson import ObjectId
 
     # execute only if run as a script
+    from pymongo import MongoClient
     client = MongoClient()
     db = client.MuPIF
 
