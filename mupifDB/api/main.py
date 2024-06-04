@@ -24,7 +24,7 @@ import Pyro5.api
 
 import table_structures
 
-client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27107'))
+client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
 db = client.MuPIF
 
 tags_metadata = [
