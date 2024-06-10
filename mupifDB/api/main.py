@@ -574,6 +574,15 @@ def get_execution_statistics():
     return output
 
 
+@app.get("/settings/", tags=["Settings"])
+def get_settings():
+    table = db.Settings
+    for s in table.find():
+        del s['_id']
+        return s
+    return {}
+
+
 @app.get("/scheduler_statistics/", tags=["Stats"])
 def get_scheduler_statistics():
     table = db.Stat
