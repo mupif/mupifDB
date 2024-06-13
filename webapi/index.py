@@ -202,7 +202,7 @@ def login():
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
     request_uri = client.prepare_request_uri(
         authorization_endpoint,
-        redirect_uri=request.base_url + "/callback",
+        redirect_uri=GOOGLE_REDIRECT_URI,#request.base_url
         scope=["openid", "email", "profile"],
     )
     return redirect(request_uri)
@@ -215,7 +215,7 @@ def callback():
     token_url, headers, body = client.prepare_token_request(
         token_endpoint,
         authorization_response=request.url,
-        redirect_url=GOOGLE_REDIRECT_URI,#request.base_url,
+        redirect_url=request.base_url,
         code=code
     )
     token_response = requests.post(
