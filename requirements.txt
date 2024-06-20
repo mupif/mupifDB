@@ -30,7 +30,7 @@ asteval
 pympler
 rotate-backups
 # XXX: this must be synchronized with mupif's requirements.txt
-pydantic==1.10.0
+pydantic>2.6
 oauthlib
 requests_oauthlib
 sphinxcontrib-openapi
