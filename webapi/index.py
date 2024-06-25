@@ -59,7 +59,7 @@ def update_user_name(user_id: str, val):
     db.Users.update_one({'id': user_id}, { "$set": { 'name': val } })
 
 login_config = {}
-googleConfigPath = os.path.expanduser("~/persistent/google_auth_config.json")
+googleConfigPath = os.path.expanduser("/var/lib/mupif/persistent/google_auth_config.json")
 if os.path.exists(googleConfigPath):
     with open(googleConfigPath) as config_json:
         login_config = json.load(config_json)
