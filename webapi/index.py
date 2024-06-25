@@ -22,6 +22,8 @@ from flask_login import (
     logout_user,
     UserMixin
 )
+import logging
+log=logging.getLogger(__name__)
 from oauthlib.oauth2 import WebApplicationClient
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
@@ -56,11 +58,12 @@ def update_user_picture_url(user_id: str, val):
 def update_user_name(user_id: str, val):
     db.Users.update_one({'id': user_id}, { "$set": { 'name': val } })
 
-persistentPath = "/var/lib/mupif/persistent"
-googleConfigPath = persistentPath + "/google_auth_config.json"
 login_config = {}
-with open(googleConfigPath) as config_json:
-    login_config = json.load(config_json)
+googleConfigPath = os.path.expanduser("~/persistent/google_auth_config.json")
+if os.path.exists(googleConfigPath):
+    with open(googleConfigPath) as config_json:
+        login_config = json.load(config_json)
+else: log.error("File '{googleConfigPath}' does not exist, login will be broken.")
 GOOGLE_CLIENT_ID = login_config.get("GOOGLE_CLIENT_ID", None)
 GOOGLE_CLIENT_SECRET = login_config.get("GOOGLE_CLIENT_SECRET", None)
 GOOGLE_REDIRECT_URI = login_config.get("GOOGLE_REDIRECT_URI", None)
