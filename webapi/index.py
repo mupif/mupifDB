@@ -177,7 +177,7 @@ def login_header_html():
         html += f'<div style="display:flex;flex-direction: column;gap: 2px;align-items: flex-start;"><div style="font-size: 12px;line-height: 14px;">{current_user.name}</div><div style="font-size: 12px;line-height: 14px;">{current_user.email}</div><a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/logout">Logout</a></div>'
         html = '<div style="display:flex;flex-direction: row; gap: 10px;">' + html + f'<img src="{current_user.profile_pic}" style="height: 54px;border-radius:27px;"></div>'
     else:
-        html += '<a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/login">Login</a>'
+        html += '<a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/login">Login'+(' <b>(unavailable)</b> ' if GOOGLE_DISCOVERY_URL is None else '')+'</a>'
     return Markup(html)
 
 
@@ -201,6 +201,8 @@ def get_google_provider_cfg():
 
 @app.route("/login")
 def login():
+    if GOOGLE_DISCOVERY_URL is None:
+        return '<HTML><head><title>NOT IMPLEMENTED</title></head><body><h1>Login not configured</h1><p>This instance of MuPIF container is missing login configuration, it is a problem on the server side. Sorry.</p></body></HTML>',501
     google_provider_cfg = get_google_provider_cfg()
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
     request_uri = client.prepare_request_uri(
