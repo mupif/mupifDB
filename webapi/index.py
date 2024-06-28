@@ -255,7 +255,7 @@ def callback():
     if user is None:
         return "User email not available or not verified by Google.", 400
 
-    return redirect("/")
+    # return redirect("/")
 
     return homepage()
 
