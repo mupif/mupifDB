@@ -220,7 +220,7 @@ def callback():
     token_url, headers, body = client.prepare_token_request(
         token_endpoint,
         authorization_response=request.url,
-        redirect_url=str(GOOGLE_REDIRECT_URI).replace('login/callback', ''),
+        redirect_url=GOOGLE_REDIRECT_URI,  # request.base_url str(GOOGLE_REDIRECT_URI)
         code=code
     )
     token_response = requests.post(
