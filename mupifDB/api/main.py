@@ -1,9 +1,18 @@
+
+if __name__ == '__main__':
+    import uvicorn
+    import os
+    host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
+    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
+    uvicorn.run('main:app', host=host, port=port, reload=True)
+
 import time
 
 from fastapi import FastAPI, UploadFile, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+import fastapi, fastapi.exceptions
 from pymongo import MongoClient
 import tempfile
 import gridfs
@@ -20,6 +29,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import mupifDB
 import mupif as mp
 import Pyro5.api
+import logging
+logging.basicConfig()
+log=logging.getLogger('restApi')
 
 
 import table_structures
@@ -62,6 +74,15 @@ tags_metadata = [
 
 
 app = FastAPI(openapi_tags=tags_metadata)
+
+
+@app.exception_handler(fastapi.exceptions.RequestValidationError)
+async def validation_exception_handler(request: fastapi.Request, exc: fastapi.exceptions.RequestValidationError):
+    exc_str = f'{exc}'.replace('\n', ' ').replace('   ', ' ')
+    log.error(f'{request}: {exc_str}')
+    content = {'status_code': 422, 'message': exc_str, 'data': None}
+    return fastapi.responses.JSONResponse(content=content, status_code=fastapi.status.HTTP_422_UNPROCESSABLE_ENTITY)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -290,7 +311,6 @@ def get_execution_livelog(uid: str, num: int):
         import Pyro5.api
         import serpent
         import pickle
-        import logging
         fmt=logging.Formatter(fmt='%(asctime)s %(levelname)s %(filename)s:%(lineno)s %(message)s')
         proxy=Pyro5.api.Proxy(uri)
         proxy._pyroTimeout=5
@@ -690,8 +710,3 @@ def edm_find(db: str, type: str, data: M_FindParams):
     return ids
 
 
-if __name__ == '__main__':
-    import uvicorn
-    host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
-    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
-    uvicorn.run('main:app', host=host, port=port, reload=True)

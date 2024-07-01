@@ -148,7 +148,7 @@ class SchedulerMonitor (object):
         self.stat = schedulerStat
         self.lock = lock
     def runServer(self):
-        log.info("SchedulerMonitor: runingServer")
+        log.info("SchedulerMonitor: runningServer")
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata={"type:scheduler"})
     def getStatistics(self):
         with self.lock:
