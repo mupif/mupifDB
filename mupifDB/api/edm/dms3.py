@@ -819,6 +819,7 @@ class GG(object):
             rawSchema=GG.db_get(db)['schema'].find_one()
             if rawSchema is not None:
                 if not include_id and '_id' in rawSchema: del rawSchema['_id'] # this prevents breakage when reloading
+            else: raise KeyError(f'schema not found in {db=}')
             GG._SCH[db]=SchemaSchema.model_validate(rawSchema)
         return GG._SCH[db]
 
