@@ -595,7 +595,7 @@ def setExecutionOntoBaseObjectIDs(execution_id, name, value):
 def setExecutionAttemptsCount(execution_id, val):
     if api_type == 'granta':
         return None
-    return setExecutionParameter(execution_id, "Attempts", val, "int")
+    return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 
 
 def _setGrantaExecutionResults(eid, val_list):
