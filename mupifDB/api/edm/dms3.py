@@ -1,5 +1,6 @@
 import pydantic 
-from typing import Literal,Optional,Union,Tuple,List,Set,Dict,Any,Self
+from typing import Literal,Optional,Union,Tuple,List,Set,Dict,Any
+from typing_extensions import Self # not in typing in Python<=3.10
 import json
 import typing
 import re
