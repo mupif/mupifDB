@@ -36,7 +36,7 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, fi
     if response.status_code >= 200 and response.status_code <= 299:
         return response
     else:
-        raise Exception('API returned code ' + str(response.status_code))
+        raise Exception(f'API returned code {response.status_code}, message {response.reason} ({url=}, {method=}, {data=}, {auth=}, {timeout=}, {files=}, {params=}, {allow_redirects=}')
     return None
 
 def rGet(*, url, headers=None, auth=None, timeout=100, params={}, allow_redirects=True):
