@@ -894,7 +894,18 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 
 
 # --------------------------------------------------
-# Ontology
+# Settings
+# --------------------------------------------------
+
+def getSettings():
+    if api_type == 'granta':
+        return {}
+    response = rGet(url=RESTserver + "settings")
+    return response.json()
+
+
+# --------------------------------------------------
+# EDM
 # --------------------------------------------------
 
 def getEDMDataArray(DBName, Type):

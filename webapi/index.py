@@ -88,6 +88,10 @@ from mupifDB import restApiControl
 import mupifDB
 
 
+settings = mupifDB.restApiControl.getSettings()
+PROJECT_NAME = settings.get('projectName', '')
+PROJECT_LOGO_URL = settings.get('projectLogoUrl', '/static/images/project-logo.png')
+
 app = Flask(__name__)
 app.secret_key = AUTH_APP_SECRET_KEY
 CORS(app, resources={r"/static/*": {"origins": "*"}})
@@ -175,7 +179,7 @@ def getUserHasAdminRights():
 
 def my_render_template(*args,**kw):
     'Wraps render_template and ads a few common keywords'
-    return render_template(*args,title='MuPIFDB web interface',server=request.host_url,RESTserver=RESTserver,**kw)
+    return render_template(*args, title='MuPIFDB web interface', server=request.host_url, RESTserver=RESTserver, projectLogoUrl=PROJECT_LOGO_URL, **kw)
 
 
 def login_header_html():

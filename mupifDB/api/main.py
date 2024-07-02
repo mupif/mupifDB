@@ -68,6 +68,9 @@ tags_metadata = [
         "name": "Additional",
     },
     {
+        "name": "Settings",
+    },
+    {
         "name": "User Interface",
     },
 ]
