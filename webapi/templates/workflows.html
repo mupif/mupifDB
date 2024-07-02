@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% block title %} {{ title }} {% endblock %}
 {% block login %} {{ login }} {% endblock %}
+{% block projectLogoUrl %} {{ projectLogoUrl }} {% endblock %}
 {% block content %}
 <h3>List of workflows</h3>
 <table class="tableType1">
@@ -11,7 +12,7 @@
        <TD class="c2">{{item.UseCase}}</TD>
        <TD class="c3">{{item.Description}}</TD>
 
-       <TD class="c4"><a href="{{ [server,'workflows/', item.wid] | join }}">link</a></TD>
+       <TD class="c4"><a href="{{ [server,'/workflows/', item.wid] | join }}">link</a></TD>
     </TR>
     {% endfor %}
     </table>
