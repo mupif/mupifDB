@@ -59,7 +59,7 @@ def update_user_name(user_id: str, val):
     db.Users.update_one({'id': user_id}, { "$set": { 'name': val } })
 
 web_ui_config = {"BASE_URL": ""}
-web_ui_configPath = "/var/lib/mupif/persistent/google_auth_config.json"
+web_ui_configPath = "/var/lib/mupif/persistent/web_ui_config.json"
 if os.path.exists(web_ui_configPath):
     with open(web_ui_configPath) as config_json:
         web_ui_config = json.load(config_json)
