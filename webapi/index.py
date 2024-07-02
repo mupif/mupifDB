@@ -58,6 +58,13 @@ def update_user_picture_url(user_id: str, val):
 def update_user_name(user_id: str, val):
     db.Users.update_one({'id': user_id}, { "$set": { 'name': val } })
 
+web_ui_config = {"BASE_URL": ""}
+web_ui_configPath = "/var/lib/mupif/persistent/google_auth_config.json"
+if os.path.exists(web_ui_configPath):
+    with open(web_ui_configPath) as config_json:
+        web_ui_config = json.load(config_json)
+BASE_URL = web_ui_config.get("BASE_URL", "")
+
 login_config = {}
 googleConfigPath = os.path.expanduser("/var/lib/mupif/persistent/google_auth_config.json")
 if os.path.exists(googleConfigPath):
@@ -255,7 +262,7 @@ def callback():
     if user is None:
         return "User email not available or not verified by Google.", 400
 
-    # return redirect("/")
+    return redirect(f"{BASE_URL}/")
 
     return homepage()
 
@@ -264,7 +271,7 @@ def callback():
 @login_required
 def logout():
     logout_user()
-    return redirect("/")
+    return redirect(f"{BASE_URL}/")
 
 
 @app.route('/about')
@@ -329,15 +336,15 @@ def usecases():
         html += '<tr>'
         html += '<td>' + uc['ucid'] + '</td>'
         html += '<td>' + uc['Description'] + '</td>'
-        html += '<td><a href="/usecases/' + uc['ucid'] + '/workflows">List of workflows</a></td>'
+        html += f'<td><a href="{BASE_URL}/usecases/{uc["ucid"]}/workflows">List of workflows</a></td>'
         html += '<td>'
         if admin_rights:
-            html += '<a href="/workflow_add/' + uc['ucid'] + '">Register new workflow</a>'
+            html += f'<a href="{BASE_URL}/workflow_add/{uc["ucid"]}">Register new workflow</a>'
         html += '</td>'
         html += '</tr>'
     html += '</table>'
     if admin_rights:
-        html += '<br><a href="/usecase_add">Register new UseCase</a>'
+        html += f"<br><a href=\"{BASE_URL}/usecase_add\">Register new UseCase</a>"
     return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
@@ -362,7 +369,7 @@ def addUseCase():
 
         if new_usecase_id is not None:
             html = '<h5 style="color:green;">UseCase has been registered</h5>'
-            html += '<a href="/usecases">Go back to UseCases</a>'
+            html += f'<a href="{BASE_URL}/usecases">Go back to UseCases</a>'
             return my_render_template('basic.html', body=Markup(html), login=login_header_html())
         else:
             message += '<h5 style="color:red;">UseCase was not registered</h5>'
@@ -463,7 +470,7 @@ def workflow(wid, version):
             html += '</tr>'
         html += "</table>"
 
-    html += '<br><br><a href="/workflowexecutions?filter_workflow_id='+str(wdata['wid'])+'&filter_workflow_version='+str(wdata['Version'])+'">Executions of this workflow</a>'
+    html += f'<br><br><a href="{BASE_URL}/workflowexecutions?filter_workflow_id='+str(wdata['wid'])+'&filter_workflow_version='+str(wdata['Version'])+'">Executions of this workflow</a>'
 
     admin_rights = getUserHasAdminRights()
     if admin_rights:
@@ -557,7 +564,7 @@ def addWorkflow(usecaseid):
 
     if new_workflow_id is not None:
         html = '<h3>Workflow has been registered</h3>'
-        html += '<a href="/workflows/'+str(wid)+'">Go to workflow detail</a>'
+        html += f'<a href="{BASE_URL}/workflows/'+str(wid)+'">Go to workflow detail</a>'
         return my_render_template('basic.html', body=Markup(html), login=login_header_html())
     else:
         # generate input form
@@ -628,7 +635,7 @@ def executions():
     for execution in data:
         html += '<tr>'
         html += '<td style="'+statusColor(execution['Status'])+'">'+execution['Status']+'</td>'
-        html += '<td><a href="'+request.host_url+'workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
+        html += f'<td><a href="{BASE_URL}/workflowexecutions/'+execution['_id']+'" target="_blank">link</a></td>'
         html += '<td>'+execution['WorkflowID']+'(v'+str(execution['WorkflowVersion'])+')</td>'
         html += '<td style="font-size:12px;">'+str(execution['CreatedDate']).replace('None', '')[:19]+'</td>'
         # html += '<td style="font-size:12px;">'+str(execution['SubmittedDate']).replace('None', '')[:19]+'</td>'
@@ -679,18 +686,18 @@ def executionStatus(weid):
     html += '<br>'
     html += 'Actions:<br>'
     html += '<ul>'
-    html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
+    html += f'<li> <a href="{BASE_URL}/workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
     if data['Status'] == 'Created':
         if mupifDB.workflowmanager.checkInputs(weid):
             _workflow = restApiControl.getWorkflowRecordGeneral(data['WorkflowID'], data['WorkflowVersion'])
             if mp.Workflow.checkModelRemoteResourcesByMetadata(_workflow['Models']):
-                html += '<li> <a href="' + request.host_url + 'executeworkflow/' + weid + '">Schedule execution</a></li>'
+                html += f'<li> <a href="{BASE_URL}/executeworkflow/' + weid + '">Schedule execution</a></li>'
             else:
                 html += '<li>Some resources are not available. Cannot be scheduled.</li>'
         else:
             html += '<li>Some inputs are not defined propertly. Cannot be scheduled.</li>'
     if data['Status'] == 'Finished':
-        html += '<li> <a href="' + request.host_url + 'workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
+        html += f'<li> <a href="{BASE_URL}/workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
     if (data['Status'] == 'Finished' or data['Status'] == 'Failed') and logID is not None:
         html += '<li> <a href="' + RESTserver + 'file/' + str(logID) + '"> Execution log</a></li>'
     html += '</ul>'
@@ -782,7 +789,7 @@ def setExecutionInputs(weid):
                     if obo_id is not None:
                         restApiControl.setExecutionOntoBaseObjectID(weid, name=obo.get('Name', ''), value=obo_id)
 
-            msg += "</br><a href=\"/workflowexecutions/"+weid+"\">Back to Execution detail</a>"
+            msg += f"</br><a href=\"{BASE_URL}/workflowexecutions/"+weid+"\">Back to Execution detail</a>"
             # return my_render_template("basic.html", body=Markup(msg), login=login_header_html())
 
     execution_record = restApiControl.getExecutionRecord(weid)
@@ -791,7 +798,7 @@ def setExecutionInputs(weid):
     workflow_record = restApiControl.getWorkflowRecord(wid)
     winprec = workflow_record["IOCard"]["Inputs"]
     # generate input form
-    form = "<a href=\"/workflowexecutions/"+weid+"\">Back to Execution detail</a><br>"
+    form = f"<a href=\"{BASE_URL}/workflowexecutions/"+weid+"\">Back to Execution detail</a><br>"
 
     # form += f"<h3>Execution inputs: {wid}</h3><br>"
 
@@ -1032,7 +1039,7 @@ def setExecutionInputs(weid):
             form += '<td>' + obo.get('createFrom', '') + '</td>'
             form += '<td>'
             if obo_id != '':
-                form += '<a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
+                form += f'<a href="{BASE_URL}/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a>'
             form += '</td>'
             form += '</tr>'
         form += "</table>"
@@ -1040,9 +1047,9 @@ def setExecutionInputs(weid):
     if execution_record["Status"] == "Created":
         form += "<br><input type=\"submit\" value=\"Save\" />"
         if show_execution_links:
-            form += f"<br><br><a href=\"/workflowexecutions/{weid}/inputs\">Hide execution output links</a>"
+            form += f"<br><br><a href=\"{BASE_URL}/workflowexecutions/{weid}/inputs\">Hide execution output links</a>"
         else:
-            form += f"<br><br><a href=\"/workflowexecutions/{weid}/inputs?show_execution_links=1\">Show execution output links</a>"
+            form += f"<br><br><a href=\"{BASE_URL}/workflowexecutions/{weid}/inputs?show_execution_links=1\">Show execution output links</a>"
 
 
     return my_render_template('form.html', form=form, login=login_header_html())
@@ -1059,7 +1066,7 @@ def getExecutionOutputs(weid):
 
     # generate result table form
 
-    form = "<a href=\"/workflowexecutions/" + weid + "\">Back to Execution detail</a>"
+    form = f"<a href=\"{BASE_URL}/workflowexecutions/" + weid + "\">Back to Execution detail</a>"
 
     form += "<h3>Execution outputs</h3>"
     form += "<table class=\"tableType1\">"
@@ -1069,7 +1076,7 @@ def getExecutionOutputs(weid):
 
         if i['Type'] == 'mupif.Property':
             if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
-                val = '<a href="/property_array_view/' + str(i['Object'].get('FileID')) + '/1">link</a>'
+                val = f'<a href="{BASE_URL}/property_array_view/' + str(i['Object'].get('FileID')) + '/1">link</a>'
             else:
                 if i.get('EDMPath', None) is not None:
                     onto_path = i.get('EDMPath')
@@ -1176,7 +1183,7 @@ def getExecutionOutputs(weid):
             if obo.get('EDMList', False) is True:
                 form += '<td></td>'
             else:
-                form += '<td><a href="/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
+                form += f'<td><a href="{BASE_URL}/entity_browser/' + obo.get('DBName', '') + '/' + obo.get('EDMEntity', '') + '/' + obo_id + '/" target="_blank">inspect</a></td>'
             form += '</tr>'
         form += "</table>"
 
@@ -1227,10 +1234,10 @@ def propertyArrayView(file_id, page):
         if maxpage > 1:
             html += '<h4>'
             if page > 1:
-                html += '&nbsp;&nbsp;<a href="/property_array_view/' + file_id + '/' + str(page - 1) + '"><</a>'
+                html += f'&nbsp;&nbsp;<a href="{BASE_URL}/property_array_view/' + file_id + '/' + str(page - 1) + '"><</a>'
             html += '&nbsp;&nbsp;&nbsp;page ' + str(page) + '&nbsp;/&nbsp;' + str(maxpage) + '&nbsp;&nbsp;&nbsp;'
             if page < maxpage:
-                html += '<a href="/property_array_view/' + file_id + '/' + str(page + 1) + '">></a>'
+                html += f'<a href="{BASE_URL}/property_array_view/' + file_id + '/' + str(page + 1) + '">></a>'
             html += '</h4>'
 
         html += '<table style="font-size:12px;margin-top:10px;" class=\"tableType1\">'
