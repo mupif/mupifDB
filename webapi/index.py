@@ -654,7 +654,7 @@ def initexecution(wid, version, methods=('GET')):
     we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
     if we_record is not None:
         weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)
-        return redirect(url_for("executionStatus", weid=weid))
+        return redirect(f'{BASE_URL}/workflowexecutions/{weid}')
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'), login=login_header_html())
 
@@ -711,7 +711,7 @@ def executeworkflow(weid):
     restApiControl.scheduleExecution(weid)
     data = restApiControl.getExecutionRecord(weid)
     logID = data['ExecutionLog']
-    return redirect(url_for("executionStatus", weid=weid))
+    return redirect(f'{BASE_URL}/workflowexecutions/{weid}')
 
 
 @app.route('/workflowexecutions/<weid>/inputs', methods=('GET', 'POST'))
