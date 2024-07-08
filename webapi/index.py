@@ -23,7 +23,7 @@ from flask_login import (
     UserMixin
 )
 import logging
-log=logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 from oauthlib.oauth2 import WebApplicationClient
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
@@ -198,13 +198,13 @@ def homepage():
     if not current_user.is_authenticated:
         html += '<p>You need to authenticate to use this application.</p>'
 
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html), login=login_header_html())
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 @app.login_manager.unauthorized_handler
 def unauth_handler():
     html = '<p>You need to authenticate with </p><a class="button" href="/login">Google Login</a>'
-    return render_template('basic.html', title="MuPIFDB web interface", body=Markup(html), login=login_header_html())
+    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 def get_google_provider_cfg():
