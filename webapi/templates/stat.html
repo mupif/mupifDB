@@ -1,9 +1,11 @@
 {% extends "layout.html" %}
+{% block title %} {{ title }} {% endblock %}
+{% block login %} {{ login }} {% endblock %}
 {% block projectLogoUrl %} {{ projectLogoUrl }} {% endblock %}
 {% block head %}
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.bundle.min.js " integrity="sha256-XF29CBwU1MWLaGEnsELogU6Y6rcc5nCkhhx89nFMIDQ=" crossorigin=" anonymous "></script>
-<title>{% block title %}{{ title }}{% endblock %}</title>
+{#<title>{% block title %}{{ title }}{% endblock %}</title>#}
 {% endblock %}
 {% block content %}
 <div>
