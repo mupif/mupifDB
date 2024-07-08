@@ -51,15 +51,22 @@ html {
     padding: 0 10px;
 }
 
+.top {
+    display: flex;
+    flex-direction: column;
+    background-color: #e8e8e8;
+    position: fixed;
+    top: 0;
+    width: 100%;
+}
+
 .header {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
-    background-color: #e8e8e8;
     /*background-color: #1976D2;*/
     padding: 10px 10px 10px 20px;
     height: 80px;
-
 }
 
 .menu {
@@ -67,10 +74,9 @@ html {
     flex-direction: row;
     justify-content: flex-start;
     gap: 32px;
-    background-color: #e8e8e8;
     /*background-color: #1976D2;*/
-    padding: 3px 32px;
-    /*height: 30px;*/
+    padding: 2px 32px;
+    /*height: 40px;*/
     border-bottom: 1px solid silver;
 }
 
@@ -80,7 +86,7 @@ html {
     border-radius: 3px;
     color: black;
     text-decoration: none;
-    padding: 6px 16px;
+    padding: 4px 16px;
     vertical-align: center;
     text-align: center;
 }
@@ -119,6 +125,7 @@ head {
     clear: both;
     min-height: 200px;
     padding-bottom: 200px;
+    padding-top: 111px;
 }
 
 body {
@@ -128,11 +135,8 @@ body {
 }
 
 .right {
-    font-size: 16px; /* Increased text to enable scrolling */
-    /*float: right;*/
-    /*width: 100%;*/
-    /*background-color: rgb(238, 242, 255);*/
-    padding: 32px 16px 16px 16px;
+    font-size: 16px;
+    padding: 24px 16px 16px 16px;
 }
 
 .sidenav, .right {

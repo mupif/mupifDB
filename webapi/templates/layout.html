@@ -7,20 +7,22 @@
         {% endblock %}
     </head>
     <body>
-        <div class="header">
-            <div style="display: flex;flex-direction: row;gap: 64px;">
-                <img src="{% block projectLogoUrl %}{% endblock %}" height="60px" align="left">
-                <div class="header_caption">MuPIF DB web interface</div>
+        <div class="top">
+            <div class="header">
+                <div style="display: flex;flex-direction: row;gap: 64px;">
+                    <img src="{% block projectLogoUrl %}{% endblock %}" height="60px" align="left">
+                    <div class="header_caption">MuPIF DB web interface</div>
+                </div>
+                <div class="block_login">{% block login %}{% endblock %}</div>
             </div>
-            <div class="block_login">{% block login %}{% endblock %}</div>
-        </div>
-        <div class="menu">
-            <a href="/about">About</a>
-            <a href="/status">Status</a>
-            <a href="/usecases">Usecases</a>
-            <a href="/workflows">Workflows</a>
-            <a href="/workflowexecutions">Executions</a>
-            <a href="/contact">Contact</a>
+            <div class="menu">
+                <a href="/about">About</a>
+                <a href="/status">Status</a>
+                <a href="/usecases">Usecases</a>
+                <a href="/workflows">Workflows</a>
+                <a href="/workflowexecutions">Executions</a>
+                <a href="/contact">Contact</a>
+            </div>
         </div>
         <div class="main">
 {#            {% include 'navigation.html' %}#}
@@ -30,9 +32,9 @@
         </div>
         <div class="footer">
             {% block footer %}
-                <img src="/static/images/mupif-logo.png" height="50px" align="right">
+                <a href="https://mupif.org/" target="_blank"><img src="/static/images/mupif-logo.png" height="50px" align="right"></a>
                 &copy; Copyright CTU in Prague.
-                <img src="/static/images/ctu-logo.png" height="50px" align="right">
+                <a href="https://www.cvut.cz/en" target="_blank"><img src="/static/images/ctu-logo.png" height="50px" align="right"></a>
             {% endblock %}
         </div>
     </body>
