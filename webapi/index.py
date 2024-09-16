@@ -477,7 +477,7 @@ def workflow(wid, version):
 
     admin_rights = getUserHasAdminRights()
     if admin_rights:
-        html += '<br><br><a href="'+RESTserver+'file/'+str(wdata['GridFSID'])+'" target="_blank">Download file</a>'
+        html += f'<br><br><a href="{BASE_URL}file/{str(wdata["GridFSID"])}" target="_blank">Download file</a>'
 
     return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
@@ -689,7 +689,7 @@ def executionStatus(weid):
     html += '<br>'
     html += 'Actions:<br>'
     html += '<ul>'
-    html += f'<li> <a href="{BASE_URL}/workflowexecutions/' + weid + '/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
+    html += f'<li> <a href="{BASE_URL}/workflowexecutions/{weid}/inputs">' + ('Set inputs and Task_ID' if data['Status'] == 'Created' else 'Inputs') + '</a></li>'
     if data['Status'] == 'Created':
         if mupifDB.workflowmanager.checkInputs(weid):
             _workflow = restApiControl.getWorkflowRecordGeneral(data['WorkflowID'], data['WorkflowVersion'])
@@ -700,9 +700,9 @@ def executionStatus(weid):
         else:
             html += '<li>Some inputs are not defined propertly. Cannot be scheduled.</li>'
     if data['Status'] == 'Finished':
-        html += f'<li> <a href="{BASE_URL}/workflowexecutions/' + weid + '/outputs">Discover outputs</a></li>'
+        html += f'<li> <a href="{BASE_URL}/workflowexecutions/{weid}/outputs">Discover outputs</a></li>'
     if (data['Status'] == 'Finished' or data['Status'] == 'Failed') and logID is not None:
-        html += '<li> <a href="' + RESTserver + 'file/' + str(logID) + '"> Execution log</a></li>'
+        html += f'<li> <a href="{BASE_URL}/file/{str(logID)}"> Execution log</a></li>'
     html += '</ul>'
 
     return my_render_template('basic.html', body=Markup(html), login=login_header_html())
@@ -1143,14 +1143,14 @@ def getExecutionOutputs(weid):
         if i['Type'] == 'mupif.Field':
             try:
                 if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
-                    val = '<a href="' + RESTserver + 'field_as_vtu/' + str(i['Object'].get('FileID')) + '">file.vtu</a>'
+                    val = f'<a href="{BASE_URL}/field_as_vtu/{str(i["Object"].get("FileID"))}">file.vtu</a>'
             except:
                 pass
 
         if i['Type'] == 'mupif.PyroFile':
             try:
                 if i['Object'].get('FileID') is not None and i['Object'].get('FileID') != '':
-                    val = '<a href="' + RESTserver + 'file/' + str(i['Object'].get('FileID')) + '">download</a>'
+                    val = f'<a href="{BASE_URL}/file/{str(i["Object"].get("FileID"))}">download</a>'
             except:
                 pass
 
