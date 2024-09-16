@@ -497,20 +497,7 @@ def getExecutionRecord(weid):
         execution['WorkflowVersion'] = -1
         execution['Status'] = 'unknown'
 
-        st = r_json['status']
-        if st == 'Ready':
-            st = 'Pending'
-        if st == 'On-going':
-            st = 'Running'
-        if st == 'Completed':
-            st = 'Finished'
-        if st == 'Completed, to be reviewed':
-            st = 'Finished'
-        if st == 'Completed & reviewed':
-            st = 'Finished'
-        if st == 'Canceled':
-            st = 'Failed'
-        execution['Status'] = st
+        execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(r_json['status'],r_json['status'])
 
         execution['Task_ID'] = ''
         return execution
