@@ -5,7 +5,10 @@ import zipfile
 import tempfile
 import json
 import mupif
-from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory, jsonify
+import gridfs
+import io
+import bson
+from flask import Flask, render_template, Markup, escape, redirect, url_for, send_from_directory, jsonify, send_file
 from flask import request
 from flask_cors import CORS
 import sys
@@ -477,7 +480,7 @@ def workflow(wid, version):
 
     admin_rights = getUserHasAdminRights()
     if admin_rights:
-        html += f'<br><br><a href="{BASE_URL}file/{str(wdata["GridFSID"])}" target="_blank">Download file</a>'
+        html += f'<br><br><a href="{BASE_URL}/file/{str(wdata["GridFSID"])}" target="_blank">Download file</a>'
 
     return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
@@ -1267,6 +1270,20 @@ def propertyArrayView(file_id, page):
         html += '</table><br><br><br><br><br><br><br><br><br><br>'
 
     return my_render_template('basic.html', body=Markup(html), login=login_header_html())
+
+
+@app.route('/file/<fid>')
+@login_required
+def file_download(fid: str):
+    fs = gridfs.GridFS(db)
+    foundfile = fs.get(bson.objectid.ObjectId(fid))
+    wfile = io.BytesIO(foundfile.read())
+    fn = foundfile.filename
+
+    return send_file(
+        io.BytesIO(wfile.read()),
+        download_name=fn
+    )
 
 
 @app.route('/main.js')
