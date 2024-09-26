@@ -11,6 +11,41 @@ import mupifDB
 import mupif as mp
 import Pyro5.errors
 
+def downloadWorkflowFiles(eid):
+    import zipfile
+    we_rec = mupifDB.restApiControl.getExecutionRecord(eid)
+    workflowVersion = int(we_rec['WorkflowVersion'])
+    wid = we_rec['WorkflowID']
+    workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
+
+    python_script_filename = workflow_record['modulename'] + ".py"
+
+    fc, fn = mupifDB.restApiControl.getBinaryFileByID(workflow_record['GridFSID'])
+    file_path = f'./{fn}'
+    with open(file_path, "wb") as f:
+        f.write(fc)
+        f.close()
+
+    if fn.split('.')[-1] == 'py':
+        log.info("downloaded .py file..")
+        if fn == python_script_filename:
+            log.info("Filename check OK")
+        else:
+            log.info("Filename check FAILED")
+
+    elif fn.split('.')[-1] == 'zip':
+        log.info("downloaded .zip file, extracting..")
+        log.info(fn)
+        zf = zipfile.ZipFile(file_path, mode='r')
+        filenames = zipfile.ZipFile.namelist(zf)
+        log.info("Zipped files:")
+        log.info(filenames)
+        zf.extractall(path='./')
+        if python_script_filename in filenames:
+            log.info("Filename check OK")
+        else:
+            log.error("Filename check FAILED")
+
 
 log = logging.getLogger('workflow_execution_script')
 log.setLevel(logging.DEBUG)
@@ -33,8 +68,13 @@ if __name__ == "__main__":
     try:
         parser = argparse.ArgumentParser()
         parser.add_argument('-eid', '--executionID', required=True, dest="id")
+        parser.add_argument('-download_workflow', '--download_workflow', required=False, dest="download", default=False)
         args = parser.parse_args()
         weid = args.id
+
+        if args.download:
+            downloadWorkflowFiles(weid)
+
         mupifDB.restApiControl.setExecutionStatusRunning(weid)
         
         # add REST logging handler for this weid, add 'weid' field to every message automatically
