@@ -449,20 +449,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
             execution['_id'] = ex['guid']
             execution['WorkflowID'] = ex['template_guid']
             execution['WorkflowVersion'] = -1
-            st = ex['status']
-            if st == 'Ready':
-                st = 'Pending'
-            if st == 'On-going':
-                st = 'Running'
-            if st == 'Completed':
-                st = 'Finished'
-            if st == 'Completed, to be reviewed':
-                st = 'Finished'
-            if st == 'Completed & reviewed':
-                st = 'Finished'
-            if st == 'Canceled':
-                st = 'Failed'
-            execution['Status'] = st
+            execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(ex['status'],ex['status'])
             execution['Task_ID'] = ''
             res.append(execution)
         return res
