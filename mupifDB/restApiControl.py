@@ -177,14 +177,13 @@ def getWorkflowRecord(wid: str) -> models.Workflow_Model|None:
     response = rGet(url=RESTserver + "workflows/" + wid)
     print(response)
     if response.json() is None: return None
-    print_json(data=response.json())
-    # pprint(response.json())
+    #print_json(data=response.json())
     return models.Workflow_Model.model_validate(response.json())
 
 @pydantic.validate_call
 def insertWorkflow(wf: models.Workflow_Model):
     if api_type == 'granta': return None
-    print_json(data=wf.model_dump())
+    #print_json(data=wf.model_dump())
     response = rPost(url=RESTserver + "workflows/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
@@ -646,7 +645,7 @@ def setExecutionStatusFailed(execution_id):
 def createExecution(wid: str, version: int, ip: str, no_onto=False):
     if api_type == 'granta': return None
     wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)
-    print_json(data=wec.model_dump())
+    #print_json(data=wec.model_dump())
     response = rPost(url=RESTserver + "executions/create/", data=wec.model_dump_json())
     return response.json()
 
@@ -669,7 +668,7 @@ def getExecutionOutputRecord(weid):
     if api_type == 'granta':
         return None
     response = rGet(url=RESTserver + "executions/" + str(weid) + "/outputs/")
-    print_json(data=response.json())
+    #print_json(data=response.json())
     return [models.Workflow_Model.IOCard_Model.Output_Model.model_validate(record) for record in response.json()]
 
 
@@ -795,8 +794,7 @@ def logMessage(*,name,levelno,pathname,lineno,created,**kw):
     data = dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
     data['msg'] = data['msg'] % data['args']
     del data['args']
-    # import rich.pretty
-    # rich.pretty.pprint(data)
+    # pprint(data)
     previous_level = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
     try:

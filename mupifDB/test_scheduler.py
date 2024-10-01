@@ -66,9 +66,9 @@ def restApi(xprocess,mongodb,nameserver):
             'PYTHONPATH':mupifDB.__path__[0]+'/..',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
-        args = [ sys.executable, 'main.py', '--log-level','debug' ]
+        args = [ sys.executable, 'main.py' ] # , '--log-level','debug' ]
         timeout = 5
-        max_read_lines = 50
+        max_read_lines = 100
         pattern = 'Application startup complete.'
         terminate_on_interrupt = True
     xprocess.ensure("restApi",Starter)
@@ -140,7 +140,6 @@ class TestFoo:
             print(f'Execution status: {data.Status}')
             time.sleep(1)
         assert data.Status=='Finished'
-
 
         # time.sleep(10)
     # def test_schedule(self, ex2server):
