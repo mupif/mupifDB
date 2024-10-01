@@ -270,13 +270,6 @@ def get_execution(uid: str):
     return None
 
 
-class M_WorkflowExecutionAddSpec(BaseModel):
-    wid: str
-    version: str
-    ip: str
-    no_onto: bool
-
-
 @app.post("/executions/create/", tags=["Executions"])
 def create_execution(data: mupifDB.models.WorkflowExecutionCreate_Model):
     c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=data.version, requestedBy='', ip=data.ip, no_onto=bool(data.no_onto))
