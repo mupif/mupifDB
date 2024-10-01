@@ -10,6 +10,11 @@ from mupifDB import restApiControl
 import Pyro5
 import mupif
 
+
+from mupifDB import models
+import pydantic
+from typing import Literal
+
 import table_structures
 
 api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
@@ -23,7 +28,7 @@ def getDaemon():
     return daemon
 
 
-def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping=None):
+def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping=None):
     """
     Inserts new workflow definition into DB. 
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -37,44 +42,57 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
     @param modulename
     @param classname
     """
-    # prepare document to insert
-    # save workflow source to gridfs
-    # to allow for more general case, workflow should be tar.gz 
-    # archive of all workflow inplamentation files
-    sourceID = None
+    insertWorkflowDefinition_real(
+        source=source,
+        rec=models.Workflow_Model(
+            wid=wid,
+            Description=description,
+            UseCase=useCase,
+            IOCard=models.Workflow_Model.IOCard_Model(
+                Inputs=workflowInputs,
+                Outputs=workflowOutputs
+            ),
+            modulename=modulename,
+            classname=classname,
+            Models=models_md,
+            EDM_Mapping=EDM_Mapping
+        )
+    )
 
+@pydantic.validate_call
+def insertWorkflowDefinition_real(source: pydantic.FilePath, rec: models.Workflow_Model):
     with open(source, 'rb') as f:
-        sourceID = restApiControl.uploadBinaryFile(f)
+        rec.GridFSID=restApiControl.uploadBinaryFile(f)
         f.close()
 
-    rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname, 'Models': models_md}
-    Inputs = []
-    for i in workflowInputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
-        if i.get('EDMPath', None) is not None:
-            irec['EDMPath'] = i.get('EDMPath')
-        if i.get('EDMList', None) is not None:
-            irec['EDMList'] = i.get('EDMList')
-        Inputs.append(irec)
-    Outputs = []
-    for i in workflowOutputs:
-        irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
-        if i.get('EDMPath', None) is not None:
-            irec['EDMPath'] = i.get('EDMPath')
-        if i.get('EDMList', None) is not None:
-            irec['EDMList'] = i.get('EDMList')
-        Outputs.append(irec)
-    rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
-
-    rec['EDMMapping'] = []
-    if EDM_Mapping is not None:
-        rec['EDMMapping'] = EDM_Mapping
+    #rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname, 'Models': models_md}
+    #Inputs = []
+    #for i in workflowInputs:
+    #    irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
+    #    if i.get('EDMPath', None) is not None:
+    #        irec['EDMPath'] = i.get('EDMPath')
+    #    if i.get('EDMList', None) is not None:
+    #        irec['EDMList'] = i.get('EDMList')
+    #    Inputs.append(irec)
+    #Outputs = []
+    #for i in workflowOutputs:
+    #    irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
+    #    if i.get('EDMPath', None) is not None:
+    #        irec['EDMPath'] = i.get('EDMPath')
+    #    if i.get('EDMList', None) is not None:
+    #        irec['EDMList'] = i.get('EDMList')
+    #    Outputs.append(irec)
+    #rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
+    #
+    #rec['EDMMapping'] = []
+    #if EDM_Mapping is not None:
+    #    rec['EDMMapping'] = EDM_Mapping
 
     # first check if workflow with wid already exist in workflows
-    w_rec = restApiControl.getWorkflowRecord(wid)
+    w_rec = restApiControl.getWorkflowRecord(rec.wid)
     if w_rec is None:  # can safely create a new record in workflows collection
         version = 1
-        rec['Version'] = version
+        rec.Version = version
         new_id = restApiControl.insertWorkflow(rec)
         return new_id
 
@@ -82,20 +100,20 @@ def insertWorkflowDefinition(wid, description, source, useCase, workflowInputs, 
         # the workflow already exists, need to make a new version
         # clone latest version to History
         # print(w_rec)
-        w_rec.pop('_id')  # remove original document id
+
+        w_rec._id=None  # remove original document id
         restApiControl.insertWorkflowHistory(w_rec)
         # update the latest document
-        version = (1+int(w_rec.get('Version', 1)))
-        rec['Version'] = version
-        res_id = restApiControl.updateWorkflow(rec)['_id']
+        w_rec.Version=str(int(w_rec.Version)+1)
+        res_id = restApiControl.updateWorkflow(rec)._id
         if res_id:
             return res_id
         else:
             print("Update failed")
     return None
 
-
-def getWorkflowDoc(wid, version=-1):
+@pydantic.validate_call
+def getWorkflowDoc(wid: str, version: int=-1) -> models.WorkflowExecution_Model:
     """ 
         Returns workflow document with given wid and version
         @param version workflow version, version == -1 means return the most recent version    
@@ -103,7 +121,7 @@ def getWorkflowDoc(wid, version=-1):
     wdoclatest = restApiControl.getWorkflowRecord(wid)
     if wdoclatest is None:
         raise KeyError("Workflow document with WID" + wid + " not found")
-    lastversion = int(wdoclatest['Version'])
+    lastversion = int(wdoclatest.Version)
     if version == -1 or version == lastversion:  # get the latest one
         return wdoclatest
     elif version < lastversion:
@@ -122,35 +140,37 @@ class WorkflowExecutionIODataSet:
         self.weid = weid
     
     @staticmethod
-    def create(workflowID, type, workflowVer=-1, no_onto=False):
+    @pydantic.validate_call
+    def create(workflowID: str, type: str=Literal['Inputs','Outputs'], workflowVer=-1, no_onto=False):
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if wdoc is None:
             raise KeyError("Workflow document with ID" + workflowID + " not found")
+        IOCard = wdoc.IOCard
 
-        IOCard = wdoc['IOCard']
+        #
+        # TODO: convert to model
+        #
         rec = {}
         data = []
-        for io in IOCard[type]:  # loop over workflow inputs/outputs
+        for io in {'Inputs':IOCard.Inputs,'Outputs':IOCard.Outputs}[type]:  # loop over workflow inputs/outputs
             OID = [""]
-            if io.get('ObjID', None) is not None:
-                if isinstance(io.get('ObjID'), str):
-                    OID = [io.get('ObjID')]
-                if isinstance(io.get('ObjID'), list) or isinstance(io.get('ObjID'), tuple):
-                    OID = io.get('ObjID')
+            if io.ObjID:
+                if isinstance(io.ObjID,str): OID = [io.ObjID]
+                if isinstance(io.ObjID,list): OID=io.ObjID
 
             for objid in OID:
                 data.append({
-                    'Name': io['Name'],
-                    'Type': io['Type'],
+                    'Name': io.Name,
+                    'Type': io.Type,
                     'Object': {},
                     'Value': None,
-                    'ValueType': io['ValueType'],
-                    'TypeID': io['TypeID'],
-                    'Units': io['Units'],
+                    'ValueType': io.ValueType,
+                    'TypeID': io.Type_ID,
+                    'Units': io.Units,
                     'ObjID': objid,
-                    'EDMPath': None if no_onto else io.get('EDMPath', None),
-                    'EDMList': False if no_onto else io.get('EDMList', False),
-                    'Compulsory': io.get('Compulsory', None),
+                    'EDMPath': None if no_onto else io.EDMPath,
+                    'EDMList': False if no_onto else io.EDMList,
+                    'Compulsory': (io.Compulsory if type=='Inputs' else False),
                     'FileID': None,
                     'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}
                 })
@@ -205,12 +225,14 @@ class WorkflowExecutionIODataSet:
 
 
 class WorkflowExecutionContext:
+    ## TODO: convert to models
 
     def __init__(self, executionID, **kwargs):
         self.executionID = executionID
 
     @staticmethod
-    def create(workflowID, requestedBy='', workflowVer=-1, ip='', no_onto=False):
+    @pydantic.validate_call
+    def create(workflowID: str, requestedBy: str='', workflowVer: int=-1, ip: str='', no_onto=False):
         """
         """
         # first query for workflow document
@@ -219,19 +241,19 @@ class WorkflowExecutionContext:
             # IOCard = wdoc['IOCard']
             rec = table_structures.tableExecution.copy()
             rec['WorkflowID'] = workflowID
-            rec['WorkflowVersion'] = wdoc.get('Version', 1)
+            rec['WorkflowVersion'] = wdoc.Version
             rec['RequestedBy'] = requestedBy
             rec['UserIP'] = ip
             rec['CreatedDate'] = str(datetime.datetime.now())
             rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto)
             rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto)
             if no_onto:
-                rec['EDMMapping'] = []
+                rec.EDMMapping = []
             else:
                 OBO = []
-                for obo in wdoc.get('EDMMapping', []):
-                    obo['id'] = None
-                    obo['ids'] = None
+                for obo in wdoc.EDMMapping:
+                    obo.id = None
+                    obo.ids = None
                     OBO.append(obo)
                 rec['EDMMapping'] = OBO
             new_id = restApiControl.insertExecution(rec)
@@ -653,18 +675,21 @@ def getOntoBaseObjectByName(objects, name):
 
 def createOutputEDMMappingObjects(app, eid, outputs):
     execution = restApiControl.getExecutionRecord(eid)
-    OBO = execution.get('EDMMapping', [])
+    OBO = execution.EDMMapping
     if len(OBO):
         print("Creating EDM output objects")
         outputs = restApiControl.getExecutionOutputRecord(eid)
         edmpaths = []
-        for path in [out.get('EDMPath', None) for out in outputs]:
+        for path in [out.EDMPath for out in outputs]:
             if path is not None and path != '':
                 edmpaths.append(path)
 
         for obo in OBO:
-            if not obo.get('id', None) and not obo.get('ids', None):
-                if obo.get('createFrom', None) is not None:
+            # ?? ids are never used
+            if obo.id and obo.ids: #  not obo.get('id', None) and not obo.get('ids', None):
+                if obo.createFrom is not None:
+                    # TODO
+                    raise NotImplementedError('EDMMapping_Model.createFrom not yet implemeneted')
                     source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
                     if source_obo is not None:
                         if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
@@ -703,46 +728,48 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                 restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
                                 restApiControl.setEDMData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
 
-                elif obo.get('createNew', None) is not None:
+                elif obo.createNew:
                     edm_name = obo.get('Name', '')
                     valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
-                    valid_emdpaths = [p.replace(obo.get('Name') + '.', '') for p in valid_emdpaths]
+                    # FIXME: should anchor the match to the beginning only
+                    valid_emdpaths = [p.replace(obo.Name + '.', '') for p in valid_emdpaths] 
 
                     new_id = restApiControl.createEDMData(
-                        DBName=obo.get('DBName', ''),
-                        Type=obo.get('EDMEntity', ''),
-                        data=obo.get('createNew')
+                        DBName=obo.DBName,
+                        Type=obo.EDMEntity,
+                        data=obo.createNew
                     )
-                    restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.get('Name'), value=new_id)
-                    restApiControl.setEDMData(DBName=obo.get('DBName', ''), Type=obo.get('EDMEntity', ''), ID=new_id, path="meta", data={"execution": eid})
+                    restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
+                    restApiControl.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
         print("Creating EDM output objects finished")
 
 
 def mapInputs(app, eid):
     execution = restApiControl.getExecutionRecord(eid)
-    workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
-    workflow_input_templates = workflow['IOCard']['Inputs']
+    workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    workflow_input_templates = workflow.IOCard.Inputs
     if api_type == 'granta':
-        workflow_input_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Inputs', [])
+        workflow_input_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Inputs)
 
     for input_template in workflow_input_templates:
         print("Mapping input " + str(input_template))
-        name = input_template['Name']
-        object_type = input_template.get('Type', '')
-        data_id = input_template.get('TypeID', input_template.get('Type_ID'))
+        name = input_template.Name
+        object_type = input_template.Type
+        data_id = input_template.TypeID
         # try to get raw PID from typeID
         match = re.search(r'\w+\Z', data_id)
         if match:
             data_id = match.group()
 
-        objID = input_template.get('ObjID', input_template.get('Obj_ID', ''))
+        objID = input_template.ObjID
         if not ObjIDIsIterable(objID):
             objID = [objID]
 
         edmlist = False
-        edmpath = input_template.get('EDMPath', None)
-        edm_base_objects = execution.get('EDMMapping', [])
+        edmpath = input_template.EDMPath
+        edm_base_objects = execution.EDMMapping
         if edmpath is not None:
+            raise NotImplementedError('Model-based input mapping not yet implemented for EDM')
             splitted = edmpath.split('.', 1)
             base_object_name = splitted[0]
             info = {}
@@ -761,9 +788,9 @@ def mapInputs(app, eid):
                 app_obj_id=oid,
                 data_id=data_id,
                 object_type=object_type,
-                onto_path=input_template.get('EDMPath', None),
-                onto_base_objects=execution.get('EDMMapping', []),
-                value_type=input_template.get('ValueType', ''),
+                onto_path=input_template.EDMPath,
+                onto_base_objects=execution.EDMMapping,
+                value_type=input_template.ValueType,
                 edm_list=edmlist
             )
 
@@ -814,6 +841,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
 
         if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
             if onto_path is not None:
+                raise NotImplementedError('Model-based output mapping not yet implemented for EDM')
                 splitted = onto_path.split('.', 1)
                 base_object_name = splitted[0]
                 object_path = splitted[1]
@@ -834,6 +862,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                 full_path = tempDir + "/file.h5"
                 prop.saveHdf5(full_path)
                 if onto_path is not None:
+                    raise NotImplementedError('Model-based output array mapping not yet implemented for EDM')
                     splitted = onto_path.split('.', 1)
                     base_object_name = splitted[0]
                     object_path = splitted[1]
@@ -874,6 +903,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
         prop = app.get(mupif.DataID[data_id], time, obj_id)
 
         if onto_path is not None:
+            raise NotImplementedError('Model-based output TemporalProperty mapping not yet implemented for EDM')
             splitted = onto_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
@@ -893,6 +923,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
     elif object_type == 'mupif.String':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
         if onto_path is not None:
+            raise NotImplementedError('Model-based output string mapping not yet implemented for EDM')
             splitted = onto_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
@@ -913,6 +944,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
     elif object_type.startswith('mupif.DataList'):
         dl = app.get(mupif.DataID[data_id], time, obj_id)
         if onto_path is not None and edm_list is True:
+            raise NotImplementedError('Model-based output DataList mapping not yet implemented for EDM')
             splitted = onto_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
@@ -931,7 +963,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             else:
                 raise ValueError('The length of the DataList does not match the length of the EDM objects list. (%d x %s)' % (len(ids), len(dl.objs)))
         else:
-            raise ValueError('Handling of io param of type %s not implemented' % object_type)
+            raise ValueError(f'Handling of io param of type {object_type}%s not implemented')
 
     elif object_type == 'mupif.PyroFile':
         pf = app.get(mupif.DataID[data_id], time, obj_id)
@@ -992,7 +1024,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                 print("hdf5 file was not saved")
 
     else:
-        raise ValueError('Handling of io param of type %s not implemented' % object_type)
+        raise ValueError(f'Handling of io param of type {object_type} not implemented' % object_type)
 
 
 def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
@@ -1094,8 +1126,8 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
 
 def mapOutputs(app, eid, time):
     execution = restApiControl.getExecutionRecord(eid)
-    workflow = restApiControl.getWorkflowRecordGeneral(execution['WorkflowID'], execution['WorkflowVersion'])
-    workflow_output_templates = workflow['IOCard']['Outputs']
+    workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    workflow_output_templates = workflow.IOCard.Outputs
     if api_type == 'granta':
         workflow_output_templates = restApiControl._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Outputs', [])
 
@@ -1110,15 +1142,16 @@ def mapOutputs(app, eid, time):
 
     for outitem in outputs:
         print("Mapping output " + str(outitem))
-        name = outitem['Name']
-        object_type = outitem['Type']
-        typeID = outitem.get('TypeID', outitem.get('Type_ID'))
-        # try to get raw PID from typeID
-        match = re.search(r'\w+\Z', typeID)
-        if match:
-            typeID = match.group()
+        name = outitem.Name
+        object_type = outitem.Type
+        typeID = outitem.TypeID
+        if typeID:
+            # try to get raw PID from typeID
+            match = re.search(r'\w+\Z', typeID)
+            if match:
+                typeID = match.group()
 
-        objID = outitem.get('ObjID', outitem.get('Obj_ID', ''))
+        objID = outitem.ObjID
         if not ObjIDIsIterable(objID):
             objID = [objID]
 
@@ -1137,16 +1170,14 @@ def mapOutputs(app, eid, time):
                     granta_output_data.append(output)
             else:
                 edmlist = False
-                edmpath = outitem.get('EDMPath', None)
-                edm_base_objects = execution.get('EDMMapping', [])
+                edmpath = outitem.EDMPath
+                edm_base_objects = execution.EDMMapping
                 if edmpath is not None:
                     splitted = edmpath.split('.', 1)
                     base_object_name = splitted[0]
-                    info = {}
                     for i in edm_base_objects:
-                        if i['Name'] == base_object_name:
-                            info = i
-                            edmlist = info.get('EDMList', False)
+                        if i.Name == base_object_name:
+                            edmlist = i.EDMList
                             break
 
                 mapOutput(

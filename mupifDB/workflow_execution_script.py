@@ -86,20 +86,20 @@ if __name__ == "__main__":
             log.error("Execution not found")
             sys.exit(1)
 
-        workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(execution_record["WorkflowID"], execution_record["WorkflowVersion"])
+        workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(execution_record.WorkflowID, execution_record.WorkflowVersion)
         if workflow_record is None:
             log.error("Workflow not found")
             mupifDB.restApiControl.setExecutionStatusFailed(weid)
             sys.exit(1)
 
         #
-        moduleImport = importlib.import_module(workflow_record["modulename"])
+        moduleImport = importlib.import_module(workflow_record.modulename)
         log.info(f'Imported workflow module {moduleImport}')
-        workflow_class = getattr(moduleImport, workflow_record["classname"])
+        workflow_class = getattr(moduleImport, workflow_record.classname)
         #
 
         workflow = workflow_class()
-        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record["UseCase"], 'Task_ID': execution_record["Task_ID"], 'Log_URI': logUri}})
+        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record.UseCase, 'Task_ID': execution_record.Task_ID, 'Log_URI': logUri}})
         wfUri = str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid,'workflowURI',wfUri)
         mupifDB.restApiControl.setExecutionParameter(weid,'loggerURI',logUri)

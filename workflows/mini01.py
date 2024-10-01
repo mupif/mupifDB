@@ -16,7 +16,7 @@ class MiniWorkflow1 (mupif.workflow.Workflow):
             'Inputs': [
             ],
             'Outputs': [
-                {'Name':'Length', 'Type': 'mupif.Property', 'Required':True, 'Type_ID':'mupif.DataID.PID_Length','Units':'m'}
+                {'Name':'Length', 'Type': 'mupif.Property', 'Required':True, 'TypeID':'mupif.DataID.PID_Length', 'Units':'m', 'ValueType': 'Scalar'}
             ],
             'Models': [],
         }

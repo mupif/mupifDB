@@ -66,7 +66,7 @@ def restApi(xprocess,mongodb,nameserver):
             'PYTHONPATH':mupifDB.__path__[0]+'/..',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
-        args = [ sys.executable, 'main.py' ]
+        args = [ sys.executable, 'main.py', '--log-level','debug' ]
         timeout = 5
         max_read_lines = 50
         pattern = 'Application startup complete.'
@@ -129,21 +129,17 @@ class TestFoo:
         id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md('Description'),source=wfmini01.__file__,useCase='useCase1',workflowInputs=md('Inputs'),workflowOutputs=md('Outputs'),modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md('Models'))
         print(f'Workflow inserted, {id=}')
         wrec=restApiControl.getWorkflowRecord(wid)
-        assert wrec['wid']==wid
+        assert wrec.wid==wid
         # print_json(data=wrec)
-        weid=restApiControl.createExecution(wid,version='1',ip='localhost')
-        #for inp in [
-        #    mp.ConstantProperty(value=16., propID=DataID.PID_Concentration,valueType=ValueType.Scalar,unit=mp.U['m'])
-        #]:
-        #    restApiControl.setExecutionInputObject(weid,
+        weid=restApiControl.createExecution(wid,version=1,ip='localhost')
         print(f'Execution created, {weid=}')
         restApiControl.scheduleExecution(weid)
         print(f'Execution scheduled, {weid=}')
         for i in range(10):
             data=restApiControl.getExecutionRecord(weid)
-            print(f'Execution status: {data["Status"]}')
+            print(f'Execution status: {data.Status}')
             time.sleep(1)
-        assert data['Status']=='Finished'
+        assert data.Status=='Finished'
 
 
         # time.sleep(10)

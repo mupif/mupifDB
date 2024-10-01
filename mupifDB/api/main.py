@@ -4,7 +4,7 @@ if __name__ == '__main__':
     import os
     host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
     port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
-    uvicorn.run('main:app', host=host, port=port, reload=True)
+    uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
 import time
 
@@ -278,8 +278,8 @@ class M_WorkflowExecutionAddSpec(BaseModel):
 
 
 @app.post("/executions/create/", tags=["Executions"])
-def create_execution(data: M_WorkflowExecutionAddSpec):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip, no_onto=bool(data.no_onto))
+def create_execution(data: mupifDB.models.WorkflowExecutionCreate_Model):
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=data.version, requestedBy='', ip=data.ip, no_onto=bool(data.no_onto))
     return str(c.executionID)
 
 

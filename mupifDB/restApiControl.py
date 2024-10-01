@@ -16,6 +16,13 @@ from requests_oauthlib import OAuth2Session
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
+import pydantic
+from mupifDB import models
+from typing import List,Optional,Literal
+
+from rich import print_json
+from rich.pretty import pprint
+
 
 #
 
@@ -151,11 +158,8 @@ def insertUsecaseRecord(ucid, description):
 def getWorkflowRecords():
     if api_type == 'granta':
         return []
-    data = []
     response = rGet(url=RESTserver + "workflows/")
-    for record in response.json():
-        data.append(record)
-    return data
+    return [models.Workflow_Model.model_validate(record) for record in response.json()]
 
 
 def getWorkflowRecordsWithUsecase(usecase):
@@ -167,25 +171,27 @@ def getWorkflowRecordsWithUsecase(usecase):
         data.append(record)
     return data
 
-
-def getWorkflowRecord(wid):
-    if api_type == 'granta':
-        return None
+@pydantic.validate_call
+def getWorkflowRecord(wid: str) -> models.Workflow_Model|None:
+    if api_type == 'granta': return None
     response = rGet(url=RESTserver + "workflows/" + wid)
+    print(response)
+    if response.json() is None: return None
+    print_json(data=response.json())
+    # pprint(response.json())
+    return models.Workflow_Model.model_validate(response.json())
+
+@pydantic.validate_call
+def insertWorkflow(wf: models.Workflow_Model):
+    if api_type == 'granta': return None
+    print_json(data=wf.model_dump())
+    response = rPost(url=RESTserver + "workflows/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
-
-def insertWorkflow(data):
-    if api_type == 'granta':
-        return None
-    response = rPost(url=RESTserver + "workflows/", data=json.dumps({"entity": data}))
-    return response.json()
-
-
-def updateWorkflow(data):
-    if api_type == 'granta':
-        return None
-    response = rPatch(url=RESTserver + "workflows/", data=json.dumps({"entity": data}))
+@pydantic.validate_call
+def updateWorkflow(wf: models.Workflow_Model):
+    if api_type == 'granta': return None
+    response = rPatch(url=RESTserver + "workflows/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
 
@@ -197,8 +203,8 @@ def fix_json(val):
     val
     return val
 
-
-def getWorkflowRecordGeneral(wid, version):
+@pydantic.validate_call
+def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
     if api_type == 'granta':
         url = RESTserver + 'templates/' + str(wid)
         token = getAuthToken()
@@ -239,7 +245,7 @@ def getWorkflowRecordGeneral(wid, version):
 
     workflow_newest = getWorkflowRecord(wid)
     if workflow_newest is not None:
-        if workflow_newest['Version'] == version or version == -1 or version == None:
+        if workflow_newest.Version == version or version is None: # == -1 or version == None:
             return workflow_newest
     return getWorkflowRecordFromHistory(wid, version)
 
@@ -419,17 +425,16 @@ def _getGrantaExecutionInputItem(eid, name):
 # Workflows history
 # --------------------------------------------------
 
-def getWorkflowRecordFromHistory(wid, version):
+def getWorkflowRecordFromHistory(wid, version) -> models.Workflow_Model: 
     if api_type == 'granta':
         return None
     response = rGet(url=RESTserver + "workflows_history/" + wid + "/" + str(version))
-    return response.json()
+    return models.Workflow_Model.model_validate(response.json())
 
-
-def insertWorkflowHistory(data):
-    if api_type == 'granta':
-        return None
-    response = rPost(url=RESTserver + "workflows_history/", data=json.dumps({"entity": data}))
+@pydantic.validate_call
+def insertWorkflowHistory(wf: models.Workflow_Model):
+    if api_type == 'granta': return None
+    response = rPost(url=RESTserver + "workflows_history/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
 
@@ -437,7 +442,8 @@ def insertWorkflowHistory(data):
 # Executions
 # --------------------------------------------------
 
-def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None):
+@pydantic.validate_call
+def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None) -> List[models.WorkflowExecution_Model]: 
     if api_type == 'granta':
         url = RESTserver + 'executions/'
         token = getAuthToken()
@@ -466,12 +472,10 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
     if status:
         endpoint_address += "&status=" + str(status)
     response = rGet(url=endpoint_address)
-    for record in response.json():
-        data.append(record)
-    return data
+    return [models.WorkflowExecution_Model.model_validate(record) for record in response.json()]
 
-
-def getExecutionRecord(weid):
+@pydantic.validate_call
+def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
     if api_type == 'granta':
         url = RESTserver + 'executions/' + str(weid)
         token = getAuthToken()
@@ -488,8 +492,8 @@ def getExecutionRecord(weid):
 
         execution['Task_ID'] = ''
         return execution
-    response = rGet(url=RESTserver + "executions/" + str(weid))
-    return response.json()
+    response = rGet(url=RESTserver + "executions/" + weid)
+    return models.WorkflowExecution_Model.model_validate(response.json())
 
 
 def getScheduledExecutions(num_limit=None):
@@ -639,11 +643,11 @@ def setExecutionStatusFailed(execution_id):
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
 
-
-def createExecution(wid, version, ip, no_onto=False):
-    if api_type == 'granta':
-        return None
-    response = rPost(url=RESTserver + "executions/create/", data=json.dumps({"wid": str(wid), "version": str(version), "ip": str(ip), "no_onto": no_onto}))
+def createExecution(wid: str, version: int, ip: str, no_onto=False):
+    if api_type == 'granta': return None
+    wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)
+    print_json(data=wec.model_dump())
+    response = rPost(url=RESTserver + "executions/create/", data=wec.model_dump_json())
     return response.json()
 
 
@@ -665,7 +669,8 @@ def getExecutionOutputRecord(weid):
     if api_type == 'granta':
         return None
     response = rGet(url=RESTserver + "executions/" + str(weid) + "/outputs/")
-    return response.json()
+    print_json(data=response.json())
+    return [models.Workflow_Model.IOCard_Model.Output_Model.model_validate(record) for record in response.json()]
 
 
 def getExecutionInputRecordItem(weid, name, obj_id):
