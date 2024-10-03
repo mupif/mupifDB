@@ -20,6 +20,8 @@ import pydantic
 from mupifDB import models
 from typing import List,Optional,Literal
 
+from . import _granta
+
 from rich import print_json
 from rich.pretty import pprint
 
@@ -112,6 +114,19 @@ def getAuthToken():
 
     return bearer_token
 
+# with granta, turns functions into stub (if ret is not callable) or a proxy (if ret is callable)
+# without granta, transparently call the function underneath
+def if_granta(ret):
+    def granta_decorator(func):
+        def inner(*args,**kw):
+            if callable(ret): return ret(*args,**kw)
+            return ret
+        return inner
+    def noop_decorator(func):
+        def noop(*args,**kw): return func(*args,**kw)
+        return noop
+    return (granta_decorator if api_type=='granta' else noop_decorator)
+
 # --------------------------------------------------
 # Users
 # --------------------------------------------------
@@ -127,26 +142,22 @@ def getAuthToken():
 # Usecases
 # --------------------------------------------------
 
+
+@if_granta([])
 def getUsecaseRecords():
-    if api_type == 'granta':
-        return []
     data = []
     response = rGet(url=RESTserver + "usecases/")
     for record in response.json():
         data.append(record)
     return data
 
-
+@if_granta(None)
 def getUsecaseRecord(ucid):
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "usecases/" + ucid)
     return response.json()
 
-
+@if_granta(None)
 def insertUsecaseRecord(ucid, description):
-    if api_type == 'granta':
-        return None
     response = rPost(url=RESTserver + "usecases/", data=json.dumps({"ucid": ucid, "description": description}))
     return response.json()
 
@@ -155,93 +166,45 @@ def insertUsecaseRecord(ucid, description):
 # Workflows
 # --------------------------------------------------
 
+@if_granta([])
 def getWorkflowRecords():
-    if api_type == 'granta':
-        return []
     response = rGet(url=RESTserver + "workflows/")
     return [models.Workflow_Model.model_validate(record) for record in response.json()]
 
-
+@if_granta([])
 def getWorkflowRecordsWithUsecase(usecase):
-    if api_type == 'granta':
-        return []
     data = []
     response = rGet(url=RESTserver + "usecases/" + str(usecase) + "/workflows")
     for record in response.json():
         data.append(record)
     return data
 
+@if_granta(None)
 @pydantic.validate_call
 def getWorkflowRecord(wid: str) -> models.Workflow_Model|None:
-    if api_type == 'granta': return None
     response = rGet(url=RESTserver + "workflows/" + wid)
     print(response)
     if response.json() is None: return None
     #print_json(data=response.json())
     return models.Workflow_Model.model_validate(response.json())
 
+@if_granta(None)
 @pydantic.validate_call
 def insertWorkflow(wf: models.Workflow_Model):
-    if api_type == 'granta': return None
     #print_json(data=wf.model_dump())
     response = rPost(url=RESTserver + "workflows/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
+@if_granta(None)
 @pydantic.validate_call
 def updateWorkflow(wf: models.Workflow_Model):
-    if api_type == 'granta': return None
     response = rPatch(url=RESTserver + "workflows/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
 
-def fix_json(val):
-    import re
-    val = re.sub(r",[ \t\r\n]+}", "}", val)
-    val = re.sub(r",[ \t\r\n]+\]", "]", val)
-    val = val.replace("False", "false").replace("True", "true")
-    val
-    return val
-
+@if_granta(_granta._getGrantaWorkflowRecordGeneral)
 @pydantic.validate_call
 def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
-    if api_type == 'granta':
-        url = RESTserver + 'templates/' + str(wid)
-        token = getAuthToken()
-        headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-        r = rGet(url=url, headers=headers)
-        r_json = r.json()
-        workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
-        workflow['_id'] = r_json['guid']
-        workflow['wid'] = r_json['guid']
-        workflow['WorkflowVersion'] = 1
-
-        workflow['modulename'] = 'unknown'
-        workflow['classname'] = 'unknown'
-        workflow['GridFSID'] = 'unknown'
-        workflow['UseCase'] = ''
-        workflow['metadata'] = ''
-
-        fid = None
-        gmds = r_json['metadata']
-
-        for gmd in gmds:
-            if gmd['name'] == 'muPIF metadata':
-                md = json.loads(fix_json(gmd['value']))
-                # print(md)
-                workflow['metadata'] = md
-                workflow['classname'] = md['ClassName']
-                workflow['modulename'] = md['ModuleName']
-
-            if gmd['name'] == 'workflow python file':
-                fid = gmd['value']['url'].split('/')[-1]
-
-        if fid:
-            file, filename = getBinaryFileByID(fid)
-            workflow['GridFSID'] = fid
-            workflow['modulename'] = filename.replace('.py', '')
-
-        return workflow
-
     workflow_newest = getWorkflowRecord(wid)
     if workflow_newest is not None:
         if workflow_newest.Version == version or version is None: # == -1 or version == None:
@@ -249,190 +212,17 @@ def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
     return getWorkflowRecordFromHistory(wid, version)
 
 
-def _getGrantaWorkflowMetadataFromDatabase(wid):
-    workflow_record = getWorkflowRecordGeneral(wid, -1)
-    return workflow_record.get('metadata', {})
-
-
-def _getGrantaWorkflowMetadataFromFile(wid, key=None):
-    workflow_record = getWorkflowRecordGeneral(wid, -1)
-    if workflow_record.get('GridFSID', None) is not None:
-        with tempfile.TemporaryDirectory(dir='/tmp', prefix='mupifDB') as tempDir:
-            try:
-                fc, fn = getBinaryFileByID(workflow_record['GridFSID'])
-                if fn.split('.')[-1] == 'py':
-                    with open(tempDir + '/' + workflow_record['modulename'] + '.py', "wb") as f:
-                        f.write(fc)
-                        f.close()
-
-                        moduleImport = importlib.import_module(workflow_record['modulename'])
-                        workflow_class = getattr(moduleImport, workflow_record["classname"])
-                        workflow = workflow_class()
-                        if key is None:
-                            return workflow.getAllMetadata()
-                        else:
-                            return workflow.getMetadata(key)
-            except Exception as e:
-                print(e)
-                return {}
-    return {}
-
-
-def _getGrantaExecutionInputItem(eid, name):
-    def ObjIDIsIterable(val):
-        try:
-            a = val[0]
-            if not isinstance(val, str):
-                return True
-        except:
-            return False
-
-    url = RESTserver + 'executions/' + str(eid) + '/inputs'
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    r = rGet(url=url, headers=headers)
-
-    for inp in r.json():
-        if name == inp['name']:
-            if inp['type'] == 'float':
-                # fint units first :(
-                execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
-                units = ''
-                data_id = 'Unknown'
-                valueType = 'Unknown'
-                for w_i in w_inputs:
-                    if w_i['Name'] == name:
-                        units = w_i.get('Units', 'Unknown')
-                        data_id = w_i.get('Type_ID', 'Unknown')
-                        valueType = w_i.get('ValueType', 'Scalar')
-                return {
-                    'Compulsory': True,
-                    'Description': '',
-                    'Name': inp['name'],
-                    'ObjID': inp['name'],
-                    'Type': 'mupif.Property',
-                    'TypeID': data_id,
-                    'Units': units,  # todo
-                    'ValueType': valueType,
-                    'Link': {},
-                    'Object': {
-                        'ClassName': 'ConstantProperty',
-                        'ValueType': valueType,
-                        'DataID': data_id.replace('mupif.DataID.', ''),
-                        'Unit': units,  # todo
-                        'Value': inp['value'],
-                        'Time': None
-                    }
-                }
-
-            if inp['type'] == 'str':
-                # fint units first :(
-                execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
-                units = ''
-                data_id = 'Unknown'
-                valueType = 'Unknown'
-                for w_i in w_inputs:
-                    if w_i['Name'] == name:
-                        units = w_i.get('Units', 'Unknown')
-                        data_id = w_i.get('Type_ID', 'Unknown')
-                        valueType = w_i.get('ValueType', 'Scalar')
-                return {
-                    'Compulsory': True,
-                    'Description': '',
-                    'Name': inp['name'],
-                    'ObjID': inp['name'],
-                    'Type': 'mupif.String',
-                    'TypeID': data_id,
-                    'Units': units,  # todo
-                    'ValueType': valueType,
-                    'Link': {},
-                    'Object': {
-                        'ClassName': 'String',
-                        'DataID': data_id.replace('mupif.DataID.', ''),
-                        'Value': inp['value'],
-                    'ValueType': valueType
-                    }
-                }
-
-            if inp['type'] == 'hyperlink':
-                execution_record = getExecutionRecord(eid)
-                w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
-                units = ''
-                data_id = 'Unknown'
-                valueType = 'Unknown'
-                obj_type = ''
-                for w_i in w_inputs:
-                    if w_i['Name'] == name:
-                        units = w_i.get('Units', 'Unknown')
-                        data_id = w_i.get('Type_ID', 'Unknown')
-                        valueType = w_i.get('ValueType', 'Scalar')
-                        obj_type = w_i['Type']
-
-                if obj_type == 'mupif.HeavyStruct':
-                    return {
-                        'Compulsory': True,
-                        'Description': '',
-                        'Name': inp['name'],
-                        'ObjID': inp['name'],
-                        'Type': 'mupif.HeavyStruct',
-                        'TypeID': data_id,
-                        'Units': '',
-                        'ValueType': valueType,
-                        'Link': {},
-                        'Object': {
-                            'FileID': inp['value']['url'].split('/')[-1]
-                        }
-                    }
-
-                if obj_type == 'mupif.PyroFile':
-                    return {
-                        'Compulsory': True,
-                        'Description': '',
-                        'Name': inp['name'],
-                        'ObjID': inp['name'],
-                        'Type': 'mupif.PyroFile',
-                        'TypeID': data_id,
-                        'Units': '',
-                        'ValueType': valueType,
-                        'Link': {},
-                        'Object': {
-                            'FileID': inp['value'].split('/')[-1]
-                        }
-                    }
-
-                if obj_type == 'mupif.Field':
-                    return {
-                        'Compulsory': True,
-                        'Description': '',
-                        'Name': inp['name'],
-                        'ObjID': inp['name'],
-                        'Type': 'mupif.Field',
-                        'TypeID': data_id,
-                        'Units': '',
-                        'ValueType': valueType,
-                        'Link': {},
-                        'Object': {
-                            'FileID': inp['value'].split('/')[-1]
-                        }
-                    }
-    return None
-
-
 # --------------------------------------------------
 # Workflows history
 # --------------------------------------------------
-
+@if_granta(None)
 def getWorkflowRecordFromHistory(wid, version) -> models.Workflow_Model: 
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "workflows_history/" + wid + "/" + str(version))
     return models.Workflow_Model.model_validate(response.json())
 
+@if_granta(None)
 @pydantic.validate_call
 def insertWorkflowHistory(wf: models.Workflow_Model):
-    if api_type == 'granta': return None
     response = rPost(url=RESTserver + "workflows_history/", data=json.dumps({"entity": wf.model_dump()}))
     return response.json()
 
@@ -441,23 +231,9 @@ def insertWorkflowHistory(wf: models.Workflow_Model):
 # Executions
 # --------------------------------------------------
 
+@if_granta(_granta._getGrantaExecutionRecords)
 @pydantic.validate_call
 def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None) -> List[models.WorkflowExecution_Model]: 
-    if api_type == 'granta':
-        url = RESTserver + 'executions/'
-        token = getAuthToken()
-        headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-        r = rGet(url=url, headers=headers)
-        res = []
-        for ex in r.json():
-            execution = table_structures.extendRecord({}, table_structures.tableExecution)
-            execution['_id'] = ex['guid']
-            execution['WorkflowID'] = ex['template_guid']
-            execution['WorkflowVersion'] = -1
-            execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(ex['status'],ex['status'])
-            execution['Task_ID'] = ''
-            res.append(execution)
-        return res
     data = []
     endpoint_address = RESTserver + "executions/?noparam"
     if num_limit is not None:
@@ -473,146 +249,70 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
     response = rGet(url=endpoint_address)
     return [models.WorkflowExecution_Model.model_validate(record) for record in response.json()]
 
+
+@if_granta(_granta._getGrantaExecutionRecord)
 @pydantic.validate_call
 def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
-    if api_type == 'granta':
-        url = RESTserver + 'executions/' + str(weid)
-        token = getAuthToken()
-        headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-        r = rGet(url=url, headers=headers)
-        r_json = r.json()
-        execution = table_structures.extendRecord({}, table_structures.tableExecution)
-        execution['_id'] = r_json['guid']
-        execution['WorkflowID'] = r_json['template_guid']
-        execution['WorkflowVersion'] = -1
-        execution['Status'] = 'unknown'
-
-        execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(r_json['status'],r_json['status'])
-
-        execution['Task_ID'] = ''
-        return execution
     response = rGet(url=RESTserver + "executions/" + weid)
     return models.WorkflowExecution_Model.model_validate(response.json())
 
 
+@if_granta([])
 def getScheduledExecutions(num_limit=None):
-    if api_type == 'granta':
-        return []
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-
+@if_granta(_granta.getGrantaPendingExecutions)
 def getPendingExecutions(num_limit=None):
-    if api_type == 'granta':
-        url = RESTserver + 'executions/?status=Ready'
-        token = getAuthToken()
-        headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-        r = rGet(url=url, headers=headers)
-        res = []
-        for ex in r.json():
-            execution = table_structures.extendRecord({}, table_structures.tableExecution)
-            execution['_id'] = ex['guid']
-            execution['WorkflowID'] = ex['template_guid']
-            execution['WorkflowVersion'] = -1
-            execution['Status'] = 'Pending'
-            execution['Task_ID'] = ''
-            res.append(execution)
-        return res
     return getExecutionRecords(status="Pending", num_limit=num_limit)
 
-
+@if_granta(None)
 def scheduleExecution(execution_id):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/schedule")
     return response.json()
 
-
+@if_granta(_granta._setGrantaExecutionParameter)
 def setExecutionParameter(execution_id, param, value, val_type="str"):
-    if api_type == 'granta':
-        if param == 'ExecutionLog':
-            url = RESTserver + 'executions/' + str(execution_id)
-            token = getAuthToken()
-            headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-            newdata = {"logs": {"url": "https://musicode.grantami.com/musicode/filestore/%s" % str(value), "description": None}}
-            r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
-            if r.status_code == 200:
-                return True
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(execution_id), data=json.dumps({"key": str(param), "value": value}))
     return response.json()
 
-
+@if_granta(None)
 def setExecutionOntoBaseObjectID(execution_id, name, value):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}))
     if response.status_code == 200:
         return response.json()
     return None
 
-
+@if_granta(None)
 def setExecutionOntoBaseObjectIDMultiple(execution_id, data):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_id_multiple/", data=json.dumps({"data": data}))
     if response.status_code == 200:
         return response.json()
     return None
 
-
+@if_granta(None)
 def setExecutionOntoBaseObjectIDs(execution_id, name, value):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(execution_id) + "/set_onto_base_object_ids/", data=json.dumps({"name": str(name), "value": value}))
     if response.status_code == 200:
         return response.json()
     return None
 
-
+@if_granta(None)
 def setExecutionAttemptsCount(execution_id, val):
-    if api_type == 'granta':
-        return None
     return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 
 
-def _setGrantaExecutionResults(eid, val_list):
-    url = RESTserver + 'executions/' + str(eid)
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    newdata = {"results": val_list}
-    r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
-    if r.status_code == 200:
-        return True
-    return False
-
-
-def _setGrantaExecutionStatus(eid, val):
-    url = RESTserver + 'executions/' + str(eid)
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    newdata = {"status": str(val)}
-    r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
-    if r.status_code == 200:
-        return True
-    return False
-
-
+@if_granta(lambda eid: _granta._setGrantaExecutionStatus(eid,'Scheduled'))
 def setExecutionStatusScheduled(execution_id):
-    if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Scheduled')
     return setExecutionParameter(execution_id, "Status", "Scheduled")
 
-
+@if_granta(None)
 def setExecutionStatusCreated(execution_id):  # only reverted
-    if api_type == 'granta':
-        return None
     setExecutionParameter(execution_id, "SubmittedDate", "")
     return setExecutionParameter(execution_id, "Status", "Created")
 
 
+@if_granta(lambda eid: _granta._setGrantaExecutionStatus(eid,'Ready'))
 def setExecutionStatusPending(execution_id, reverted=False):
-    if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Ready')
     if reverted:
         pass
         # setExecutionParameter(execution_id, "StartDate", "")
@@ -622,59 +322,48 @@ def setExecutionStatusPending(execution_id, reverted=False):
     return setExecutionParameter(execution_id, "Status", "Pending")
 
 
+@if_granta(lambda eid: _granta._setGrantaExecutionStatus(eid,'Running'))
 def setExecutionStatusRunning(execution_id):
-    if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Running')
     setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Running")
 
 
+@if_granta(lambda eid: _granta._setGrantaExecutionStatus(eid,'Completed, to be reviewed'))
 def setExecutionStatusFinished(execution_id):
-    if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Completed, to be reviewed')
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Finished")
 
 
+@if_granta(lambda eid: _granta._setGrantaExecutionStatus(eid,'Failed'))
 def setExecutionStatusFailed(execution_id):
-    if api_type == 'granta':
-        return _setGrantaExecutionStatus(execution_id, 'Failed')
     setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", "Failed")
 
+@if_granta(None)
 def createExecution(wid: str, version: int, ip: str, no_onto=False):
-    if api_type == 'granta': return None
     wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)
     #print_json(data=wec.model_dump())
     response = rPost(url=RESTserver + "executions/create/", data=wec.model_dump_json())
     return response.json()
 
-
+@if_granta(None)
 def insertExecution(data):
-    if api_type == 'granta':
-        return None
     response = rPost(url=RESTserver + "executions/", data=json.dumps({"entity": data}))
     return response.json()
 
-
+@if_granta(None)
 def getExecutionInputRecord(weid):
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "executions/" + str(weid) + "/inputs/")
     return response.json()
 
-
+@if_granta(None)
 def getExecutionOutputRecord(weid):
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "executions/" + str(weid) + "/outputs/")
     #print_json(data=response.json())
     return [models.Workflow_Model.IOCard_Model.Output_Model.model_validate(record) for record in response.json()]
 
-
+@if_granta(None)
 def getExecutionInputRecordItem(weid, name, obj_id):
-    if api_type == 'granta':
-        return None
     io_data = getExecutionInputRecord(weid)
     for elem in io_data:
         if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
@@ -691,45 +380,37 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 # --------------------------------------------------
 # IO Data
 # --------------------------------------------------
-
+@if_granta(None)
 def getIODataRecord(iod_id):
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "iodata/" + str(iod_id))
     return response.json()
 
-
+@if_granta(None)
 def insertIODataRecord(data):
-    if api_type == 'granta':
-        return None
     response = rPost(url=RESTserver + "iodata/", data=json.dumps({"entity": data}))
     return response.json()
 
 
+@if_granta(None)
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}))
     return response.json()
 
 
+@if_granta(None)
 def setExecutionInputObject(weid, name, obj_id, object_dict):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(weid) + "/input_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
     return response.json()
 
 
+@if_granta(None)
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
-    if api_type == 'granta':
-        return None
     response = rPatch(url=RESTserver + "executions/" + str(weid) + "/output_item/" + str(name) + "/" + str(obj_id) + "/", data=json.dumps({"object": object_dict}))
     return response.json()
 
 
+@if_granta(None)
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "property_array_data/" + str(file_id) + "/" + str(i_start) + "/" + str(i_count) + "/")
     return response.json()
 
@@ -737,7 +418,7 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
-
+@if_granta(_granta._getGrantaBinaryFileByID)
 def getBinaryFileByID(fid):
     if api_type == 'granta':
         url = RESTserver.replace('/api/', '/filestore/')
@@ -751,15 +432,8 @@ def getBinaryFileByID(fid):
     filename = re.findall("filename=(.+)", d)[0]
     return response.content, filename
 
-
+@if_granta(_granta._uploadGrantaBinaryFile)
 def uploadBinaryFile(binary_data):
-    if api_type == 'granta':
-        url = RESTserver.replace('/api/', '/filestore')
-        token = getAuthToken()
-        headers = {'Authorization': f'Bearer {token["access_token"]}'}
-        response = rPost(url=url, headers=headers, files={"file": binary_data})
-        return response.json()['guid']
-
     response = rPost(url=RESTserver + "file/", files={"file": binary_data})
     return response.json()
 
@@ -807,32 +481,18 @@ def logMessage(*,name,levelno,pathname,lineno,created,**kw):
 # --------------------------------------------------
 # Stat
 # --------------------------------------------------
-
+@if_granta(None)
 def getStatus():
-    if api_type == 'granta':
-        return None
     response = rGet(url=RESTserver + "status/")
     return response.json()
 
-
+@if_granta({'totalExecutions': 0,'finishedExecutions': 0,'failedExecutions': 0,'createdExecutions': 0,'pendingExecutions': 0,'scheduledExecutions': 0,'runningExecutions': 0})
 def getExecutionStatistics():
-    if api_type == 'granta':
-        return {
-            'totalExecutions': 0,
-            'finishedExecutions': 0,
-            'failedExecutions': 0,
-            'createdExecutions': 0,
-            'pendingExecutions': 0,
-            'scheduledExecutions': 0,
-            'runningExecutions': 0
-        }
     response = rGet(url=RESTserver + "execution_statistics/")
     return response.json()
 
-
+@if_granta({"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0})
 def getStatScheduler():
-    if api_type == 'granta':
-        return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
     response = rGet(url=RESTserver + "scheduler_statistics/")
     response_json = response.json()
     keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
@@ -844,9 +504,8 @@ def getStatScheduler():
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.
 # This feature is implemented only for setStatsScheduler to cleanly handle scheduler startup.
+@if_granta(None)
 def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):
-    if api_type == 'granta':
-        return None
     if runningTasks is not None:
         response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
     if scheduledTasks is not None:
@@ -857,9 +516,8 @@ def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processe
         response = session.patch(RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
 
 
+@if_granta(None)
 def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
-    if api_type == 'granta':
-        return None
     if runningTasks is not None:
         response = rPatch(url=RESTserver + "scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
     if scheduledTasks is not None:
@@ -874,9 +532,8 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # Settings
 # --------------------------------------------------
 
+@if_granta(dict)
 def getSettings():
-    if api_type == 'granta':
-        return {}
     response = rGet(url=RESTserver + "settings")
     return response.json()
 
