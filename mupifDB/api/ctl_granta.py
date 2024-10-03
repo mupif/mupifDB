@@ -4,12 +4,62 @@ import sys
 import os
 import logging
 import importlib
+import datetime
 from typing import List,Optional,Literal
 
+from oauthlib.oauth2 import BackendApplicationClient
+from requests_oauthlib import OAuth2Session
+from requests.auth import HTTPBasicAuth
 
-from .restApiControl import api_type, RESTserver, getAuthToken, rGet, rPost, rPatch, rPut, rDelete
-from .restApiControl import getWorkflowRecordGeneral, getExecutionRecord
-from . import table_structures, models
+from .ctl_util import rGet, rPost, rPatch, rPut, rDelete, api_type
+from .. import table_structures, models
+
+granta_credentials = {'username': '', 'password': ''}
+if api_type == 'granta':
+    # RESTserver = 'https://musicode.grantami.com/musicode/api/'
+    with open("/var/lib/mupif/persistent/granta_api_login.json") as json_data_file:
+        credentials = json.load(json_data_file)
+        granta_credentials = {'username': credentials['username'], 'password': credentials['password']}
+
+bearer_token = None
+bearer_token_expires_at = 0
+
+def getAuthToken():
+    global bearer_token
+    global bearer_token_expires_at
+    time_now = datetime.datetime.now()
+    time_secs = time_now.timestamp()
+    if time_secs > bearer_token_expires_at - 10:
+        URL = 'https://auth.musicode.cloud/realms/musicode/protocol/openid-connect/token'
+        CLIENT_ID = granta_credentials['username']
+        CLIENT_SECRET = granta_credentials['password']
+        client = BackendApplicationClient(client_id=CLIENT_ID)
+        oauth = OAuth2Session(client=client)
+        auth = HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
+        bearer_token = oauth.fetch_token(token_url=URL, auth=auth)
+        bearer_token_expires_at = bearer_token['expires_at']
+    return bearer_token
+
+def getGrantaHeaders(set=False):
+    return {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {getAuthToken()["access_token"]}'}|({'charset': 'UTF-8', 'accept': 'application/json',} if set else {})
+
+
+# with granta, turns functions into stub (if ret is not callable) or a proxy (if ret is callable)
+# without granta, transparently call the function underneath
+def if_granta(ret):
+    def granta_decorator(func):
+        def inner(*args,**kw):
+            if callable(ret): return ret(*args,**kw)
+            return ret
+        return inner
+    def noop_decorator(func):
+        def noop(*args,**kw): return func(*args,**kw)
+        return noop
+    return (granta_decorator if api_type=='granta' else noop_decorator)
+
+
+
+
 
 def fix_json(val):
 
@@ -25,10 +75,7 @@ def fix_json(val):
 
 
 def _getGrantaWorkflowRecordGeneral(wid, version: int):
-    url = RESTserver + 'templates/' + str(wid)
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    r = rGet(url=url, headers=headers)
+    r = rGet(f"templates/{wid}", headers=getGrantaHeaders())
     r_json = r.json()
     workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
     workflow['_id'] = r_json['guid']
@@ -64,12 +111,12 @@ def _getGrantaWorkflowRecordGeneral(wid, version: int):
 
 
 def _getGrantaWorkflowMetadataFromDatabase(wid):
-    workflow_record = getWorkflowRecordGeneral(wid, -1)
+    workflow_record = _getGrantaWorkflowRecordGeneral(wid, -1)
     return workflow_record.get('metadata', {})
 
 
 def _getGrantaWorkflowMetadataFromFile(wid, key=None):
-    workflow_record = getWorkflowRecordGeneral(wid, -1)
+    workflow_record = _getGrantaWorkflowRecordGeneral(wid, -1)
     if workflow_record.get('GridFSID', None) is not None:
         with tempfile.TemporaryDirectory(dir='/tmp', prefix='mupifDB') as tempDir:
             try:
@@ -101,16 +148,13 @@ def _getGrantaExecutionInputItem(eid, name):
         except:
             return False
 
-    url = RESTserver + 'executions/' + str(eid) + '/inputs'
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    r = rGet(url=url, headers=headers)
+    r = rGet(f"executions/{eid}/inputs", headers=getGrantaHeaders())
 
     for inp in r.json():
         if name == inp['name']:
             if inp['type'] == 'float':
                 # fint units first :(
-                execution_record = getExecutionRecord(eid)
+                execution_record = _getGrantaExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
                 data_id = 'Unknown'
@@ -142,7 +186,7 @@ def _getGrantaExecutionInputItem(eid, name):
 
             if inp['type'] == 'str':
                 # fint units first :(
-                execution_record = getExecutionRecord(eid)
+                execution_record = _getGrantaExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
                 data_id = 'Unknown'
@@ -171,7 +215,7 @@ def _getGrantaExecutionInputItem(eid, name):
                 }
 
             if inp['type'] == 'hyperlink':
-                execution_record = getExecutionRecord(eid)
+                execution_record = _getGrantaExecutionRecord(eid)
                 w_inputs = _getGrantaWorkflowMetadataFromDatabase(execution_record['WorkflowID']).get('Inputs', [])
                 units = ''
                 data_id = 'Unknown'
@@ -236,10 +280,7 @@ def _getGrantaExecutionInputItem(eid, name):
 
 def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None) -> List[models.WorkflowExecution_Model]: 
     assert api_type == 'granta'
-    url = RESTserver + 'executions/'
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    r = rGet(url=url, headers=headers)
+    r = rGet("executions/", headers=getGrantaHeaders())
     res = []
     for ex in r.json():
         execution = table_structures.extendRecord({}, table_structures.tableExecution)
@@ -254,10 +295,7 @@ def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=No
 
 def _getGrantaExecutionRecord(weid: str):
     assert api_type == 'granta'
-    url = RESTserver + 'executions/' + str(weid)
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    r = rGet(url=url, headers=headers)
+    r = rGet(f"executions/{weid}", headers=getGrantaHeaders())
     r_json = r.json()
     execution = table_structures.extendRecord({}, table_structures.tableExecution)
     execution['_id'] = r_json['guid']
@@ -273,11 +311,10 @@ def _getGrantaExecutionRecord(weid: str):
 def _setGrantaExecutionParameter(execution_id, param, value, val_type="str"):
     assert api_type == 'granta'
     if param == 'ExecutionLog':
-        url = RESTserver + 'executions/' + str(execution_id)
         token = getAuthToken()
         headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
         newdata = {"logs": {"url": "https://musicode.grantami.com/musicode/filestore/%s" % str(value), "description": None}}
-        r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
+        r = rPatch(f"executions/{execution_id}", headers=headers, data=json.dumps(newdata))
         if r.status_code == 200:
             return True
     return None
@@ -285,10 +322,7 @@ def _setGrantaExecutionParameter(execution_id, param, value, val_type="str"):
 
 def _getGrantaPendingExecutions(num_limit=None):
     assert api_type == 'granta'
-    url = RESTserver + 'executions/?status=Ready'
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-    r = rGet(url=url, headers=headers)
+    r = rGet("executions/?status=Ready", headers=getGrantaHeaders())
     res = []
     for ex in r.json():
         execution = table_structures.extendRecord({}, table_structures.tableExecution)
@@ -302,43 +336,31 @@ def _getGrantaPendingExecutions(num_limit=None):
 
 
 def _setGrantaExecutionResults(eid, val_list):
-    url = RESTserver + 'executions/' + str(eid)
-    token = getAuthToken()
-    headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
     newdata = {"results": val_list}
-    r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
+    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(setter=True), data=json.dumps(newdata))
     if r.status_code == 200:
         return True
     return False
 
 
 def _setGrantaExecutionStatus(eid, val):
-    url = RESTserver + 'executions/' + str(eid)
     token = getAuthToken()
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
     newdata = {"status": str(val)}
-    r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
+    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(setter=True), data=json.dumps(newdata))
     if r.status_code == 200:
         return True
     return False
 
 
-
-
-
 def _getGrantaBinaryFileByID(fid):
     assert api_type == 'granta'
-    url = RESTserver.replace('/api/', '/filestore/')
-    token = getAuthToken()
-    headers = {'Authorization': f'Bearer {token["access_token"]}'}
-    response = rGet(url=url + str(fid), headers=headers, allow_redirects=True)
+    # this is .../filestore instead of ..../api, so the ../filestore should do the trick
+    response = rGet(f"../filestore/{fid}", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, allow_redirects=True)
     return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
 
 def _uploadGrantaBinaryFile(binary_data):
     assert api_type == 'granta'
-    url = RESTserver.replace('/api/', '/filestore')
-    token = getAuthToken()
-    headers = {'Authorization': f'Bearer {token["access_token"]}'}
-    response = rPost(url=url, headers=headers, files={"file": binary_data})
+    response = rPost("../filestore", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, files={"file": binary_data})
     return response.json()['guid']
 

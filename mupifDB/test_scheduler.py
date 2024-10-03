@@ -137,7 +137,8 @@ class TestFoo:
         print(f'Execution scheduled, {weid=}')
         for i in range(10):
             data=restApiControl.getExecutionRecord(weid)
-            print(f'Execution status: {data.Status}')
+            print(f'Execution: {data.Status}')
+            # print(f'Pending executions: {restApiControl.getPendingExecutions(num_limit=10)}')
             time.sleep(1)
         assert data.Status=='Finished'
 

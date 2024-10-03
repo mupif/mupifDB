@@ -27,8 +27,10 @@ This is a MuPIFDB module (Multi-Physics Integration Framework)
 __version__ = '0.0.1'
 __author__ = 'Borek Patzak'
 
+__package__ = __name__
+
 # List all submodules, so they can all be imported: from mupif import *
-__all__ = ['workflowmanager', 'schedulerstat', 'error', 'restApiControl', 'my_email']
+# __all__ = ['workflowmanager', 'schedulerstat', 'error', 'restApiControl', 'my_email']
 
 from . import workflowmanager
 from . import schedulerstat

@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.append(mupifDBModDir := (os.path.dirname(os.path.abspath(__file__))))
+mupifDBModDir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(mupifDBSrcDir := (mupifDBModDir+'/..'))
 
 import time
@@ -17,9 +17,7 @@ import jsonpickle
 import textwrap
 from typing import Tuple
 
-import restApiControl
-import restLogger
-import my_email
+from mupifDB import restApiControl, restLogger, my_email
 
 from pathlib import Path
 import shutil
@@ -30,8 +28,11 @@ import mupif as mp
 
 import logging
 
+
 log=logging.getLogger('workflow-scheduler') 
 log.addHandler(restLogger.RestLogHandler())
+
+# logging.getLogger().setLevel(logging.DEBUG)
 
 # decrease verbosity here
 logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -599,7 +600,7 @@ def main():
                     try:
                         scheduled_executions = restApiControl.getScheduledExecutions()
                     except Exception as e:
-                        log.error(repr(e))
+                        log.exception('Error getting scheduled execution:')
                         scheduled_executions = []
 
                     for wed in scheduled_executions:
@@ -618,7 +619,7 @@ def main():
                                 we_rec = restApiControl.getExecutionRecord(weid)
                                 restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
                             except Exception as e:
-                                log.error(repr(e))
+                                log.exception('Error running scheduled execution:')
 
                     log.info("Done\n")
 
@@ -633,7 +634,7 @@ def main():
                             # else:
                             #     pending_executions = []
                         except Exception as e:
-                            log.error(repr(e))
+                            log.exception('Error checking pending executions')
                             pending_executions = []
 
                         updateStatScheduled(statusLock, schedulerStat, len(pending_executions))  # update status
@@ -648,7 +649,7 @@ def main():
                                     if api_type != 'granta':
                                         my_email.sendEmailAboutExecutionStatus(weid)
                                 except Exception as e:
-                                    log.error(repr(e))
+                                    log.exception()
 
                             else:
                                 time.sleep(2)
@@ -658,7 +659,7 @@ def main():
                                     try:
                                         res = restApiControl.setExecutionStatusScheduled(weid)
                                     except Exception as e:
-                                        log.error(repr(e))
+                                        log.exception()
 
                                     if not res:
                                         log.info("Could not update execution status")
@@ -675,7 +676,7 @@ def main():
                                             we_rec = restApiControl.getExecutionRecord(weid)
                                             restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
                                         except Exception as e:
-                                            log.error(repr(e))
+                                            log.exception()
 
                         # ok, no more jobs to schedule for now, wait
                         l = int(100*int(schedulerStat['runningTasks'])/poolsize)
@@ -692,7 +693,7 @@ def main():
                                 log.info(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
                                     str(schedulerStat['scheduledTasks'])+"/"+str(schedulerStat['runningTasks'])+"/"+str(schedulerStat['load']))
                             except Exception as e:
-                                log.error(repr(e))
+                                log.exception()
 
                         # lazy update of persistent statistics, done in main thread thus thread safe
                         with statusLock:

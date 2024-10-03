@@ -5,8 +5,8 @@ import threading
 
 import sys
 import os.path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import restApiControl
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+'/..')
+from . import restApiControl
 
 
 class RestLogHandler(logging.StreamHandler):
