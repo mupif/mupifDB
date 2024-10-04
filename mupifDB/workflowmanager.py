@@ -6,8 +6,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import tempfile
 import re
 from ast import literal_eval
-from mupifDB.api import ctl as restApiControl
-from mupifDB.api import ctl_granta
+from mupifDB.api import client as restApiControl
+from mupifDB.api import client_granta
 import Pyro5
 import mupif
 
@@ -18,7 +18,7 @@ from typing import Literal
 
 import table_structures
 
-from mupifDB.api.ctl_util import api_type
+from mupifDB.api.client_util import api_type
 
 daemon = None
 def getDaemon():
@@ -492,7 +492,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
         inp_record = restApiControl.getExecutionInputRecordItem(eid, name, obj_id)
 
     if api_type == 'granta':
-        inp_record = ctl_granta._getGrantaExecutionInputItem(eid, name)
+        inp_record = client_granta._getGrantaExecutionInputItem(eid, name)
 
     op = inp_record.get('EDMPath', None)
     if op is not None:
@@ -750,7 +750,7 @@ def mapInputs(app, eid):
     workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
     workflow_input_templates = workflow.IOCard.Inputs
     if api_type == 'granta':
-        workflow_input_templates = ctl_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Inputs)
+        workflow_input_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Inputs)
 
     for input_template in workflow_input_templates:
         print("Mapping input " + str(input_template))
@@ -1130,7 +1130,7 @@ def mapOutputs(app, eid, time):
     workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
     workflow_output_templates = workflow.IOCard.Outputs
     if api_type == 'granta':
-        workflow_output_templates = ctl_granta._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Outputs', [])
+        workflow_output_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution['WorkflowID']).get('Outputs', [])
 
     granta_output_data = []
 
@@ -1158,7 +1158,7 @@ def mapOutputs(app, eid, time):
 
         for oid in objID:
             if api_type == 'granta':
-                output = ctl_granta._getGrantaOutput(
+                output = client_granta._getGrantaOutput(
                     app=app,
                     eid=eid,
                     name=name,
@@ -1195,5 +1195,5 @@ def mapOutputs(app, eid, time):
                 )
 
     if api_type == 'granta':
-        ctl_granta._setGrantaExecutionResults(eid, granta_output_data)
+        client_granta._setGrantaExecutionResults(eid, granta_output_data)
 

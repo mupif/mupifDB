@@ -11,7 +11,7 @@ from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
 from requests.auth import HTTPBasicAuth
 
-from .ctl_util import rGet, rPost, rPatch, rPut, rDelete, api_type
+from .client_util import rGet, rPost, rPatch, rPut, rDelete, api_type
 from .. import table_structures, models
 
 granta_credentials = {'username': '', 'password': ''}

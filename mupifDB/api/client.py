@@ -17,9 +17,9 @@ from ..  import models
 from rich import print_json
 from rich.pretty import pprint
 
-from . import ctl_granta as granta
-from .ctl_granta import if_granta
-from .ctl_util import *
+from . import client_granta as granta
+from .client_granta import if_granta
+from .client_util import *
 
 
 # --------------------------------------------------
@@ -28,8 +28,9 @@ from .ctl_util import *
 
 
 @if_granta([])
+@pydantic.validate_call
 def getUsecaseRecords():
-    return [rec for rec in rGet("usecases/").json()]
+    return [models.Usercase_Model.model_validate(rec) for rec in rGet("usecases/").json()]
 
 @if_granta(None)
 def getUsecaseRecord(ucid):
