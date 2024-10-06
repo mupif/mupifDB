@@ -34,7 +34,7 @@ logging.basicConfig()
 log=logging.getLogger('restApi')
 
 
-import table_structures
+from .. import table_structures
 
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
 db = client.MuPIF

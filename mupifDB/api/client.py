@@ -3,7 +3,6 @@ import json
 import datetime
 import sys
 import os
-import table_structures
 import tempfile
 import importlib
 import re
@@ -12,7 +11,8 @@ import logging
 import pydantic
 from typing import List,Optional,Literal
 
-from ..  import models
+from .. import models
+from .. import table_structures
 
 from rich import print_json
 from rich.pretty import pprint
@@ -115,7 +115,6 @@ def insertWorkflowHistory(wf: models.Workflow_Model):
 @if_granta(granta._getGrantaExecutionRecords)
 @pydantic.validate_call
 def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecution_Model]: 
-    data = []
     query = "executions/?noparam"
     for n,a in [('num_limit',num_limit),('label',label),('workflow_id',workflow_id),('workflow_version',workflow_version),('status',status)]:
         if a is not None: query += f"&{n}={str(a)}"

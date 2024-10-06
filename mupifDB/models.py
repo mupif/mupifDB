@@ -9,7 +9,7 @@ class Parent_Model(pydantic.BaseModel):
     id: str
 
 class MongoObj_Model(pydantic.BaseModel):
-    dbID: Optional[str]=Field(None,alias=AliasChoices('_id','dbID'),serialization_alias='_id')
+    dbID: Optional[str]=Field(None,alias=AliasChoices('_id','dbID'),serialization_alias='_id') # type: ignore[arg-type]
     parent: Optional[Parent_Model]=None
 
 class UseCase_Model(MongoObj_Model):
@@ -66,10 +66,10 @@ class Workflow_Model(MongoObj_Model):
             Name: str
             Description: Optional[str]=None
             Type: str
-            Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))
+            Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))                   # type: ignore[arg-type]
             ValueType: Literal['Vector','Scalar','Tensor','VectorArray']='Scalar'
             Units: str
-            ObjID: Optional[str|List[str]] = Field(None,alias=AliasChoices('ObjID','Obj_ID'))
+            ObjID: Optional[str|List[str]] = Field(None,alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type]
             @property
             def TypeID(self): return self.Type_ID
             # @property.setter(self,val): self.Type_ID=val
@@ -83,7 +83,7 @@ class Workflow_Model(MongoObj_Model):
         Outputs: List[Output_Model]
     wid: str
     Description: str
-    GridFSID: str = None
+    GridFSID: Optional[str] = None
     UseCase: str
     IOCard: IOCard_Model
     modulename: str

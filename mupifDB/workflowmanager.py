@@ -16,7 +16,7 @@ from mupifDB import models
 import pydantic
 from typing import Literal
 
-import table_structures
+from . import table_structures
 
 from mupifDB.api.client_util import api_type
 
@@ -43,7 +43,7 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
     @param modulename
     @param classname
     """
-    insertWorkflowDefinition_real(
+    insertWorkflowDefinition_model(
         source=source,
         rec=models.Workflow_Model(
             wid=wid,
@@ -61,7 +61,7 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
     )
 
 @pydantic.validate_call
-def insertWorkflowDefinition_real(source: pydantic.FilePath, rec: models.Workflow_Model):
+def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workflow_Model):
     with open(source, 'rb') as f:
         rec.GridFSID=restApiControl.uploadBinaryFile(f)
         f.close()

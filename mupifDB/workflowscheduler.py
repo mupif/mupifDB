@@ -43,7 +43,7 @@ LOOP_SLEEP_SEC=20
 # try to import schedulerconfig.py
 authToken = None
 try:
-    import schedulerConfig
+    import schedulerConfig # type: ignore
     authKey = schedulerConfig.authToken
 except ImportError:
     log.info("schedulerConfig import failed")
@@ -126,7 +126,6 @@ scheduledTasks = 0
 processedTasks = 0
 finishedTasks = 0 # with success
 failedTasks = 0
-lastJobs = {}  # dict, we-id key
 
 
 schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"

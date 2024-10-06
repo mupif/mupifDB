@@ -1,3 +1,4 @@
+from typing import Any
 
 def extendRecord(record, structure):
     for def_key in structure.keys():
@@ -6,13 +7,13 @@ def extendRecord(record, structure):
     return record
 
 
-tableUseCase = {
+tableUseCase: dict[str,Any] = {
     'ucid': None,
     'Description': None,
 }
 
 
-tableWorkflow = {
+tableWorkflow: dict[str,Any] = {
     'wid': None,
     'Description': None,
     'UseCase': None,
@@ -26,7 +27,7 @@ tableWorkflow = {
 }
 
 
-tableExecution = {
+tableExecution: dict[str,Any] = {
     'WorkflowID': None,
     'WorkflowVersion': None,
     'Status': "Created",
@@ -46,7 +47,7 @@ tableExecution = {
 }
 
 
-tableUser = {
+tableUser: dict[str,Any] = {
     'IP': None,
     'Name': None,
     'Organization': None,

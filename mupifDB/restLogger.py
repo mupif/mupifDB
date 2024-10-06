@@ -30,7 +30,6 @@ class RestLogHandler(logging.StreamHandler):
 
 
 if __name__ == '__main__':
-    import restApiControl
     logging.getLogger().setLevel(logging.DEBUG)
     log = logging.getLogger('test')
     log.setLevel(logging.DEBUG)
