@@ -2,7 +2,7 @@ import datetime
 import pydantic
 from pydantic.networks import IPvAnyAddress
 from pydantic import Field, AliasChoices
-from typing import Optional,List,Literal
+from typing import Optional,List,Literal,Any
 
 class Parent_Model(pydantic.BaseModel):
     where: str
@@ -22,32 +22,45 @@ class EDMMapping_Model(pydantic.BaseModel):
         ids: Optional[str]=None
     Name: str
     EDMEntity: str
+    EDMList: bool=False
     DBName: str
+    OptionsFilter: Optional[str]=None
     id: Optional[str]=None
     ids: List[str]=[]
-    # TODO: createFrom: ...
     createNew: Optional[EDMObject_Model]=None
+    createFrom: Any=None ### XXXX what is this??
 
-class WorkflowExecution_Model(MongoObj_Model):
-    WorkflowID: str
-    WorkflowVersion: int
-    Status: Literal['Created','Pending','Scheduled','Running','Finished','Failed']
-    CreatedDate: datetime.datetime
-    SubmittedDate: Optional[datetime.datetime]
-    StartDate: Optional[datetime.datetime]
-    EndDate: Optional[datetime.datetime]
-    ExecutionLog: Optional[str]=None
-    RequestedBy: str
-    UserIP: IPvAnyAddress|str # can be a hostname as well
-    Inputs: str
-    Outputs: str
-    Task_ID: str
-    label: str
-    Attempts: int
-    EDMMapping: List[EDMMapping_Model]
-    # these are only relevant while the execution being processed
-    workflowURI: str|None=None
-    loggerURI: str|None=None
+
+class InputOutputBase_Model(pydantic.BaseModel):
+    Name: str
+    Description: Optional[str]=None
+    Type: str
+    Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))                   # type: ignore[arg-type]
+    ValueType: Literal['Vector','Scalar','Tensor','VectorArray']='Scalar'
+    Units: str
+    ObjID: str|List[str] = Field([],alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type]
+    EDMPath: Optional[str]=None
+    @property
+    def TypeID(self) -> str: return self.Type_ID
+    # @property.setter(self,val): self.Type_ID=val
+
+
+class IODataRecordItem_Model(InputOutputBase_Model):
+    class Link_Model(pydantic.BaseModel):
+        ExecID: str=''
+        Name: str=''
+        ObjID: str=''
+    Value: Optional[dict[str,Any]]=None
+    Link: Link_Model=Link_Model()
+    FileID: Optional[str]=None
+    Compulsory: bool=False
+    Object: dict[str,Any]
+
+class IODataRecord_Model(MongoObj_Model):
+    DataSet: List[str]=[]
+    Name: str=''
+    Type: Literal['Inputs','Outputs']
+
 
 class WorkflowExecutionCreate_Model(pydantic.BaseModel):
     wid: str
@@ -62,22 +75,10 @@ class Workflow_Model(MongoObj_Model):
         Jobmanager: str
         Instantiate: Optional[bool]=None
     class IOCard_Model(pydantic.BaseModel):
-        class InputOutputBase_Model(pydantic.BaseModel):
-            Name: str
-            Description: Optional[str]=None
-            Type: str
-            Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))                   # type: ignore[arg-type]
-            ValueType: Literal['Vector','Scalar','Tensor','VectorArray']='Scalar'
-            Units: str
-            ObjID: Optional[str|List[str]] = Field(None,alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type]
-            @property
-            def TypeID(self): return self.Type_ID
-            # @property.setter(self,val): self.Type_ID=val
         class Input_Model(InputOutputBase_Model):
             Compulsory: bool = Field(...,validation_alias='Required')
             Set_at: Literal['timestep']
         class Output_Model(InputOutputBase_Model):
-            EDMPath: Optional[str]=None
             EDMList: Optional[str]=None
         Inputs: List[Input_Model]
         Outputs: List[Output_Model]
@@ -91,6 +92,34 @@ class Workflow_Model(MongoObj_Model):
     Models: List[Model_Model]
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
+
+
+class WorkflowExecutionBase_Model(MongoObj_Model):
+    WorkflowID: str
+    WorkflowVersion: int
+    Status: Literal['Created','Pending','Scheduled','Running','Finished','Failed']
+    CreatedDate: datetime.datetime
+    SubmittedDate: Optional[datetime.datetime]
+    StartDate: Optional[datetime.datetime]
+    EndDate: Optional[datetime.datetime]
+    ExecutionLog: Optional[str]=None
+    RequestedBy: str
+    UserIP: IPvAnyAddress|str # can be a hostname as well
+    Task_ID: str
+    label: str
+    Attempts: int
+    EDMMapping: List[EDMMapping_Model]
+    # these are only relevant while the execution being processed
+    workflowURI: str|None=None
+    loggerURI: str|None=None
+
+class WorkflowExecution_Model(WorkflowExecutionBase_Model):
+    Inputs: IODataRecord_Model
+    Outputs: IODataRecord_Model
+
+class WorkflowExecutionRecord_Model(WorkflowExecutionBase_Model):
+    Inputs: str
+    Outputs: str
 
 
 

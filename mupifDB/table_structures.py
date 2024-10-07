@@ -1,6 +1,6 @@
 from typing import Any
 
-def extendRecord(record, structure):
+def extendRecord(record: dict[str,Any], structure: dict[str,Any]) -> dict[str,Any]:
     for def_key in structure.keys():
         if def_key not in record:
             record[def_key] = structure[def_key]

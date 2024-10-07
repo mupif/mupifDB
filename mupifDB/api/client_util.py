@@ -1,7 +1,9 @@
 import os
 import requests
-from rich.pretty import pprint
+from requests.models import Response
 import logging
+import json
+from typing import TypeVar,Any,Callable,Optional,Dict
 log=logging.getLogger(__name__)
 
 
@@ -19,42 +21,74 @@ if not RESTserver[-1] == '/':
 
 RESTserverMuPIF = RESTserver
 
-def setRESTserver(r):
+def setRESTserver(r: str) -> None:
     'Used in tests to set RESTserver after import'
     global RESTserver, RestServerMuPIF
     RESTserver=RESTserverMuPIF=r+'/'
 
-
-def check_response(func):
-    def inner(path,**kwargs):
-        # log.error(f'{func.__name__.upper()} {RESTserver}{path}: {kwargs}')
-        response=func(path,**kwargs)
-        # log.error(f'{response}: {response.status_code} {response.reason} {response.text}')
-        if 200 <= response.status_code <= 299: return response
-        raise RuntimeError(f'Error: {func.__name__.upper()} {RESTserver}{path}, status {response.status_code} ({response.reason}): {response.text}.\n{pprint(kwargs)}')
-    return inner
+def _check(resp: Response) -> Response:
+    if 200 <= resp.status_code <= 299: return resp
+    raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
 
 _defaultTimeout=10
 
-@check_response
-def rGet(path, *, headers=None, auth=None, timeout=_defaultTimeout, params={}, allow_redirects=True):
-    return requests.get(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, params=params, allow_redirects=allow_redirects)
+OStr=Optional[str]
 
-@check_response
-def rPost(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout, files={}, allow_redirects=True):
-    return requests.post(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data, files=files, allow_redirects=allow_redirects)
+def rGet(path, *, headers=None, auth=None, timeout=_defaultTimeout, params={}, allow_redirects=True) -> requests.Response:  # type: ignore
+    return _check(requests.get(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, params=params, allow_redirects=allow_redirects))
 
-@check_response
+def rPost(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout, files={}, allow_redirects=True): # type: ignore
+    return _check(requests.post(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data, files=files, allow_redirects=allow_redirects))
+
 def rPatch(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout):
-    return requests.patch(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data)
+    return _check(requests.patch(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data))
 
-@check_response
-def rPut(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout):
-    return requests.put(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data)
+def rPut(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout): # type: ignore
+    return _check(requests.put(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data))
 
-@check_response
-def rDelete(path, *, headers=None, auth=None, timeout=_defaultTimeout):
-    return requests.delete(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth)
+def rDelete(path, *, headers=None, auth=None, timeout=_defaultTimeout): # type: ignore
+    return _check(requests.delete(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth))
 
 
+
+
+
+
+def logMessage(*,name,levelno,pathname,lineno,created,**kw):
+    '''
+    from client_mupif import *
+
+    Logging message; compulsory fileds are present in standard logging.LogRecord, their name
+    should not be changed.
+
+    - *name*: logger name; comes from logging.getLogger(name)
+    - *levelno*: number of logging severity (e.g. 30 for logging.WARNING etc)
+    - *pathname*: full path to file where the message originated
+    - *lineno*: line number within file where the message originated
+    - *created*: epoch time; use datetime.datetime.fromtimestamp(...) for higher-level representation
+
+    Other possibly important fields in logging.LogRecord (not enforced by this function signature) are:
+
+    - *exc_info*, *exc_text*: exception information when using log.exception(...) in the client code
+
+       .. note:: exc_info is a python object (includes exception class and traceback),
+                 there must be a custom routine to convert it to JSON.
+
+    Constant extra fields might be added on the level of the handler: RestLogHandler(extraData=...).
+
+    Variable extra fields might added in when calling the logging function, e.g. log.error(...,extra={'another-field':123})
+    '''
+    return
+    # re-assemble the dictionary
+    data = dict(name=name,levelno=levelno,pathname=pathname,lineno=lineno,created=created,**kw)
+    data['msg'] = data['msg'] % data['args']
+    del data['args']
+    # pprint(data)
+    previous_level = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        response = rPost("logs/", data=json.dumps({"entity": data}))
+    finally:
+        logging.disable(previous_level)
+    return response.json()
 

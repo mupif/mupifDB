@@ -5,7 +5,8 @@ import os
 import logging
 import importlib
 import datetime
-from typing import List,Optional,Literal
+from typing import List,Optional,Literal,Any
+from typing_extensions import ParamSpec
 
 from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
@@ -15,16 +16,15 @@ from .client_util import rGet, rPost, rPatch, rPut, rDelete, api_type
 from .. import table_structures, models
 
 granta_credentials = {'username': '', 'password': ''}
-if api_type == 'granta':
-    # RESTserver = 'https://musicode.grantami.com/musicode/api/'
-    with open("/var/lib/mupif/persistent/granta_api_login.json") as json_data_file:
-        credentials = json.load(json_data_file)
-        granta_credentials = {'username': credentials['username'], 'password': credentials['password']}
+# RESTserver = 'https://musicode.grantami.com/musicode/api/'
+with open("/var/lib/mupif/persistent/granta_api_login.json") as json_data_file:
+    credentials = json.load(json_data_file)
+    granta_credentials = {'username': credentials['username'], 'password': credentials['password']}
 
-bearer_token = None
-bearer_token_expires_at = 0
+bearer_token: dict[str,Any] = {}
+bearer_token_expires_at: float = 0
 
-def getAuthToken():
+def getAuthToken() -> dict[str,Any]:
     global bearer_token
     global bearer_token_expires_at
     time_now = datetime.datetime.now()
@@ -40,28 +40,64 @@ def getAuthToken():
         bearer_token_expires_at = bearer_token['expires_at']
     return bearer_token
 
-def getGrantaHeaders(set=False):
+def getGrantaHeaders(set: bool=False) -> dict[str,str]:
     return {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {getAuthToken()["access_token"]}'}|({'charset': 'UTF-8', 'accept': 'application/json',} if set else {})
 
 
-# with granta, turns functions into stub (if ret is not callable) or a proxy (if ret is callable)
-# without granta, transparently call the function underneath
-def if_granta(ret):
-    def granta_decorator(func):
-        def inner(*args,**kw):
-            if callable(ret): return ret(*args,**kw)
-            return ret
-        return inner
-    def noop_decorator(func):
-        def noop(*args,**kw): return func(*args,**kw)
-        return noop
-    return (granta_decorator if api_type=='granta' else noop_decorator)
+def getUsercaseRecords(): return []
+def getUsecaseRecord(ucid: str): return None
+def insertUsecaseRecord(ucid, description): return None
+# workflow
+def getWorkflowRecords(): return[]
+def getWorkflowRecordsWithUsecase(usecase): return[]
+def getWorkflowRecord(wid: str): return None
+def insertWorkflow(wf: models.Workflow_Model): return None
+def updateWorkflow(wf: models.Workflow_Model): return None
+def getWorkflowRecordGeneral(wid, version: int): return _getGrantaWorkflowRecordGeneral(wid,version)
+def getWorkflowRecordFromHistory(wid, version): return None
+def insertWorkflowHistory(wf: models.Workflow_Model): return None
+# execution
+def getExecutionRecords(*args, **kw): return _getGrantaExecutionRecords(*args,**kw)
+def getExecutionRecord(weid:str): return _getGrantaExecutionRecord(weid)
+def getScheduledExecutions(num_limit=None): return []
+def getPendingExecutions(num_limit=None): return _getGrantaPendingExecutions(num_limit)
+def scheduleExecution(execution_id): return None
+def setExecutionParameter(*args,**kw): _setGrantaExecutionParameter(*args,**kw)
+def setExecutionOntoBaseObjectID(*args,**kw): return None
+def setExecutionOntoBaseObjectIDMultiple(*args,**kw): return None
+def setExecutionOntoBaseObjectIDs(*args,**kw): return None
+def setExecutionAttemptsCount(*args,**kw): return None
+def setExecutionStatusScheduled(execution_id): return _setGrantaExecutionStatus(execution_id,'Scheduled')
+def setExecutionStatusCreated(execution_id): return None
+def setExecutionStatusPending(execution_id): return _setGrantaExecutionStatus(execution_id,'Ready')
+def setExecutionStatusRunning(execution_id): return _setGrantaExecutionStatus(execution_id,'Running')
+def setExecutionStatusFinished(execution_id): return _setGrantaExecutionStatus(execution_id,'Completed, to be reviewed')
+def setExecutionStatusFailed(execution_id): return _setGrantaExecutionStatus(execution_id,'Failed')
+def createExecution(*args,**kw): return None
+def insertExecution(*args,**kw): return None
+def getExecutionInputRecord(weid): return None
+def getExecutionOutputRecord(weid): return None
+def getExecutionInputRecordItem(*args,**kw): return None
+def getExecutionOutputRecordItem(*args,**kw): return None
+# i/o
+def getIODataRecord(*args,**kw): return None
+def insertIODataRecord(*args,**kw): return None
+def setExecutionInputLink(*args,**kw): return None
+def setExecutionInputObject(*args,**kw): return None
+def setExecutionOutputObject(*args,**kw): return None
+def getPropertyArrayData(*args,**kw): return None
+def getBinaryFileByID(fid): return _getGrantaBinaryFileByID(fid)
+def uploadBinaryFile(binary_data): return _uploadGrantaBinaryFile(binary_data)
+# stats
+def getStatus(): return None
+def getExecutionStatistics(): return {'totalExecutions': 0,'finishedExecutions': 0,'failedExecutions': 0,'createdExecutions': 0,'pendingExecutions': 0,'scheduledExecutions': 0,'runningExecutions': 0}
+def getStatScheduler(): return {"runningTasks": 0, "scheduledTasks": 0, "load": 0, "processedTasks": 0}
+def setStatScheduler(*args,**kw): return None
+def updateStatScheduler(*args,**kw): return None
+def getSettings(): return {}
 
 
-
-
-
-def fix_json(val):
+def fix_json(val: str) -> str:
 
     import re
     val = re.sub(r",[ \t\r\n]+}", "}", val)
@@ -69,9 +105,6 @@ def fix_json(val):
     val = val.replace("False", "false").replace("True", "true")
     val
     return val
-
-
-
 
 
 def _getGrantaWorkflowRecordGeneral(wid, version: int):
@@ -278,7 +311,7 @@ def _getGrantaExecutionInputItem(eid, name):
     return None
 
 
-def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None) -> List[models.WorkflowExecution_Model]: 
+def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None): #  -> List[models.WorkflowExecution_Model]: 
     assert api_type == 'granta'
     r = rGet("executions/", headers=getGrantaHeaders())
     res = []
@@ -337,7 +370,7 @@ def _getGrantaPendingExecutions(num_limit=None):
 
 def _setGrantaExecutionResults(eid, val_list):
     newdata = {"results": val_list}
-    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(setter=True), data=json.dumps(newdata))
+    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(set=True), data=json.dumps(newdata))
     if r.status_code == 200:
         return True
     return False
@@ -347,7 +380,7 @@ def _setGrantaExecutionStatus(eid, val):
     token = getAuthToken()
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
     newdata = {"status": str(val)}
-    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(setter=True), data=json.dumps(newdata))
+    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(set=True), data=json.dumps(newdata))
     if r.status_code == 200:
         return True
     return False
