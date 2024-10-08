@@ -6,6 +6,10 @@ from xprocess import ProcessStarter
 from rich.pretty import pprint
 from rich import print_json
 
+import logging
+logging.basicConfig()
+log=logging.getLogger()
+
 def anyPort():
     s=socket.socket()
     s.bind(('',0))
@@ -159,13 +163,21 @@ class TestFoo:
         print(f'Execution created, {weid=}')
         restApiControl.scheduleExecution(weid)
         print(f'Execution scheduled, {weid=}')
+        logID=None
         for i in range(10):
-            data=restApiControl.getExecutionRecord(weid)
-            print(f'Execution: {data.Status}')
-            if data.Status=='Finished': break
+            exe=restApiControl.getExecutionRecord(weid)
+            print(f'Execution: {exe.Status}')
+            if exe.Status=='Finished': break
             # print(f'Pending executions: {restApiControl.getPendingExecutions(num_limit=10)}')
             time.sleep(1)
-        assert data.Status=='Finished'
+        try:
+            if exe.ExecutionLog is None:
+                print('Execution log not available')
+                logContent=None
+            logContent,logName=restApiControl.getBinaryFileByID(exe.ExecutionLog)
+        except: log.error('Error downloading log')
+        (log.error if exe.Status!='Finished' else log.info)(logContent.decode('utf-8'))
+        assert exe.Status=='Finished'
     def test_02_web(self,scheduler,web):
         server='http://localhost:'+PORTS['web']
         import requests
