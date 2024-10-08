@@ -628,21 +628,20 @@ def get_settings():
 def db_init():
     # probably initialized already
     if 'Settings' in db.list_collection_names(): return False
-
-    usecases = db["UseCases"]
-    usecases.insert_one({"_id": "DemoUseCase", "Description": "Demo UseCase", "ucid":"1"})
-    Stat = db["Stat"]
-    Stat.insert_one({"scheduler": {"load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0}})
-
-    # force creation of empty collections
-    db.create_collection("Workflows")
-    db.create_collection("WorkflowsHistory")
-    db.create_collection("WorkflowExecutions")
-    db.create_collection("IOData")
-
-    Settings=db['Settings']
-    Settings.insert_one({'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'})
-
+    for coll,rec in [
+        ('Settings',{'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
+        ('UseCases',{'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
+        ('Stat',{"scheduler": {"load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0}}),
+        ('Workflows',None),
+        ('WorkflowsHistory',None),
+        ('WorkflowExecutions',None),
+        ('IOData',None)
+    ]:
+        try: c=db.create_collection(coll)
+        except Exception as e: log.exception(f'Error creating initial collection {coll}.')
+        if rec is None: continue
+        try: c.insert_one(rec)
+        except Exception: log.exception(f'Error populating initial collection {coll} with {rec}.')
     return True
 
 

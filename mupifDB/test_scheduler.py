@@ -66,9 +66,9 @@ def restApi(xprocess,mongodb,nameserver):
             'PYTHONPATH':mupifDB.__path__[0]+'/..',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
-        args = [ sys.executable, 'main.py' ] # , '--log-level','debug' ]
+        args = [ sys.executable, 'main.py', '--log-level','debug' ]
         timeout = 5
-        max_read_lines = 100
+        max_read_lines = 500
         pattern = 'Application startup complete.'
         terminate_on_interrupt = True
     xprocess.ensure("restApi",Starter)
@@ -88,7 +88,7 @@ def scheduler(xprocess,restApi):
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
         args = [ sys.executable, '-c', 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=.5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' ]
         timeout = 10
-        max_read_lines = 50
+        max_read_lines = 500
         # pattern = 'Entering main loop to check for Pending executions'
         pattern = 'procInit called'
         terminate_on_interrupt = True
@@ -111,7 +111,7 @@ def web(xprocess):
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/..' }
         args = [ sys.executable, '-m', 'flask','run','--host','localhost','--port',PORTS['web']]
         timeout = 10
-        max_read_lines = 50
+        max_read_lines = 500
         # pattern = 'Entering main loop to check for Pending executions'
         pattern = ' * Running on http://localhost:'
         terminate_on_interrupt = True
