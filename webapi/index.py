@@ -17,6 +17,8 @@ import inspect
 import mupif as mp
 import mupif.meta
 import requests
+from rich.pretty import pprint
+from rich import print_json
 from ast import literal_eval
 from flask_login import (
     LoginManager,
@@ -31,8 +33,11 @@ log = logging.getLogger(__name__)
 from oauthlib.oauth2 import WebApplicationClient
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
+FAKE_AUTH=os.environ.get('MUPIFDB_WEB_FAKE_AUTH',False)
+
+
 from pymongo import MongoClient
-dbClient: MongoClient = MongoClient("mongodb://localhost:27017")
+dbClient: MongoClient = MongoClient(f"mongodb://localhost:{os.environ.get('MUPIFDB_MONGODB_PORT','27017')}")
 db = dbClient.MuPIF
 
 def fix_id(record):
@@ -71,7 +76,8 @@ BASE_URL = web_ui_config.get("BASE_URL", "")
 
 login_config = {}
 googleConfigPath = os.path.expanduser("/var/lib/mupif/persistent/google_auth_config.json")
-if os.path.exists(googleConfigPath):
+if FAKE_AUTH: pass
+elif os.path.exists(googleConfigPath):
     with open(googleConfigPath) as config_json:
         login_config = json.load(config_json)
 else: log.error("File '{googleConfigPath}' does not exist, login will be broken.")
@@ -90,8 +96,8 @@ sys.path.append(path_of_this_file+"/..")
 
 from mupifDB import restApiControl, workflowmanager
 
-
-settings = restApiControl.getSettings()
+# initialize the database if blank (mostly useful for testing)
+settings = restApiControl.getSettings(maybe_init_db=True)
 PROJECT_NAME = settings.get('projectName', '')
 PROJECT_LOGO_URL = settings.get('projectLogoUrl', '/static/images/project-logo.png')
 
@@ -136,6 +142,17 @@ def load_user(user_id):
     return User.get(user_id)
 
 
+if FAKE_AUTH:
+    from functools import wraps
+    def login_required(func):
+        @wraps(func)
+        def inner(*args,**kw):
+            return func(*args,**kw)
+        return inner
+    current_user=User(id_='foobar',email='god@heaven.org',name='Test',profile_pic=None,rights=10000)
+
+
+
 # unless overridden by the environment, use 127.0.0.1:8005
 RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
 RESTserver = RESTserver.replace('5000', '8005')
@@ -143,6 +160,9 @@ RESTserver = RESTserver.replace('5000', '8005')
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':
     RESTserver += '/'
+
+
+print(100*'*'+'\n'+f'{RESTserver=}')
 
 
 def statusColor(val):
@@ -203,12 +223,12 @@ def homepage():
 
     return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
-
-# login_manager injects itself into the app via login_manager.init_app(app) above
-@app.login_manager.unauthorized_handler # type: ignore[attr-defined] 
-def unauth_handler():
-    html = '<p>You need to authenticate with </p><a class="button" href="/login">Google Login</a>'
-    return my_render_template('basic.html', body=Markup(html), login=login_header_html())
+if not FAKE_AUTH:
+    # login_manager injects itself into the app via login_manager.init_app(app) above
+    @app.login_manager.unauthorized_handler # type: ignore[attr-defined]
+    def unauth_handler():
+        html = '<p>You need to authenticate with </p><a class="button" href="/login">Google Login</a>'
+        return my_render_template('basic.html', body=Markup(html), login=login_header_html())
 
 
 def get_google_provider_cfg():
@@ -410,13 +430,14 @@ def worflows():
 
 @app.route('/workflows/<wid>')
 @login_required
-def workflowNoVersion(wid):
+def workflowNoVersion(wid: int):
+    print(f'RRR {wid=}')
     return workflow(wid, -1)
 
 
 @app.route('/workflows/<wid>/<version>')
 @login_required
-def workflow(wid, version):
+def workflow(wid, version: int):
     wdata = restApiControl.getWorkflowRecordGeneral(wid=wid, version=int(version))
     html = '<table class=\"tableType1\">'
     html += '<tr><td>WorkflowID:</td><td>'+str(wdata.wid)+'</td></tr>'

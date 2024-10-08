@@ -110,7 +110,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         restApiControl.insertWorkflowHistory(w_rec)
         # update the latest document
         w_rec.Version=w_rec.Version+1
-        res_id = restApiControl.updateWorkflow(rec)._id
+        res_id = restApiControl.updateWorkflow(rec).dbID
         if res_id:
             return res_id
         else:
@@ -124,6 +124,7 @@ def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:
         @param version workflow version, version == -1 means return the most recent version    
     """
     wdoclatest = restApiControl.getWorkflowRecord(wid)
+    # print(f'QQQ {wdoclatest=}')
     if wdoclatest is None:
         raise KeyError("Workflow document with WID" + wid + " not found")
     lastversion = int(wdoclatest.Version)
@@ -246,24 +247,35 @@ class WorkflowExecutionContext:
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if wdoc is not None:
             # IOCard = wdoc['IOCard']
-            rec = table_structures.tableExecution.copy()
-            rec['WorkflowID'] = workflowID
-            rec['WorkflowVersion'] = wdoc.Version
-            rec['RequestedBy'] = requestedBy
-            rec['UserIP'] = ip
-            rec['CreatedDate'] = str(datetime.datetime.now())
-            rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto)
-            rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto)
-            if no_onto:
-                rec['EDMMapping'] = []
-            else:
-                OBO = []
-                for obo in wdoc.EDMMapping:
-                    obo.id = None
-                    obo.ids = []
-                    OBO.append(obo)
-                rec['EDMMapping'] = OBO
-            new_id = restApiControl.insertExecution(rec)
+            #rec = table_structures.tableExecution.copy()
+            ex=models.WorkflowExecution_Model(
+                WorkflowID=workflowID,
+                WorkflowVersion=wdoc.Version,
+                RequestedBy=requestedBy,
+                UserIP=ip,
+                CreatedDate=datetime.datetime.now(),
+                Inputs=WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto),
+                Outputs=WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto),
+                EDMMapping=([] if no_onto else [models.EDMMapping_Model()]),
+
+            )
+            #rec['WorkflowID'] = workflowID
+            #rec['WorkflowVersion'] = wdoc.Version
+            #rec['RequestedBy'] = requestedBy
+            #rec['UserIP'] = ip
+            #rec['CreatedDate'] = str(datetime.datetime.now())
+            #rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto)
+            #rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto)
+            #if no_onto:
+            #    rec['EDMMapping'] = []
+            #else:
+            #    OBO = []
+            #    for obo in wdoc.EDMMapping:
+            #        obo.id = None
+            #        obo.ids = []
+            #        OBO.append(obo)
+            #    rec['EDMMapping'] = OBO
+            new_id = restApiControl.insertExecution(ex)
             return WorkflowExecutionContext(new_id)
 
         else:
@@ -421,10 +433,11 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
 def checkInputs(eid):
     execution = restApiControl.getExecutionRecord(eid)
     workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    if workflow is None: raise RuntimeError('XXX')
     workflow_input_templates = workflow.IOCard.Inputs
-    execution_inputs = restApiControl.getIODataRecord(execution.Inputs.DataSet)
+    execution_inputs = restApiControl.getIODataRecord(execution.Inputs)
 
-    for input_template in execution_inputs:
+    for input_template in execution_inputs.DataSet:
         name = input_template.Name
         object_type = input_template.Type
         valueType = input_template.ValueType

@@ -11,7 +11,7 @@ def anyPort():
     s.bind(('',0))
     return s.getsockname()[1]
 
-PORTS={'nameserver':anyPort(),'mongodb':anyPort(),'restApi':anyPort()}
+PORTS={'nameserver':anyPort(),'mongodb':anyPort(),'restApi':anyPort(),'web':anyPort()}
 PORTS=dict([(k,str(v)) for k,v in PORTS.items()])
 pprint(PORTS)
 
@@ -83,7 +83,7 @@ def scheduler(xprocess,restApi):
             'PYTHONPATH':mupifDB.__path__[0]+':'+mupifDB.__path__[0]+'/..',
             'MUPIF_NS':f'localhost:'+PORTS['nameserver'],
             'MUPIF_LOG_LEVEL':'DEBUG',
-            'MUPIFDB_REST_SERVER':'http://localhost:'+PORTS['restApi'],
+            'MUPIFDB_REST_SERVER':MUPIFDB_REST_SERVER,
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
         args = [ sys.executable, '-c', 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=.5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' ]
@@ -95,6 +95,30 @@ def scheduler(xprocess,restApi):
     xprocess.ensure("scheduler",Starter)
     yield
     xprocess.getinfo("scheduler").terminate()
+
+@pytest.fixture
+def web(xprocess):
+    class Starter(ProcessStarter):
+        env = {
+            'PYTHONUNBUFFERED':'1',
+            'PYTHONPATH':mupifDB.__path__[0],
+            #'MUPIF_NS':f'localhost:'+PORTS['nameserver'],
+            'MUPIF_LOG_LEVEL':'DEBUG',
+            'MUPIFDB_REST_SERVER':'http://localhost:'+PORTS['restApi'],
+            'MUPIFDB_WEB_FAKE_AUTH':'1',
+            'FLASK_APP':'webapi/index.py',
+        }
+        popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/..' }
+        args = [ sys.executable, '-m', 'flask','run','--host','localhost','--port',PORTS['web']]
+        timeout = 10
+        max_read_lines = 50
+        # pattern = 'Entering main loop to check for Pending executions'
+        pattern = ' * Running on http://localhost:'
+        terminate_on_interrupt = True
+    xprocess.ensure("web",Starter)
+    yield
+    xprocess.getinfo("web").terminate()
+
 
 #@pytest.fixture
 #def ex2server(scheduler):
@@ -122,7 +146,7 @@ def test_suite_cleanup():
 
 
 class TestFoo:
-    def test_workflowdemo01(self,scheduler):
+    def test_01_workflowdemo01(self,scheduler):
         wf=wfmini01.MiniWorkflow1()
         md=lambda k: wf.getMetadata(k)
         wid=md('ID')
@@ -138,9 +162,17 @@ class TestFoo:
         for i in range(10):
             data=restApiControl.getExecutionRecord(weid)
             print(f'Execution: {data.Status}')
+            if data.Status=='Finished': break
             # print(f'Pending executions: {restApiControl.getPendingExecutions(num_limit=10)}')
             time.sleep(1)
         assert data.Status=='Finished'
+    def test_02_web(self,scheduler,web):
+        server='http://localhost:'+PORTS['web']
+        import requests
+        for what in ('about','workflows','workflowexecutions','workflows/1'):
+            resp=requests.get(server+f'/{what}')
+            open(f'/tmp/{what.replace("/","_")}.html','wb').write(resp.content)
+            assert resp.status_code==200
 
         # time.sleep(10)
     # def test_schedule(self, ex2server):

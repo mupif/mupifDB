@@ -1,34 +1,45 @@
 import datetime
 import pydantic
 from pydantic.networks import IPvAnyAddress
-from pydantic import Field, AliasChoices
-from typing import Optional,List,Literal,Any
+from pydantic import Field, AliasChoices, BeforeValidator
+from typing import Optional,List,Literal,Any,Annotated
+import bson.objectid
+
+DatabaseID=Annotated[str,BeforeValidator(lambda x: str(x) if isinstance(x,bson.objectid.ObjectId) else x)]
+
+# for backwards compat only: load None where (possibly empty) string is required now
+NoneStr=Annotated[str,BeforeValidator(lambda x: '' if x is None else x)]
 
 class Parent_Model(pydantic.BaseModel):
     where: str
     id: str
 
 class MongoObj_Model(pydantic.BaseModel):
-    dbID: Optional[str]=Field(None,alias=AliasChoices('_id','dbID'),serialization_alias='_id') # type: ignore[arg-type]
+    dbID: Optional[DatabaseID]=Field(None,alias=AliasChoices('_id','dbID'),serialization_alias='_id') # type: ignore[arg-type]
     parent: Optional[Parent_Model]=None
 
 class UseCase_Model(MongoObj_Model):
     ucid: str
     Description: str
 
-class EDMMapping_Model(pydantic.BaseModel):
-    class EDMObject_Model(pydantic.BaseModel):
-        id: Optional[str]=None
-        ids: Optional[str]=None
-    Name: str
-    EDMEntity: str
-    EDMList: bool=False
-    DBName: str
-    OptionsFilter: Optional[str]=None
+
+class EDMMappingIDs_Model(pydantic.BaseModel):
     id: Optional[str]=None
-    ids: List[str]=[]
-    createNew: Optional[EDMObject_Model]=None
-    createFrom: Any=None ### XXXX what is this??
+    ids: Optional[List[str]]=[]
+
+
+class EDMMapping_Model(pydantic.BaseModel):
+    id: Optional[str]=None
+    ids: Optional[List[str]]=[]
+    Name: NoneStr=''
+    EDMEntity: NoneStr=''
+    EDMList: bool=False
+    DBName: NoneStr=''
+    OptionsFilter: Optional[str]=None
+    createNew: Optional[EDMMappingIDs_Model]=None
+    createFrom: Any='' ### XXXX what is this??
+
+
 
 
 class InputOutputBase_Model(pydantic.BaseModel):
@@ -57,7 +68,7 @@ class IODataRecordItem_Model(InputOutputBase_Model):
     Object: dict[str,Any]
 
 class IODataRecord_Model(MongoObj_Model):
-    DataSet: List[str]=[]
+    DataSet: List[IODataRecordItem_Model]=[]
     Name: str=''
     Type: Literal['Inputs','Outputs']
 
@@ -97,29 +108,30 @@ class Workflow_Model(MongoObj_Model):
 class WorkflowExecutionBase_Model(MongoObj_Model):
     WorkflowID: str
     WorkflowVersion: int
-    Status: Literal['Created','Pending','Scheduled','Running','Finished','Failed']
+    Status: Literal['Created','Pending','Scheduled','Running','Finished','Failed']='Created'
     CreatedDate: datetime.datetime
-    SubmittedDate: Optional[datetime.datetime]
-    StartDate: Optional[datetime.datetime]
-    EndDate: Optional[datetime.datetime]
+    SubmittedDate: Optional[datetime.datetime]=None
+    StartDate: Optional[datetime.datetime]=None
+    EndDate: Optional[datetime.datetime]=None
     ExecutionLog: Optional[str]=None
     RequestedBy: str
     UserIP: IPvAnyAddress|str # can be a hostname as well
-    Task_ID: str
-    label: str
-    Attempts: int
+    Task_ID: Optional[str]=None
+    label: str=''
+    Attempts: int=0
     EDMMapping: List[EDMMapping_Model]
     # these are only relevant while the execution being processed
     workflowURI: str|None=None
     loggerURI: str|None=None
 
 class WorkflowExecution_Model(WorkflowExecutionBase_Model):
-    Inputs: IODataRecord_Model
-    Outputs: IODataRecord_Model
-
-class WorkflowExecutionRecord_Model(WorkflowExecutionBase_Model):
     Inputs: str
     Outputs: str
+
+
+#class WorkflowExecutionRecord_Model(WorkflowExecutionBase_Model):
+#    Inputs: IODataRecord_Model
+#    Outputs: IODataRecord_Model
 
 
 

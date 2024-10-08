@@ -98,14 +98,11 @@ def getSettings(): return {}
 
 
 def fix_json(val: str) -> str:
-
     import re
     val = re.sub(r",[ \t\r\n]+}", "}", val)
     val = re.sub(r",[ \t\r\n]+\]", "]", val)
     val = val.replace("False", "false").replace("True", "true")
-    val
     return val
-
 
 def _getGrantaWorkflowRecordGeneral(wid, version: int):
     r = rGet(f"templates/{wid}", headers=getGrantaHeaders())

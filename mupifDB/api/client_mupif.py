@@ -6,6 +6,7 @@ import requests
 from .. import models
 from .client_util import *
 from rich import print_json
+from rich.pretty import pprint
 from typing import List,Optional
 
 @pydantic.validate_call
@@ -39,10 +40,12 @@ def getWorkflowRecordsWithUsecase(usecase):
 @pydantic.validate_call
 def getWorkflowRecord(wid: str) -> models.Workflow_Model|None:
     response = rGet(f"workflows/{wid}")
+    #print('AAA')
+    #print_json(data=response.json())
+    #print('BBB',response.json())
     if response.json() is None: return None
     # print(response)
     #if response.json() is None: return None
-    print_json(data=response.json())
     return models.Workflow_Model.model_validate(response.json())
 
 @pydantic.validate_call
@@ -54,14 +57,15 @@ def insertWorkflow(wf: models.Workflow_Model):
 @pydantic.validate_call
 def updateWorkflow(wf: models.Workflow_Model):
     response = rPatch("workflows/", data=json.dumps({"entity": wf.model_dump()}))
-    return response.json()
+    return models.Workflow_Model.model_validate(response.json())
 
 
 @pydantic.validate_call
-def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
+def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model|None:
     workflow_newest = getWorkflowRecord(wid)
+    print(f'WWW {workflow_newest=}')
     if workflow_newest is not None:
-        if workflow_newest.Version == version or version is None: # == -1 or version == None:
+        if workflow_newest.Version == version or version == -1:
             return workflow_newest
     return getWorkflowRecordFromHistory(wid, version)
 
@@ -69,8 +73,17 @@ def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
 # --------------------------------------------------
 # Workflows history
 # --------------------------------------------------
-def getWorkflowRecordFromHistory(wid, version) -> models.Workflow_Model: 
+@pydantic.validate_call
+def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Model|None:
     response = rGet(f"workflows_history/{wid}/{version}")
+    if response.json() is None: return None
+    #print('GGG')
+    #print_json(data=response.text)
+    #print('HHH')
+    #print_json(data=response.json())
+    #print('III')
+    #print_json(data=models.Workflow_Model.model_validate(response.json()).model_dump())
+    #print('KKK')
     return models.Workflow_Model.model_validate(response.json())
 
 @pydantic.validate_call
@@ -84,18 +97,19 @@ def insertWorkflowHistory(wf: models.Workflow_Model):
 # --------------------------------------------------
 
 @pydantic.validate_call
-def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecutionRecord_Model]:
+def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecution_Model]:
     query = "executions/?noparam"
+    if workflow_version is not None and workflow_version<0: workflow_version=None
     for n,a in [('num_limit',num_limit),('label',label),('workflow_id',workflow_id),('workflow_version',workflow_version),('status',status)]:
         if a is not None: query += f"&{n}={str(a)}"
     response = rGet(query)
-    return [models.WorkflowExecutionRecord_Model.model_validate(record) for record in response.json()]
+    return [models.WorkflowExecution_Model.model_validate(record) for record in response.json()]
 
 
 @pydantic.validate_call
-def getExecutionRecord(weid: str) -> models.WorkflowExecutionRecord_Model:
+def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
     response = rGet(f"executions/{weid}")
-    return models.WorkflowExecutionRecord_Model.model_validate(response.json())
+    return models.WorkflowExecution_Model.model_validate(response.json())
 
 def getScheduledExecutions(num_limit=None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
@@ -167,22 +181,27 @@ def setExecutionStatusFailed(execution_id):
 
 def createExecution(wid: str, version: int, ip: str, no_onto=False):
     wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)
-    #print_json(data=wec.model_dump())
     response = rPost("executions/create/", data=wec.model_dump_json())
+
     return response.json()
 
-def insertExecution(data):
-    response = rPost("executions/", data=json.dumps({"entity": data}))
+def insertExecution(m: models.WorkflowExecution_Model):
+    response = rPost("executions/", data=m.model_dump_json())
     return response.json()
 
-def getExecutionInputRecord(weid):
+def getExecutionInputRecord(weid) -> List[models.IODataRecordItem_Model]:
     response = rGet(f"executions/{weid}/inputs/")
-    return response.json()
-
-def getExecutionOutputRecord(weid):
-    response = rGet(f"executions/{weid}/outputs/")
+    if response.json() is None: return None
+    #print(200*'#')
     #print_json(data=response.json())
+    # return models.IODataRecord_Model.model_validate(response.json())
     return [models.IODataRecordItem_Model.model_validate(record) for record in response.json()]
+
+def getExecutionOutputRecord(weid) -> List[models.IODataRecordItem_Model]:
+    response = rGet(f"executions/{weid}/outputs/")
+    # if response.json() == []: return None
+    return [models.IODataRecordItem_Model.model_validate(record) for record in response.json()]
+    # return models.IODataRecord_Model.model_validate(response.json())
 
 def getExecutionInputRecordItem(weid, name, obj_id):
     io_data = getExecutionInputRecord(weid)
@@ -204,10 +223,13 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 @pydantic.validate_call
 def getIODataRecord(iod_id: str):
     response = rGet(f"iodata/{iod_id}")
-    return [models.IODataRecordItem_Model.model_validate(i) for i in response.json()]
+    #print(200*'#')
+    #print_json(data=response.json())
+    return models.IODataRecord_Model.model_validate(response.json())
 
+@pydantic.validate_call
 def insertIODataRecord(data: models.IODataRecord_Model):
-    response = rPost("iodata/", data=json.dumps({"entity": data.model_dump()}))
+    response = rPost("iodata/", data=data.model_dump_json())
     return response.json()
 
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
@@ -289,7 +311,8 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # Settings
 # --------------------------------------------------
 
-def getSettings():
+def getSettings(maybe_init_db: bool=False):
+    if maybe_init_db: rGet("database/maybe_init")
     response = rGet("settings")
     return response.json()
 

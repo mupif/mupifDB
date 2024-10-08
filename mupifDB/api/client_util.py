@@ -4,6 +4,7 @@ from requests.models import Response
 import logging
 import json
 from typing import TypeVar,Any,Callable,Optional,Dict
+from rich import print_json
 log=logging.getLogger(__name__)
 
 
@@ -27,10 +28,26 @@ def setRESTserver(r: str) -> None:
     RESTserver=RESTserverMuPIF=r+'/'
 
 def _check(resp: Response) -> Response:
+    (log.info if 200<=resp.status_code<300 else log.error)(f'{resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}')
+    if resp.status_code==422: # Unprocessable entity
+        log.error(100*'*'+'\nUnprocessable entity\n'+100*'*')
+        txt=json.loads(resp.text)
+        print(txt['message'])
+        try:
+            import ast
+            print_json(data=ast.literal_eval(txt['message']))
+        except: print('(not renderable as JSON)')
+    #try:
+    #    txt=json.loads(resp.text)
+    #    print_json(txt['message'])
+    #    #if isinstance(B:=resp.request.body,bytes): print_json(B.decode('utf-8'))
+    #    #elif isinstance(B,str): print_json(B)
+    #    #else: print_json("null")
+    #except: pass
     if 200 <= resp.status_code <= 299: return resp
     raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
 
-_defaultTimeout=10
+_defaultTimeout=4
 
 OStr=Optional[str]
 
