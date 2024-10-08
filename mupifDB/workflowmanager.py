@@ -679,7 +679,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                             f = open(full_path, 'wb')
                             f.write(pfile)
                             f.close()
-                            field = mupif.Field.makeFromHdf5(full_path)[0]
+                            field = mupif.Field.makeFromHdf5(fileName=full_path)[0]
                             app.set(field, app_obj_id)
                 else:
                     raise ValueError('Handling of io param of type %s is not implemented' % object_type)

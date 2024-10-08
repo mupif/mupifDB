@@ -185,6 +185,7 @@ def createExecution(wid: str, version: int, ip: str, no_onto=False):
 
     return response.json()
 
+@pydantic.validate_call
 def insertExecution(m: models.WorkflowExecution_Model):
     response = rPost("executions/", data=m.model_dump_json())
     return response.json()

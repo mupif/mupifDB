@@ -20,7 +20,9 @@ class MongoObj_Model(pydantic.BaseModel):
 
 class UseCase_Model(MongoObj_Model):
     ucid: str
-    Description: str
+    projectName: str=''
+    projectLogo: str=''
+    Description: str=''
 
 
 class EDMMappingIDs_Model(pydantic.BaseModel):
@@ -46,7 +48,7 @@ class InputOutputBase_Model(pydantic.BaseModel):
     Name: str
     Description: Optional[str]=None
     Type: str
-    Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))                   # type: ignore[arg-type]
+    Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))        # type: ignore[arg-type]
     ValueType: Literal['Vector','Scalar','Tensor','VectorArray']='Scalar'
     Units: str
     ObjID: str|List[str] = Field([],alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type]

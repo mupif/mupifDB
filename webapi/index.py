@@ -760,11 +760,11 @@ def setExecutionInputs(weid):
             msg = ""
             c = 0
             for i in execution_inputs:
-                if i.get('                           EDMPath', None) is None:
-                    name = i['Name']
-                    objID = i['ObjID']
+                if i.EDMPath is None:
+                    name = i.Name
+                    objID = i.ObjID
                     value = request.form.get('Value_%d' % c, '')
-                    units = i['Units']
+                    units = i.Units
 
                     # set Link to output data
                     c_eid = request.form.get('c_eid_%d' % c, '')
@@ -775,12 +775,12 @@ def setExecutionInputs(weid):
                         restApiControl.setExecutionInputObject(weid, name, objID, {})
                     else:
                         restApiControl.setExecutionInputLink(weid, name, objID, '', '', '')
-                        if i['Type'] == 'mupif.Property':
+                        if i.Type == 'mupif.Property':
                             msg += 'Setting %s (ObjID %s) to %s [%s]</br>' % (name, objID, value, units)
 
                             object_dict = {
                                 'ClassName': 'ConstantProperty',
-                                'ValueType': i['ValueType'],
+                                'ValueType': i.ValueType,
                                 'DataID': i.TypeID.replace('mupif.DataID.', ''),
                                 'Unit': i.Units,
                                 'Value': literal_eval(value),
@@ -788,7 +788,7 @@ def setExecutionInputs(weid):
                             }
                             restApiControl.setExecutionInputObject(weid, name, objID, object_dict)
 
-                        elif i['Type'] == 'mupif.String':
+                        elif i.Type == 'mupif.String':
                             msg += 'Setting %s (ObjID %s) to %s</br>' % (name, objID, value)
                             valuetype = i.ValueType
                             strval = str(value)
@@ -876,7 +876,7 @@ def setExecutionInputs(weid):
     for i in execution_inputs:
         if i.EDMPath:
             any_edm_path = True
-        if i.Link.ExecId or i.Link.Name or i.Link.ObjID:
+        if i.Link.ExecID or i.Link.Name or i.Link.ObjID:
             any_execution_link = True
 
     show_execution_links = any_execution_link or args.get('show_execution_links', False)
@@ -932,11 +932,7 @@ def setExecutionInputs(weid):
                     object_path = splitted[1]
 
                     # find base object info
-                    info = {}
-                    for ii in onto_base_objects:
-                        if ii.Name == base_object_name:
-                            info = ii
-
+                    info = [i for i in onto_base_objects if i.Name == base_object_name][0]
                     # get the desired object
                     onto_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
                     if onto_data is not None and type(onto_data) is dict:
@@ -947,8 +943,8 @@ def setExecutionInputs(weid):
                             # form += str(value) + ' ' + str(unit)
 
                 else:
-                    if i['Object'].get('Value', None) is not None:
-                        form += str(i['Object']['Value'])
+                    if i.Object.get('Value', None) is not None:
+                        form += str(i.Object['Value'])
             form += "</td>"
 
         elif input_type == "mupif.String":
@@ -977,19 +973,16 @@ def setExecutionInputs(weid):
                     object_path = splitted[1]
 
                     # find base object info
-                    info = {}
-                    for ii in onto_base_objects:
-                        if ii.Name == base_object_name:
-                            info = ii
+                    info = [i for i in onto_base_objects if i.Name == base_object_name][0]
 
                     # get the desired object
                     onto_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
                     if onto_data is not None and type(onto_data) is dict:
-                        value = onto_data.value
+                        value = onto_data['value']
                         if value is not None:
                             form += str(value)
                 else:
-                    val = i.Object.Value
+                    val = i.Object['Value']
                     if val is not None:
                         if i.ValueType == 'Vector':
                             form += str(list(val))
@@ -999,7 +992,7 @@ def setExecutionInputs(weid):
             form += "</td>"
 
         else:
-            form += '<td>' + str(i.Object.Value) + '</td>'
+            form += '<td>' + str(i.Object['Value']) + '</td>'
 
         form += '<td>' + str(i.Units) + '</td>'
         form += '<td>' + str(i.Name) + '</td>'
