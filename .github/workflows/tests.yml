@@ -42,3 +42,10 @@ jobs:
       timeout-minutes: 2
       run: |
         python -m pytest .
+    - name: webapi test
+      timeout-minutes: 2
+      run: |
+        make & # runs all services, a separate instance
+        sleep 10
+        bash tools/webstest.sh
+        kill $! # terminate make
