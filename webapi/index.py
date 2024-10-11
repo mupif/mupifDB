@@ -30,6 +30,11 @@ from flask_login import (
 )
 import logging
 
+# must run with --debug for logs to appear
+log=logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
+
 from oauthlib.oauth2 import WebApplicationClient
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
@@ -109,9 +114,6 @@ login_manager.init_app(app)
 client = WebApplicationClient(GOOGLE_CLIENT_ID)
 
 
-# must run with --debug for logs to appear
-log=logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
 
 
 class User(UserMixin):

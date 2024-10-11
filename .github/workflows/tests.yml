@@ -47,5 +47,5 @@ jobs:
       run: |
         make & # runs all services, a separate instance
         sleep 10
-        bash tools/webstest.sh
+        pushd tools; bash webstest.sh; popd # contains relative paths to uploaded files
         kill $! # terminate make

@@ -98,7 +98,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
 
     # first check if workflow with wid already exist in workflows
     w_rec = restApiControl.getWorkflowRecord(rec.wid)
-    log.error(f'{w_rec=}')
+    log.debug(f'{w_rec=}')
     if w_rec is None:  # can safely create a new record in workflows collection
         version = 1
         rec.Version = version
