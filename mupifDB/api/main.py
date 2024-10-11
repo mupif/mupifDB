@@ -4,7 +4,7 @@ log=logging.getLogger('mupifDB.api.server')
 import argparse, sys
 _parser=argparse.ArgumentParser()
 _parser.add_argument('--export-openapi',default='',metavar='FILE')
-cmdline_opts=_parser.parse_args()
+cmdline_opts,_=_parser.parse_known_args() # don't error on other args, such as --log-level, consumed by uvicorn.run
 if __name__ == '__main__' and not cmdline_opts.export_openapi:
     print('SERVING')
     import uvicorn
