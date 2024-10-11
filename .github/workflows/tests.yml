@@ -47,5 +47,5 @@ jobs:
       run: |
         make & # runs all services, a separate instance
         sleep 10
-        cd tools; bash webstest.sh # contains relative paths to uploaded files
+        cd tools; bash webtest.sh # contains relative paths to uploaded files
         kill $! # terminate make
