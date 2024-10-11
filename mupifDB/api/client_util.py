@@ -104,7 +104,7 @@ def logMessage(*,name,levelno,pathname,lineno,created,**kw):
     previous_level = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
     try:
-        response = rPost("logs/", data=json.dumps({"entity": data}))
+        response = rPost("logs/", data=json.dumps(data))
     finally:
         logging.disable(previous_level)
     return response.json()

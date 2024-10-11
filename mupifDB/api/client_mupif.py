@@ -50,13 +50,14 @@ def getWorkflowRecord(wid: str) -> models.Workflow_Model|None:
 
 @pydantic.validate_call
 def insertWorkflow(wf: models.Workflow_Model):
-    # print_json(data=wf.model_dump())
-    response = rPost("workflows/", data=json.dumps({"entity": wf.model_dump()}))
+    print('QQQQ')
+    print_json(data=wf.model_dump())
+    response = rPost("workflows/", data=wf.model_dump_json())
     return response.json()
 
 @pydantic.validate_call
 def updateWorkflow(wf: models.Workflow_Model):
-    response = rPatch("workflows/", data=json.dumps({"entity": wf.model_dump()}))
+    response = rPatch("workflows/", data=wf.model_dump_json())
     return models.Workflow_Model.model_validate(response.json())
 
 
@@ -88,7 +89,7 @@ def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Mode
 
 @pydantic.validate_call
 def insertWorkflowHistory(wf: models.Workflow_Model):
-    response = rPost("workflows_history/", data=json.dumps({"entity": wf.model_dump()}))
+    response = rPost("workflows_history/", data=wf.model_dump_json())
     return response.json()
 
 
@@ -192,7 +193,7 @@ def insertExecution(m: models.WorkflowExecution_Model):
 
 def getExecutionInputRecord(weid) -> List[models.IODataRecordItem_Model]:
     response = rGet(f"executions/{weid}/inputs/")
-    if response.json() is None: return None
+    # if response.json() is None: return []
     #print(200*'#')
     #print_json(data=response.json())
     # return models.IODataRecord_Model.model_validate(response.json())

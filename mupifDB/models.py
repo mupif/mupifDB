@@ -10,12 +10,32 @@ DatabaseID=Annotated[str,BeforeValidator(lambda x: str(x) if isinstance(x,bson.o
 # for backwards compat only: load None where (possibly empty) string is required now
 NoneStr=Annotated[str,BeforeValidator(lambda x: '' if x is None else x)]
 
-class Parent_Model(pydantic.BaseModel):
+
+ExecutionStatus_Literal=Literal['Created','Pending','Scheduled','Running','Finished','Failed']
+
+class StrictBase(pydantic.BaseModel):
+    model_config=pydantic.ConfigDict(extra='forbid')
+    """
+    The extra functions override pydantic defaults https://github.com/pydantic/pydantic/issues/10141
+    so that aliased fields are always (de)serialized as the alias name, but exposed as the orignal name in python
+    (e.g. _id and dbID)
+    """
+    model_config = pydantic.ConfigDict(populate_by_name=True)
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        kwargs.setdefault("by_alias", True)
+        return super().model_dump(**kwargs)
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        kwargs.setdefault("by_alias", True)
+        return super().model_dump_json(**kwargs)
+
+class Parent_Model(StrictBase):
     where: str
     id: str
 
-class MongoObj_Model(pydantic.BaseModel):
-    dbID: Optional[DatabaseID]=Field(None,alias=AliasChoices('_id','dbID'),serialization_alias='_id') # type: ignore[arg-type]
+class MongoObj_Model(StrictBase):
+    dbID: Optional[DatabaseID]=Field(None,alias='_id') # type: ignore[arg-type]
     parent: Optional[Parent_Model]=None
 
 class UseCase_Model(MongoObj_Model):
@@ -25,12 +45,12 @@ class UseCase_Model(MongoObj_Model):
     Description: str=''
 
 
-class EDMMappingIDs_Model(pydantic.BaseModel):
+class EDMMappingIDs_Model(StrictBase):
     id: Optional[str]=None
     ids: Optional[List[str]]=[]
 
 
-class EDMMapping_Model(pydantic.BaseModel):
+class EDMMapping_Model(StrictBase):
     id: Optional[str]=None
     ids: Optional[List[str]]=[]
     Name: NoneStr=''
@@ -44,7 +64,7 @@ class EDMMapping_Model(pydantic.BaseModel):
 
 
 
-class InputOutputBase_Model(pydantic.BaseModel):
+class InputOutputBase_Model(StrictBase):
     Name: str
     Description: Optional[str]=None
     Type: str
@@ -59,7 +79,7 @@ class InputOutputBase_Model(pydantic.BaseModel):
 
 
 class IODataRecordItem_Model(InputOutputBase_Model):
-    class Link_Model(pydantic.BaseModel):
+    class Link_Model(StrictBase):
         ExecID: str=''
         Name: str=''
         ObjID: str=''
@@ -75,7 +95,7 @@ class IODataRecord_Model(MongoObj_Model):
     Type: Literal['Inputs','Outputs']
 
 
-class WorkflowExecutionCreate_Model(pydantic.BaseModel):
+class WorkflowExecutionCreate_Model(StrictBase):
     wid: str
     version: int
     ip: str
@@ -83,11 +103,11 @@ class WorkflowExecutionCreate_Model(pydantic.BaseModel):
 
 
 class Workflow_Model(MongoObj_Model):
-    class Model_Model(pydantic.BaseModel):
+    class Model_Model(StrictBase):
         Name: str
         Jobmanager: str
         Instantiate: Optional[bool]=None
-    class IOCard_Model(pydantic.BaseModel):
+    class IOCard_Model(StrictBase):
         class Input_Model(InputOutputBase_Model):
             Compulsory: bool = Field(...,validation_alias='Required')
             Set_at: Literal['timestep']
@@ -107,10 +127,10 @@ class Workflow_Model(MongoObj_Model):
     Version: int=1
 
 
-class WorkflowExecutionBase_Model(MongoObj_Model):
+class WorkflowExecution_Model(MongoObj_Model):
     WorkflowID: str
     WorkflowVersion: int
-    Status: Literal['Created','Pending','Scheduled','Running','Finished','Failed']='Created'
+    Status: ExecutionStatus_Literal='Created'
     CreatedDate: datetime.datetime
     SubmittedDate: Optional[datetime.datetime]=None
     StartDate: Optional[datetime.datetime]=None
@@ -125,15 +145,19 @@ class WorkflowExecutionBase_Model(MongoObj_Model):
     # these are only relevant while the execution being processed
     workflowURI: str|None=None
     loggerURI: str|None=None
-
-class WorkflowExecution_Model(WorkflowExecutionBase_Model):
     Inputs: str
     Outputs: str
-
 
 #class WorkflowExecutionRecord_Model(WorkflowExecutionBase_Model):
 #    Inputs: IODataRecord_Model
 #    Outputs: IODataRecord_Model
 
+
+#class ExecutionQuery_Model(StrictBase):
+#    status: Optional[ExecutionStatus_Literal]=Field(None,alias='Status')
+#    workflow_version: Optional[int]=Field(None,alias='WorkflowVersion')
+#    workflow_id: Optional[str]=Field(None,alias='WorkflowID')
+#    label: Optional[str]=None
+#    num_limit: int=999999
 
 

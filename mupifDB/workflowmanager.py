@@ -13,6 +13,7 @@ if api_type=='granta':
 import Pyro5, Pyro5.api
 import mupif
 import mupif.pyroutil
+import logging
 
 
 from mupifDB import models
@@ -22,6 +23,8 @@ from typing import Literal,Any,List
 from . import table_structures
 
 from mupifDB.api.client_util import api_type
+
+log=logging.getLogger()
 
 daemon = None
 def getDaemon():
@@ -46,10 +49,10 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
     @param modulename
     @param classname
     """
-    insertWorkflowDefinition_model(
+    return insertWorkflowDefinition_model(
         source=source,
         rec=models.Workflow_Model(
-            dbID=None, # this should not be necessary, but pyright warns about it?
+            # dbID=None, # this should not be necessary, but pyright warns about it?
             wid=wid,
             Description=description,
             UseCase=useCase,
@@ -95,6 +98,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
 
     # first check if workflow with wid already exist in workflows
     w_rec = restApiControl.getWorkflowRecord(rec.wid)
+    log.error(f'{w_rec=}')
     if w_rec is None:  # can safely create a new record in workflows collection
         version = 1
         rec.Version = version
@@ -107,10 +111,11 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         # print(w_rec)
 
         w_rec.dbID=None  # remove original document id
+        w_rec._id=None
         restApiControl.insertWorkflowHistory(w_rec)
         # update the latest document
         w_rec.Version=w_rec.Version+1
-        res_id = restApiControl.updateWorkflow(rec).dbID
+        res_id = restApiControl.updateWorkflow(w_rec).dbID
         if res_id:
             return res_id
         else:
@@ -161,29 +166,21 @@ class WorkflowExecutionIODataSet:
         # loop over workflow inputs or outputs
         for io in {'Inputs':IOCard.Inputs,'Outputs':IOCard.Outputs}[type]:  # type: ignore 
             for objid in ([io.ObjID] if isinstance(io.ObjID,str) else io.ObjID):
-                data.append(models.IODataRecordItem_Model.model_validate(
-                    # upcast to the common base class (model_validate ignores unknown keys)
-                    models.InputOutputBase_Model.model_validate(io.model_dump()).model_dump()
-                    |
-                    dict(Compulsory=io.Compulsory if type=='Inputs' else False)
-                ))
-                #data.append({
-                #    'Name': io.Name,
-                #    'Type': io.Type,
-                #    'Object': {},
-                #    'Value': None,
-                #    'ValueType': io.ValueType,
-                #    'TypeID': io.Type_ID,
-                #    'Units': io.Units,
-                #    'ObjID': objid,
-                #    'EDMPath': None if no_onto else io.EDMPath,
-                #    'EDMList': False if no_onto else io.EDMList,
-                #    'Compulsory': (io.Compulsory if type=='Inputs' else False),
-                #    'FileID': None,
-                #    'Link': {'ExecID': "", 'Name': "", 'ObjID': ""}
-                #})
-        #rec['Type'] = type
-        #rec['DataSet'] = data
+                data.append(
+                    models.IODataRecordItem_Model.model_validate(
+                        # upcast to common base class (InputOutputBase_Model), filtering only inherited keys
+                        dict([(k,v) for k,v in io.model_dump() if k in models.InputOutputBase_Model.model_fields.keys()])
+                        |
+                        dict(Compulsory=io.Compulsory if type=='Inputs' else False)
+                    )
+                )
+                #data.append(
+                #    models.IODataRecordItem_Model.model_validate(
+                #    # upcast to the common base class (model_validate ignores unknown keys)
+                #    models.InputOutputBase_Model.model_validate(io.model_dump()).model_dump()
+                #    |
+                #    dict(Compulsory=io.Compulsory if type=='Inputs' else False)
+                #))
         rec_id = restApiControl.insertIODataRecord(models.IODataRecord_Model(Type=type,DataSet=data,dbID=None))
         return rec_id
 

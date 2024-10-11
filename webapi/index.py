@@ -29,7 +29,7 @@ from flask_login import (
     UserMixin
 )
 import logging
-log = logging.getLogger(__name__)
+
 from oauthlib.oauth2 import WebApplicationClient
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
@@ -107,6 +107,11 @@ CORS(app, resources={r"/static/*": {"origins": "*"}})
 login_manager = LoginManager()
 login_manager.init_app(app)
 client = WebApplicationClient(GOOGLE_CLIENT_ID)
+
+
+# must run with --debug for logs to appear
+log=logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 
 class User(UserMixin):
@@ -523,7 +528,9 @@ def addWorkflow(usecaseid):
     fileID = None
     wid = None
     useCase = str(usecaseid)
-    if request.form and admin_rights:
+    log.info(f"ADDING USECASE (maybe) {request.files=} {request.form=} {admin_rights=}")
+    # request.form is okay from browser, but fails from CURL; so use files which are uploaded instead to detect
+    if (request.form or request.files) and admin_rights:
         print(request.files)
         workflowInputs = None
         workflowOutputs = None
@@ -538,11 +545,11 @@ def addWorkflow(usecaseid):
             zf = zipfile.ZipFile(zip_full_path, mode="w", compression=zipfile.ZIP_DEFLATED)
             filenames = ['file_add_1', 'file_add_2', 'file_add_3', 'file_add_4', 'file_add_5', 'file_workflow']
             for filename in filenames:
-                print("checking file " + filename)
+                log.debug(f"checking file {filename} ({request.files=})")
                 if filename in request.files:
                     file = request.files[filename]
                     if file.filename != '':
-                        print(filename + " file given")
+                        log.debug(f'{filename}: posted')
                         if file and (allowed_file(file.filename) or filename != 'file_workflow'):
                             myfile = open(tempDir + "/" + file.filename, mode="wb")
                             myfile.write(file.read())
@@ -550,7 +557,7 @@ def addWorkflow(usecaseid):
                             zf.write(tempDir + "/" + file.filename, arcname=file.filename)
 
                             if filename == 'file_workflow':
-                                print("analyzing workflow file")
+                                log.debug(f"Analyzing workflow file {file.filename}")
                                 modulename = file.filename.replace(".py", "")
                                 sys.path.append(tempDir)
                                 moduleImport = importlib.import_module(modulename)
@@ -572,11 +579,13 @@ def addWorkflow(usecaseid):
                                     models_md = workflow_instance.getMetadata('Models')
                                     EDM_Mapping = workflow_instance.getMetadata('EDMMapping', [])
                                 else:
-                                    print("File does not contain only one class")
+                                    log.error(f"File {file.filename} contains {len(classes)} classes (must be one). {classes=}")
                     else:
-                        print(filename + " file NOT provided")
+                        log.debug(f"{filename}: empty")
             zf.close()
+            # log.debug(f'{wid=} {workflowInputs=} {workflowOutputs=} {description=} {classname=}')
             if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None and classname is not None:
+                log.info('adding workflow')
                 new_workflow_id = workflowmanager.insertWorkflowDefinition(
                     wid=wid,
                     description=description,
@@ -591,9 +600,11 @@ def addWorkflow(usecaseid):
                 )
 
     if new_workflow_id is not None:
-        html = '<h3>Workflow has been registered</h3>'
-        html += f'<a href="{BASE_URL}/workflows/'+str(wid)+'">Go to workflow detail</a>'
-        return my_render_template('basic.html', body=Markup(html), login=login_header_html())
+        # redirect to the new workflow page; this allows us to get the new wid via redirected URL in curl
+        return redirect(f'{BASE_URL}/workflows/{wid}')
+        #html = '<h3>Workflow has been registered</h3>'
+        #html += f'<a href="{BASE_URL}/workflows/'+str(wid)+'">Go to workflow detail</a>'
+        #return my_render_template('basic.html', body=Markup(html), login=login_header_html())
     else:
         # generate input form
         html = message
