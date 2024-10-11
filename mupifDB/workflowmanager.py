@@ -20,8 +20,6 @@ from mupifDB import models
 import pydantic
 from typing import Literal,Any,List
 
-from . import table_structures
-
 from mupifDB.api.client_util import api_type
 
 log=logging.getLogger()
@@ -244,7 +242,6 @@ class WorkflowExecutionContext:
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         if wdoc is not None:
             # IOCard = wdoc['IOCard']
-            #rec = table_structures.tableExecution.copy()
             ex=models.WorkflowExecution_Model(
                 WorkflowID=workflowID,
                 WorkflowVersion=wdoc.Version,

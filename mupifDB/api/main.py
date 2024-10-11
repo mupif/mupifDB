@@ -44,9 +44,6 @@ from rich import print_json
 from rich.pretty import pprint
 
 
-
-
-from mupifDB import table_structures
 from mupifDB import models
 
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
@@ -161,33 +158,22 @@ def read_root():
 # --------------------------------------------------
 
 @app.get("/usecases/", tags=["Usecases"])
-def get_usecases():
-    output = []
+def get_usecases() -> List[models.UseCase_Model]:
     res = db.UseCases.find()
-    if res:
-        for s in res:
-            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableUseCase))
-        return output
-    return []
+    return [models.UseCase_Model.model_validate(r) for r in res]
 
 
 @app.get("/usecases/{uid}", tags=["Usecases"])
 def get_usecase(uid: str):
     res = db.UseCases.find_one({"ucid": uid})
-    if res is not None:
-        return table_structures.extendRecord(fix_id(res), table_structures.tableUseCase)
-    return None
+    if res is None: raise KeyError(f'Database reports no workflow with ucid={uid}.')
+    return models.Usecase_Model.model_validate(res)
 
 
 @app.get("/usecases/{uid}/workflows", tags=["Usecases"])
-def get_usecase_workflows(uid: str):
-    output = []
+def get_usecase_workflows(uid: str) -> List[models.Workflow_Model]:
     res = db.Workflows.find({"UseCase": uid})
-    if res:
-        for s in res:
-            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableWorkflow))
-        return output
-    return []
+    return [models.Workflow_Model.model_validate(r) for r in res]
 
 
 @app.post("/usecases/", tags=["Usecases"])
@@ -201,24 +187,17 @@ def post_usecase(uc: models.UseCase_Model):
 # --------------------------------------------------
 
 @app.get("/workflows/", tags=["Workflows"])
-def get_workflows():
-    output = []
+def get_workflows() -> List[models.Workflow_Model]:
     res = db.Workflows.find()
     return [models.Workflow_Model.model_validate(r) for r in res]
-    #if res:
-    #    for s in res:
-    #        output.append(table_structures.extendRecord(fix_id(s), table_structures.tableWorkflow))
-    #    return output
-    #return []
 
 
 @app.get("/workflows/{workflow_id}", tags=["Workflows"])
-def get_workflow(workflow_id: str):
+def get_workflow(workflow_id: str) -> models.Workflow_Model:
     res = db.Workflows.find_one({"wid": workflow_id})
-    if res: return models.Workflow_Model.model_validate(res)
-    #if res:
-    #    return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
-    return None
+    if res is None: raise KeyError(f'Database reports no workflow with wid={workflow_id}.')
+    return models.Workflow_Model.model_validate(res)
+
 
 
 
@@ -253,11 +232,9 @@ def insert_workflow_history(wf: models.Workflow_Model):
 def get_workflow_history(workflow_id: str, workflow_version: int) -> models.Workflow_Model|None:
     #print(f'AAA: {workflow_id=} {workflow_version=}')
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
-    #print(f'BBB: {res}')
-    if res:
-        # return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
-        return models.Workflow_Model.model_validate(res)
-    return None
+    if res is None: raise KeyError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
+    return models.Workflow_Model.model_validate(res)
+
 
 
 # --------------------------------------------------
@@ -283,11 +260,6 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
     res = db.WorkflowExecutions.find(filtering).sort('SubmittedDate', 1).limit(num_limit)
     # pprint(res)
     return [models.WorkflowExecution_Model.model_validate(r) for r in res]
-    #if res:
-    #    for s in res:
-    #        output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
-    #    return output
-    #return []
 
 
 @app.get("/executions/{uid}", tags=["Executions"])
@@ -309,6 +281,7 @@ def insert_execution(data: models.WorkflowExecution_Model) -> str:
     res = db.WorkflowExecutions.insert_one(_model2jsondict(data))
     return str(res.inserted_id)
 
+### XXX: fix return annotations
 
 @app.get("/executions/{uid}/inputs/", tags=["Executions"])
 def get_execution_inputs(uid: str) -> List[models.IODataRecordItem_Model]:
@@ -424,7 +397,7 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
 
 
 @app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
+def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}})
     return get_execution(uid)
 
@@ -434,7 +407,7 @@ class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
 
 
 @app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
-def modify_execution(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID]):
+def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID]):
     for d in data:
         db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": d.name}, {"$set": {"EDMMapping.$.id": d.value}})
     return get_execution(uid)
@@ -446,7 +419,7 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
 
 
 @app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
+def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}})
     return get_execution(uid)
 

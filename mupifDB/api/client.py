@@ -12,7 +12,6 @@ import pydantic
 from typing import List,Optional,Literal
 
 from .. import models
-from .. import table_structures
 
 from rich import print_json
 from rich.pretty import pprint
