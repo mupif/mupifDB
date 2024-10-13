@@ -2,13 +2,15 @@ import datetime
 import pydantic
 from pydantic.networks import IPvAnyAddress
 from pydantic import Field, AliasChoices, BeforeValidator
-from typing import Optional,List,Literal,Any,Annotated
+from typing import Optional,List,Literal,Any,Annotated,Dict
 import bson.objectid
 
 DatabaseID=Annotated[str,BeforeValidator(lambda x: str(x) if isinstance(x,bson.objectid.ObjectId) else x)]
 
 # for backwards compat only: load None where (possibly empty) string is required now
-NoneStr=Annotated[str,BeforeValidator(lambda x: '' if x is None else x)]
+Str_EmptyFromNone=Annotated[str,BeforeValidator(lambda x: '' if x is None else x)]
+# opposite: saved as empty string, but should be loaded as None if empty
+None_FromEmptyStr=Annotated[None,BeforeValidator(lambda x: None if x=='' else x)]
 
 
 ExecutionStatus_Literal=Literal['Created','Pending','Scheduled','Running','Finished','Failed']
@@ -61,11 +63,11 @@ class EDMMappingIDs_Model(StrictBase):
 class EDMMapping_Model(StrictBase):
     id: Optional[str]=None
     ids: Optional[List[str]]=[]
-    Name: NoneStr=''
-    EDMEntity: NoneStr=''
+    Name: Str_EmptyFromNone=''
+    EDMEntity: Str_EmptyFromNone=''
     EDMList: bool=False
-    DBName: NoneStr=''
-    OptionsFilter: Optional[str]=None
+    DBName: Str_EmptyFromNone=''
+    OptionsFilter: Dict[str,str]={}
     createNew: Optional[EDMMappingIDs_Model]=None
     createFrom: Any='' ### XXXX what is this??
 
@@ -76,25 +78,25 @@ class InputOutputBase_Model(StrictBase):
     Name: str
     Description: Optional[str]=None
     Type: str
-    Type_ID: str = Field(...,alias=AliasChoices('Type_ID','TypeID'))        # type: ignore[arg-type]
-    ValueType: Literal['Vector','Scalar','Tensor','VectorArray']='Scalar'
+    Type_ID: str = Field('',alias=AliasChoices('Type_ID','TypeID'))   # XXX deema: '' as default     # type: ignore[arg-type]
+    ValueType: Literal['Vector','Scalar','Tensor','ScalarArray','VectorArray','TensorArray','']='Scalar'  # deema: allow ''
     Units: str
-    ObjID: str|List[str] = Field([],alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type]
+    ObjID: Str_EmptyFromNone|List[str]|None = Field([],alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type] # XXX: test reads None
     EDMPath: Optional[str]=None
+    # allow transparent read-only access as TypeID from python as well
     @property
     def TypeID(self) -> str: return self.Type_ID
-    # @property.setter(self,val): self.Type_ID=val
 
 
 class IODataRecordItem_Model(InputOutputBase_Model):
     class Link_Model(StrictBase):
-        ExecID: str=''
-        Name: str=''
-        ObjID: str=''
-    Value: Optional[dict[str,Any]]=None
+        ExecID: Str_EmptyFromNone='' # XXX: test loads None
+        Name: Str_EmptyFromNone=''   # XXX: test loads None
+        ObjID: Str_EmptyFromNone=''  # XXX: test loads None
+    Value: Optional[dict[str,Any]|str]=None # deema: allow str
     Link: Link_Model=Link_Model()
     FileID: Optional[str]=None
-    Compulsory: bool=False
+    Compulsory: Optional[bool]=False # deema: allow None
     Object: dict[str,Any]
 
 class IODataRecord_Model(MongoObj_Model):
@@ -118,9 +120,9 @@ class Workflow_Model(MongoObj_Model):
     class IOCard_Model(StrictBase):
         class Input_Model(InputOutputBase_Model):
             Compulsory: bool = Field(...,validation_alias='Required')
-            Set_at: Literal['timestep']
+            Set_at: Literal['timestep','initialization']='timestep'
         class Output_Model(InputOutputBase_Model):
-            EDMList: Optional[str]=None
+            EDMList: bool=False # XXX: document
         Inputs: List[Input_Model]
         Outputs: List[Output_Model]
     wid: str
@@ -130,7 +132,7 @@ class Workflow_Model(MongoObj_Model):
     IOCard: IOCard_Model
     modulename: str
     classname: str
-    Models: List[Model_Model]
+    Models: List[Model_Model]=[] # XXX: test needs unset
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
 
@@ -140,25 +142,21 @@ class WorkflowExecution_Model(MongoObj_Model):
     WorkflowVersion: int
     Status: ExecutionStatus_Literal='Created'
     CreatedDate: datetime.datetime
-    SubmittedDate: Optional[datetime.datetime]=None
-    StartDate: Optional[datetime.datetime]=None
-    EndDate: Optional[datetime.datetime]=None
+    SubmittedDate: datetime.datetime|None_FromEmptyStr=None # XXX: deema: '' allowed (instead of None)
+    StartDate: datetime.datetime|None_FromEmptyStr=None     # XXX: deema: '' allowed (instead of None)
+    EndDate: datetime.datetime|None_FromEmptyStr=None       # XXX: deema: '' allowed (instead of None)
     ExecutionLog: Optional[str]=None
     RequestedBy: str
-    UserIP: IPvAnyAddress|str # can be a hostname as well
+    UserIP: IPvAnyAddress|str='' # deema: '' as default
     Task_ID: Optional[str]=None
     label: str=''
     Attempts: int=0
-    EDMMapping: List[EDMMapping_Model]
+    EDMMapping: List[EDMMapping_Model]=[]
     # these are only relevant while the execution being processed
     workflowURI: str|None=None
     loggerURI: str|None=None
     Inputs: str
     Outputs: str
-
-#class WorkflowExecutionRecord_Model(WorkflowExecutionBase_Model):
-#    Inputs: IODataRecord_Model
-#    Outputs: IODataRecord_Model
 
 
 #class ExecutionQuery_Model(StrictBase):
