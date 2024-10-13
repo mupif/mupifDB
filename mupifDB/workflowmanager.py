@@ -6,7 +6,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import tempfile
 import re
 from ast import literal_eval
-from mupifDB.api import client as restApiControl
+from mupifDB.api import client
 from mupifDB.api.client_util import api_type
 if api_type=='granta':
     from mupifDB.api import client_granta
@@ -68,56 +68,30 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
 @pydantic.validate_call
 def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workflow_Model):
     with open(source, 'rb') as f:
-        rec.GridFSID=restApiControl.uploadBinaryFile(f)
+        rec.GridFSID=client.uploadBinaryFile(f)
         f.close()
-
-    #rec = {'wid': wid, 'Description': description, 'GridFSID': sourceID, 'UseCase': useCase, 'IOCard': None, 'modulename': modulename, 'classname': classname, 'Models': models_md}
-    #Inputs = []
-    #for i in workflowInputs:
-    #    irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', ''), 'Compulsory': i['Required'], 'Set_at': i['Set_at']}
-    #    if i.get('EDMPath', None) is not None:
-    #        irec['EDMPath'] = i.get('EDMPath')
-    #    if i.get('EDMList', None) is not None:
-    #        irec['EDMList'] = i.get('EDMList')
-    #    Inputs.append(irec)
-    #Outputs = []
-    #for i in workflowOutputs:
-    #    irec = {'Name': i['Name'], 'Description': i.get('Description', None), 'Type': i['Type'], 'TypeID': i['Type_ID'], 'ValueType': i.get('ValueType', ''), 'Units': i.get('Units', ''), 'ObjID': i.get('Obj_ID', '')}
-    #    if i.get('EDMPath', None) is not None:
-    #        irec['EDMPath'] = i.get('EDMPath')
-    #    if i.get('EDMList', None) is not None:
-    #        irec['EDMList'] = i.get('EDMList')
-    #    Outputs.append(irec)
-    #rec['IOCard'] = {'Inputs': Inputs, 'Outputs': Outputs}
-    #
-    #rec['EDMMapping'] = []
-    #if EDM_Mapping is not None:
-    #    rec['EDMMapping'] = EDM_Mapping
-
     # first check if workflow with wid already exist in workflows
-    w_rec = restApiControl.getWorkflowRecord(rec.wid)
-    log.debug(f'{w_rec=}')
-    if w_rec is None:  # can safely create a new record in workflows collection
-        version = 1
-        rec.Version = version
-        new_id = restApiControl.insertWorkflow(rec)
-        return new_id
-
-    else:
+    try:
+        w_rec = client.getWorkflowRecord(rec.wid)
         # the workflow already exists, need to make a new version
         # clone latest version to History
-        # print(w_rec)
-
+        log.debug(f'{w_rec=}')
         w_rec.dbID=None  # remove original document id
-        w_rec._id=None
-        restApiControl.insertWorkflowHistory(w_rec)
+        # w_rec._id=None
+        client.insertWorkflowHistory(w_rec)
         # update the latest document
         w_rec.Version=w_rec.Version+1
-        res_id = restApiControl.updateWorkflow(w_rec).dbID
+        res_id = client.updateWorkflow(w_rec).dbID
         if res_id:
             return res_id
         else:
             print("Update failed")
+    except client.NotFoundResponse:
+        version = 1
+        rec.Version = version
+        new_id = client.insertWorkflow(rec)
+        return new_id
+
     return None
 
 @pydantic.validate_call
@@ -126,7 +100,7 @@ def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:
         Returns workflow document with given wid and version
         @param version workflow version, version == -1 means return the most recent version    
     """
-    wdoclatest = restApiControl.getWorkflowRecord(wid)
+    wdoclatest = client.getWorkflowRecord(wid)
     # print(f'QQQ {wdoclatest=}')
     if wdoclatest is None:
         raise KeyError("Workflow document with WID" + wid + " not found")
@@ -134,7 +108,7 @@ def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:
     if version == -1 or version == lastversion:  # get the latest one
         return wdoclatest
     elif version < lastversion:
-        wdoc = restApiControl.getWorkflowRecordFromHistory(wid, version)
+        wdoc = client.getWorkflowRecordFromHistory(wid, version)
         if wdoc is None:
             raise KeyError("Workflow document with WID" + wid + "Version" + str(version) + " not found")
         return wdoc
@@ -179,14 +153,14 @@ class WorkflowExecutionIODataSet:
                 #    |
                 #    dict(Compulsory=io.Compulsory if type=='Inputs' else False)
                 #))
-        rec_id = restApiControl.insertIODataRecord(models.IODataRecord_Model(Type=type,DataSet=data,dbID=None))
+        rec_id = client.insertIODataRecord(models.IODataRecord_Model(Type=type,DataSet=data,dbID=None))
         return rec_id
 
     def _getDocument(self):
         """
         Returns workflowExection document corresponding to self.executionID
         """
-        iod_record = restApiControl.getIODataRecord(self.IOid)
+        iod_record = client.getIODataRecord(self.IOid)
         if iod_record is None:
             raise KeyError("Document with ID" + self.IOid + " not found")
         return iod_record
@@ -222,7 +196,7 @@ class WorkflowExecutionIODataSet:
     #     @throws: KeyError if input parameter name not found
     #     """
     #     if self.wec.getStatus() == 'Created':
-    #         restApiControl.setExecutionInputValue(self.weid, name, value, obj_id)
+    #         client.setExecutionInputValue(self.weid, name, value, obj_id)
     #     else:
     #         raise KeyError("Inputs cannot be changed as workflow execution status is not Created")
 
@@ -269,7 +243,7 @@ class WorkflowExecutionContext:
             #        obo.ids = []
             #        OBO.append(obo)
             #    rec['EDMMapping'] = OBO
-            new_id = restApiControl.insertExecution(ex)
+            new_id = client.insertExecution(ex)
             return WorkflowExecutionContext(new_id)
 
         else:
@@ -279,7 +253,7 @@ class WorkflowExecutionContext:
         """
         Returns workflowExection document corresponding to self.executionID
         """
-        we_rec = restApiControl.getExecutionRecord(self.executionID)
+        we_rec = client.getExecutionRecord(self.executionID)
         if we_rec is None:
             raise KeyError("Record with id=" + self.executionID + " not found")
         return we_rec
@@ -302,7 +276,7 @@ class WorkflowExecutionContext:
         """
         doc = self._getWorkflowExecutionDocument()
         if name in doc:
-            restApiControl.setExecutionParameter(self.executionID, name, value)
+            client.setExecutionParameter(self.executionID, name, value)
 
     def get(self, name):
         """
@@ -331,9 +305,9 @@ def ObjIDIsIterable(val):
 
 def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects=[]):
     if linked_output:
-        inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
+        inp_record = client.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
-        inp_record = restApiControl.getExecutionInputRecordItem(eid, name, obj_id)
+        inp_record = client.getExecutionInputRecordItem(eid, name, obj_id)
 
     if onto_path is not None:
         splitted = onto_path.split('.', 1)
@@ -347,7 +321,7 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
                 info = i
 
         # get the desired object
-        edm_data = restApiControl.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
+        edm_data = client.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
         if edm_data is not None:
             if object_type == 'mupif.Property':
                 if edm_data.get('value', None) is not None:
@@ -386,7 +360,7 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
                             return False
                     else:
                         # property from hdf5 file
-                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        pfile, fn = client.getBinaryFileByID(file_id)
                         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                             full_path = tempDir + "/file.h5"
                             f = open(full_path, 'wb')
@@ -410,7 +384,7 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
                     file_id = inp_record.Object.get('FileID', None)
                     if file_id is not None:
                         # load from hdf5 file
-                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        pfile, fn = client.getBinaryFileByID(file_id)
                         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                             full_path = tempDir + "/file.h5"
                             f = open(full_path, 'wb')
@@ -425,11 +399,11 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
 
 
 def checkInputs(eid):
-    execution = restApiControl.getExecutionRecord(eid)
-    workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    execution = client.getExecutionRecord(eid)
+    workflow = client.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
     if workflow is None: raise RuntimeError('XXX')
     workflow_input_templates = workflow.IOCard.Inputs
-    execution_inputs = restApiControl.getIODataRecord(execution.Inputs)
+    execution_inputs = client.getIODataRecord(execution.Inputs)
 
     for input_template in execution_inputs.DataSet:
         name = input_template.Name
@@ -500,9 +474,9 @@ def getEDMTemporalPropertyInstance(edm_data, data_id, value_type):
 
 def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects={}, value_type=None, edm_list=False):
     if linked_output:
-        inp_record = restApiControl.getExecutionOutputRecordItem(eid, name, obj_id)
+        inp_record = client.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
-        inp_record = restApiControl.getExecutionInputRecordItem(eid, name, obj_id)
+        inp_record = client.getExecutionInputRecordItem(eid, name, obj_id)
 
     ## FIXME: wrap this
     # if False and api_type == 'granta':
@@ -524,17 +498,17 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
         edm_ids = info.ids
 
         if object_type == 'mupif.Property':
-            edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
+            edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
             obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type == 'mupif.String':
-            edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
+            edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
             obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type == 'mupif.TemporalProperty':
-            edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
+            edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
             obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
@@ -547,7 +521,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 cur = 0
                 stage = 0
                 for e_id in edm_ids:
-                    edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, e_id, object_path)
+                    edm_data = client.getEDMData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
@@ -561,7 +535,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 cur = 0
                 stage = 0
                 for e_id in edm_ids:
-                    edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, e_id, object_path)
+                    edm_data = client.getEDMData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
@@ -575,7 +549,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 cur = 0
                 stage = 0
                 for e_id in edm_ids:
-                    edm_data = restApiControl.getEDMData(edm_dbname, edm_entity, e_id, object_path)
+                    edm_data = client.getEDMData(edm_dbname, edm_entity, e_id, object_path)
                     obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
@@ -619,7 +593,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                         app.set(prop, app_obj_id)
                     else:
                         # property from hdf5 file
-                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        pfile, fn = client.getBinaryFileByID(file_id)
                         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                             full_path = tempDir + "/file.h5"
                             f = open(full_path, 'wb')
@@ -636,7 +610,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     file_id = inp_record.Object.get('FileID', None)
                     if file_id is not None:
                         # load from hdf5 file
-                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        pfile, fn = client.getBinaryFileByID(file_id)
                         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                             # full_path = "/home/stanislav/tmp/" + fn  # tempDir
                             full_path = tempDir + "/" + fn
@@ -651,7 +625,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     file_id = inp_record.Object.get('FileID', None)
                     if file_id is not None:
                         # load from hdf5 file
-                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        pfile, fn = client.getBinaryFileByID(file_id)
                         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                             full_path = tempDir + "/file.h5"
                             f = open(full_path, 'wb')
@@ -667,7 +641,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                     file_id = inp_record.Object['FileID']
                     if file_id is not None:
                         # load from hdf5 file
-                        pfile, fn = restApiControl.getBinaryFileByID(file_id)
+                        pfile, fn = client.getBinaryFileByID(file_id)
                         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                             full_path = tempDir + "/file.h5"
                             f = open(full_path, 'wb')
@@ -686,11 +660,11 @@ def getOntoBaseObjectByName(objects, name):
     return None
 
 def createOutputEDMMappingObjects(app, eid, outputs):
-    execution = restApiControl.getExecutionRecord(eid)
+    execution = client.getExecutionRecord(eid)
     OBO = execution.EDMMapping
     if len(OBO):
         print("Creating EDM output objects")
-        outputs = restApiControl.getExecutionOutputRecord(eid)
+        outputs = client.getExecutionOutputRecord(eid)
         edmpaths = []
         for path in [out.EDMPath for out in outputs]:
             if path is not None and path != '':
@@ -709,7 +683,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                             valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
                             valid_emdpaths = [p.replace(obo.get('Name')+'.', '') for p in valid_emdpaths]
 
-                            safe_links = restApiControl.getSafeLinks(
+                            safe_links = client.getSafeLinks(
                                 DBName=source_obo.DBName,
                                 Type=source_obo.EDMEntity,
                                 ID=source_obo.get.id,
@@ -720,25 +694,25 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                 num = getEDMListLength(app=app, eid=eid, edm_name=obo.Name, outputs=outputs)
                                 new_ids = []
                                 for i in range(0, num):
-                                    new_id = restApiControl.cloneEDMData(
+                                    new_id = client.cloneEDMData(
                                         DBName=source_obo.DBName,
                                         Type=source_obo.EDMEntity,
                                         ID=source_obo.id,
                                         shallow=safe_links
                                     )
                                     new_ids.append(new_id)
-                                restApiControl.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
+                                client.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
                                 for new_id in new_ids:
-                                    restApiControl.setEDMData(DBName=obo.get.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                                    client.setEDMData(DBName=obo.get.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
                             else:
-                                new_id = restApiControl.cloneEDMData(
+                                new_id = client.cloneEDMData(
                                     DBName=source_obo.DBName,
                                     Type=source_obo.EDMEntity,
                                     ID=source_obo.id,
                                     shallow=safe_links
                                 )
-                                restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
-                                restApiControl.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                                client.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
+                                client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
 
                 elif obo.createNew:
                     edm_name = obo.Name
@@ -746,19 +720,19 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                     # FIXME: should anchor the match to the beginning only
                     valid_emdpaths = [p.replace(obo.Name + '.', '') for p in valid_emdpaths] 
 
-                    new_id = restApiControl.createEDMData(
+                    new_id = client.createEDMData(
                         DBName=obo.DBName,
                         Type=obo.EDMEntity,
                         data=obo.createNew
                     )
-                    restApiControl.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
-                    restApiControl.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                    client.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
+                    client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
         print("Creating EDM output objects finished")
 
 
 def mapInputs(app, eid):
-    execution = restApiControl.getExecutionRecord(eid)
-    workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    execution = client.getExecutionRecord(eid)
+    workflow = client.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
     workflow_input_templates = workflow.IOCard.Inputs
     #if api_type == 'granta':
     #    workflow_input_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Inputs)
@@ -839,7 +813,7 @@ def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
     cur = 0
     stage = 0
     for edm_id in edm_ids:
-        restApiControl.setEDMData(dbname, edmentity, edm_id, object_path, data=data)
+        client.setEDMData(dbname, edmentity, edm_id, object_path, data=data)
         cur += 1
         if cur / tot * 100 >= stage:
             print("%d %%" % stage)
@@ -866,9 +840,9 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                 if edm_list is True:
                     setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
                 else:
-                    restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                    client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
             else:
-                restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+                client.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                 full_path = tempDir + "/file.h5"
@@ -885,7 +859,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                             info = i
                     fileID = None
                     with open(full_path, 'rb') as f:
-                        fileID = restApiControl.uploadEDMBinaryFile(info.get('DBName', ''), f)
+                        fileID = client.uploadEDMBinaryFile(info.get('DBName', ''), f)
                         f.close()
                     if fileID is not None:
                         data = {
@@ -897,17 +871,17 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
                         if edm_list is True:
                             setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
                         else:
-                            restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                            client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
                     else:
                         raise ConnectionError("hdf5 file was not saved")
 
                 else:
                     fileID = None
                     with open(full_path, 'rb') as f:
-                        fileID = restApiControl.uploadBinaryFile(f)
+                        fileID = client.uploadBinaryFile(f)
                         f.close()
                     if fileID is not None:
-                        restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                        client.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
                     else:
                         raise ConnectionError("hdf5 file was not saved")
 
@@ -928,9 +902,9 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if edm_list is True:
                 setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
             else:
-                restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
-            restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+            client.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
     elif object_type == 'mupif.String':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
@@ -949,9 +923,9 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if edm_list is True:
                 setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
             else:
-                restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
         else:
-            restApiControl.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
+            client.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
     elif object_type.startswith('mupif.DataList'):
         dl = app.get(mupif.DataID[data_id], time, obj_id)
@@ -971,7 +945,7 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             if len(ids) == len(dl.objs):
                 for idx in range(0, len(ids)):
                     data = dl.objs[idx].to_db_dict(dialect='edm')
-                    restApiControl.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
+                    client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
             else:
                 raise ValueError('The length of the DataList does not match the length of the EDM objects list. (%d x %s)' % (len(ids), len(dl.objs)))
         else:
@@ -985,10 +959,10 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             mupif.PyroFile.copy(pf, full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is not None:
-                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                client.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
             else:
                 print("PyroFile file was not saved")
 
@@ -1000,10 +974,10 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             hs.moveStorage(full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is not None:
-                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                client.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
             else:
                 print("hdf5 file was not saved")
 
@@ -1014,10 +988,10 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             field.toHdf5(fileName=full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is not None:
-                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                client.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
             else:
                 print("hdf5 file was not saved")
 
@@ -1028,10 +1002,10 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             field.toHdf5(full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is not None:
-                restApiControl.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
+                client.setExecutionOutputObject(eid, name, obj_id, {'FileID': fileID})
             else:
                 print("hdf5 file was not saved")
 
@@ -1067,7 +1041,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
             hs_copy.moveStorage(full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is None:
                 print("hdf5 file was not saved")
@@ -1088,7 +1062,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
             field.toHdf5(fileName=full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is None:
                 print("hdf5 file was not saved")
@@ -1110,7 +1084,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
             mupif.PyroFile.copy(pf, full_path)
             fileID = None
             with open(full_path, 'rb') as f:
-                fileID = restApiControl.uploadBinaryFile(f)
+                fileID = client.uploadBinaryFile(f)
                 f.close()
             if fileID is None:
                 print("hdf5 file was not saved")
@@ -1137,20 +1111,20 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
 
 
 def mapOutputs(app, eid, time):
-    execution = restApiControl.getExecutionRecord(eid)
-    workflow = restApiControl.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    execution = client.getExecutionRecord(eid)
+    workflow = client.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
     workflow_output_templates = workflow.IOCard.Outputs
     #if api_type == 'granta':
     #    workflow_output_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Outputs)
 
     granta_output_data = []
 
-    outputs = restApiControl.getExecutionOutputRecord(eid)
+    outputs = client.getExecutionOutputRecord(eid)
     #if api_type == 'granta':
     #    outputs = workflow_output_templates
 
     createOutputEDMMappingObjects(app=app, eid=eid, outputs=outputs)
-    execution = restApiControl.getExecutionRecord(eid)
+    execution = client.getExecutionRecord(eid)
 
     for outitem in outputs:
         print("Mapping output " + str(outitem))

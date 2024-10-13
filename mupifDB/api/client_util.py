@@ -27,8 +27,15 @@ def setRESTserver(r: str) -> None:
     global RESTserver, RestServerMuPIF
     RESTserver=RESTserverMuPIF=r+'/'
 
+class NotFoundResponse(Exception):
+    """
+    Custom exception being raised if the API reports 404 exception (not found).
+    """
+
 def _check(resp: Response) -> Response:
-    (log.info if 200<=resp.status_code<300 else log.error)(f'{resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}')
+    msg=f'{resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}'
+    (log.info if (200<=resp.status_code<300 and resp.status_code!=404) else log.error)(msg)
+    if 200 <= resp.status_code <= 299: return resp
     if resp.status_code==422: # Unprocessable entity
         log.error(100*'*'+'\nUnprocessable entity\n'+100*'*')
         txt=json.loads(resp.text)
@@ -37,15 +44,8 @@ def _check(resp: Response) -> Response:
             import ast
             print_json(data=ast.literal_eval(txt['message']))
         except: print('(not renderable as JSON)')
-    #try:
-    #    txt=json.loads(resp.text)
-    #    print_json(txt['message'])
-    #    #if isinstance(B:=resp.request.body,bytes): print_json(B.decode('utf-8'))
-    #    #elif isinstance(B,str): print_json(B)
-    #    #else: print_json("null")
-    #except: pass
-    if 200 <= resp.status_code <= 299: return resp
-    raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
+    elif resp.status_code==404: raise NotFoundResponse(msg)
+    else: raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
 
 _defaultTimeout=4
 

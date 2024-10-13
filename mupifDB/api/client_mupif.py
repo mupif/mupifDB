@@ -26,37 +26,26 @@ def insertUsecaseRecord(ucid, description):
 # Workflows
 # --------------------------------------------------
 
-def getWorkflowRecords():
+def getWorkflowRecords() -> List[models.Workflow_Model]:
     response = rGet("workflows/")
     return [models.Workflow_Model.model_validate(record) for record in response.json()]
 
-def getWorkflowRecordsWithUsecase(usecase):
-    data = []
+def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
     response = rGet(f"usecases/{usecase}/workflows")
-    for record in response.json():
-        data.append(record)
-    return data
+    return [models.Workflow_Model.model_validate(record) for record in response.json()]
 
 @pydantic.validate_call
 def getWorkflowRecord(wid: str) -> models.Workflow_Model:
     response = rGet(f"workflows/{wid}")
-    #print('AAA')
-    #print_json(data=response.json())
-    #print('BBB',response.json())
-    # if response.json() is None: return None
-    # print(response)
-    #if response.json() is None: return None
     return models.Workflow_Model.model_validate(response.json())
 
 @pydantic.validate_call
 def insertWorkflow(wf: models.Workflow_Model):
-    #print('QQQQ')
-    #print_json(data=wf.model_dump())
     response = rPost("workflows/", data=wf.model_dump_json())
     return response.json()
 
 @pydantic.validate_call
-def updateWorkflow(wf: models.Workflow_Model):
+def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     response = rPatch("workflows/", data=wf.model_dump_json())
     return models.Workflow_Model.model_validate(response.json())
 
@@ -77,14 +66,6 @@ def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
 @pydantic.validate_call
 def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Model:
     response = rGet(f"workflows_history/{wid}/{version}")
-    # if response.json() is None: return None
-    #print('GGG')
-    #print_json(data=response.text)
-    #print('HHH')
-    #print_json(data=response.json())
-    #print('III')
-    #print_json(data=models.Workflow_Model.model_validate(response.json()).model_dump())
-    #print('KKK')
     return models.Workflow_Model.model_validate(response.json())
 
 @pydantic.validate_call
