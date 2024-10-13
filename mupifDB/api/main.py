@@ -15,7 +15,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
 
 import time
 
-from fastapi import FastAPI, UploadFile, Depends
+from fastapi import FastAPI, UploadFile, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +42,9 @@ import json
 from typing import Any,List
 from rich import print_json
 from rich.pretty import pprint
+
+# shorthands for common exceptions
+def NotFoundError(detail): return HTTPException(status_code=404,detail=detail)
 
 
 from mupifDB import models
@@ -88,15 +91,6 @@ tags_metadata = [
 
 app = FastAPI(openapi_tags=tags_metadata)
 
-
-def _model2jsondict(m: models.StrictBase) -> dict:
-    '''
-    Mongo-specific enhancement of pydantic dump: if _id is None, remove it from the dict.
-    Otherwise MongoDB would see it as _id=null when inserting, rather than creating a new entry.
-    '''
-    ret=m.model_dump(mode='json')
-    if '_id' in ret and ret['_id'] is None: del ret['_id']
-    return ret
 
 @app.exception_handler(fastapi.exceptions.RequestValidationError)
 async def validation_exception_handler(request: fastapi.Request, exc: fastapi.exceptions.RequestValidationError):
@@ -166,8 +160,8 @@ def get_usecases() -> List[models.UseCase_Model]:
 @app.get("/usecases/{uid}", tags=["Usecases"])
 def get_usecase(uid: str):
     res = db.UseCases.find_one({"ucid": uid})
-    if res is None: raise KeyError(f'Database reports no workflow with ucid={uid}.')
-    return models.Usecase_Model.model_validate(res)
+    if res is None: raise NotFoundError(f'Database reports no workflow with ucid={uid}.')
+    return models.UseCase_Model.model_validate(res)
 
 
 @app.get("/usecases/{uid}/workflows", tags=["Usecases"])
@@ -178,7 +172,7 @@ def get_usecase_workflows(uid: str) -> List[models.Workflow_Model]:
 
 @app.post("/usecases/", tags=["Usecases"])
 def post_usecase(uc: models.UseCase_Model):
-    res = db.UseCases.insert_one(_model2jsondict(uc))
+    res = db.UseCases.insert_one(uc.model_dump_db())
     return str(res.inserted_id)
 
 
@@ -195,7 +189,7 @@ def get_workflows() -> List[models.Workflow_Model]:
 @app.get("/workflows/{workflow_id}", tags=["Workflows"])
 def get_workflow(workflow_id: str) -> models.Workflow_Model:
     res = db.Workflows.find_one({"wid": workflow_id})
-    if res is None: raise KeyError(f'Database reports no workflow with wid={workflow_id}.')
+    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id}.')
     return models.Workflow_Model.model_validate(res)
 
 
@@ -205,13 +199,13 @@ def get_workflow(workflow_id: str) -> models.Workflow_Model:
 def update_workflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     #print('OOO')
     #rint_json(data=wf.model_dump())
-    res = db.Workflows.find_one_and_update({'wid': wf.wid}, {'$set': _model2jsondict(wf)}, return_document=ReturnDocument.AFTER)
+    res = db.Workflows.find_one_and_update({'wid': wf.wid}, {'$set': wf.model_dump_db()}, return_document=ReturnDocument.AFTER)
     return models.Workflow_Model.model_validate(res)
 
 
 @app.post("/workflows/", tags=["Workflows"])
 def insert_workflow(wf: models.Workflow_Model):
-    res = db.Workflows.insert_one(_model2jsondict(wf))
+    res = db.Workflows.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
 
@@ -219,7 +213,7 @@ def insert_workflow(wf: models.Workflow_Model):
 def insert_workflow_history(wf: models.Workflow_Model):
     #print('TTT')
     #print_json(data=wf.model_dump())
-    res = db.WorkflowsHistory.insert_one(_model2jsondict(wf))
+    res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
     #print(f'{res=}')
     return str(res.inserted_id)
 
@@ -232,7 +226,7 @@ def insert_workflow_history(wf: models.Workflow_Model):
 def get_workflow_history(workflow_id: str, workflow_version: int) -> models.Workflow_Model|None:
     #print(f'AAA: {workflow_id=} {workflow_version=}')
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
-    if res is None: raise KeyError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
+    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
     return models.Workflow_Model.model_validate(res)
 
 
@@ -266,7 +260,7 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
 def get_execution(uid: str) -> models.WorkflowExecution_Model:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     # print(f'OOO: {res=}')
-    if res is None: raise KeyError(f'Database reports no execution with uid={uid}.')
+    if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
     return models.WorkflowExecution_Model.model_validate(res)
 
 
@@ -278,7 +272,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model) -> str:
 
 @app.post("/executions/", tags=["Executions"])
 def insert_execution(data: models.WorkflowExecution_Model) -> str:
-    res = db.WorkflowExecutions.insert_one(_model2jsondict(data))
+    res = db.WorkflowExecutions.insert_one(data.model_dump_db())
     return str(res.inserted_id)
 
 ### XXX: fix return annotations
@@ -458,7 +452,7 @@ def get_execution_iodata(uid: str):
 
 @app.post("/iodata/", tags=["IOData"])
 def insert_execution_iodata(data: models.IODataRecord_Model):
-    res = db.IOData.insert_one(_model2jsondict(data))
+    res = db.IOData.insert_one(data.model_dump_db())
     return str(res.inserted_id)
 
 

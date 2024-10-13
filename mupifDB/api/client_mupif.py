@@ -38,20 +38,20 @@ def getWorkflowRecordsWithUsecase(usecase):
     return data
 
 @pydantic.validate_call
-def getWorkflowRecord(wid: str) -> models.Workflow_Model|None:
+def getWorkflowRecord(wid: str) -> models.Workflow_Model:
     response = rGet(f"workflows/{wid}")
     #print('AAA')
     #print_json(data=response.json())
     #print('BBB',response.json())
-    if response.json() is None: return None
+    # if response.json() is None: return None
     # print(response)
     #if response.json() is None: return None
     return models.Workflow_Model.model_validate(response.json())
 
 @pydantic.validate_call
 def insertWorkflow(wf: models.Workflow_Model):
-    print('QQQQ')
-    print_json(data=wf.model_dump())
+    #print('QQQQ')
+    #print_json(data=wf.model_dump())
     response = rPost("workflows/", data=wf.model_dump_json())
     return response.json()
 
@@ -62,9 +62,9 @@ def updateWorkflow(wf: models.Workflow_Model):
 
 
 @pydantic.validate_call
-def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model|None:
+def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
     workflow_newest = getWorkflowRecord(wid)
-    print(f'WWW {workflow_newest=}')
+    # print(f'WWW {workflow_newest=}')
     if workflow_newest is not None:
         if workflow_newest.Version == version or version == -1:
             return workflow_newest
@@ -75,9 +75,9 @@ def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model|None:
 # Workflows history
 # --------------------------------------------------
 @pydantic.validate_call
-def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Model|None:
+def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Model:
     response = rGet(f"workflows_history/{wid}/{version}")
-    if response.json() is None: return None
+    # if response.json() is None: return None
     #print('GGG')
     #print_json(data=response.text)
     #print('HHH')

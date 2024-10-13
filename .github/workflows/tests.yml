@@ -47,5 +47,8 @@ jobs:
       run: |
         make & # runs all services, a separate instance
         sleep 10
-        cd tools; bash webtest.sh # contains relative paths to uploaded files
+        # cd as webtest contains relative paths to uploaded files
+        # run twice to also test workflow version bumping
+        cd tools && bash webtest.sh && bash webtest.sh
+        #
         kill $! # terminate make

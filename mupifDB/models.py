@@ -37,6 +37,14 @@ class Parent_Model(StrictBase):
 class MongoObj_Model(StrictBase):
     dbID: Optional[DatabaseID]=Field(None,alias='_id') # type: ignore[arg-type]
     parent: Optional[Parent_Model]=None
+    def model_dump_db(self):
+        '''
+        MongoDB-specific enhancement: with _id=None (default), mongoDB would use _id:null instead of treating it as unset. Therefore remove it from the dump if None.
+        If it is ever decided that unset (or default-value) attributes should not be dumped, this could be set on the entire model using model_config, but just for a single attribute.
+        '''
+        ret=self.model_dump(mode='json')
+        if '_id' in ret and ret['_id'] is None: del ret['_id']
+        return ret
 
 class UseCase_Model(MongoObj_Model):
     ucid: str
