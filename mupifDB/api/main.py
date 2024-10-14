@@ -270,7 +270,7 @@ def get_execution(uid: str):
     return None
 
 
-@app.get("/edm_executions/{uid}", tags=["Executions"])
+@app.get("/edm_execution/{uid}", tags=["Executions"])
 def get_edm_execution(uid: str):
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res:
@@ -278,10 +278,32 @@ def get_edm_execution(uid: str):
         mapping = e.get('EDMMapping', [])
         for m in mapping:
             if 'createFrom' in m or 'createNew' in m:
-                m['ioType'] = 'Output'
+                m['ioType'] = 'output'
             else:
-                m['ioType'] = 'Input'
+                m['ioType'] = 'input'
         return mapping
+    return None
+
+
+@app.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
+def get_edm_execution(uid: str, entity: str, iotype: str):
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res:
+        e = table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
+        mapping = e.get('EDMMapping', [])
+        for m in mapping:
+            if 'createFrom' in m or 'createNew' in m:
+                m['ioType'] = 'output'
+            else:
+                m['ioType'] = 'input'
+
+        for m in mapping:
+            if m['ioType'] == iotype and m['EDMEntity'] == entity:
+                if m.get('id', None):
+                    return m['id']
+                elif m.get('ids', None):
+                    return m['ids']
+                return None
     return None
 
 
