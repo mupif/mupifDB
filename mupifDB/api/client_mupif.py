@@ -93,17 +93,17 @@ def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
     response = rGet(f"executions/{weid}")
     return models.WorkflowExecution_Model.model_validate(response.json())
 
-def getScheduledExecutions(num_limit=None):
+def getScheduledExecutions(num_limit: int=None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-def getPendingExecutions(num_limit=None):
+def getPendingExecutions(num_limit: int=None):
     return getExecutionRecords(status="Pending", num_limit=num_limit)
 
-def scheduleExecution(execution_id):
+def scheduleExecution(execution_id: str):
     response = rPatch(f"executions/{execution_id}/schedule")
     return response.json()
 
-def setExecutionParameter(execution_id, param, value, val_type="str"):
+def setExecutionParameter(execution_id: str, param: str, value: Any, val_type="str"):
     response = rPatch(f"executions/{execution_id}", data=json.dumps({"key": str(param), "value": value}))
     return response.json()
 
@@ -129,37 +129,17 @@ def setExecutionAttemptsCount(execution_id, val):
     return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 
 
-def setExecutionStatusScheduled(execution_id):
-    return setExecutionParameter(execution_id, "Status", "Scheduled")
-
-def setExecutionStatusCreated(execution_id):  # only reverted
-    setExecutionParameter(execution_id, "SubmittedDate", "")
-    return setExecutionParameter(execution_id, "Status", "Created")
-
-
-def setExecutionStatusPending(execution_id, reverted=False):
-    if reverted:
-        pass
-        # setExecutionParameter(execution_id, "StartDate", "")
-    else:
+def setExecutionStatus(execution_id: str, status: models.ExecutionStatus_Literal, revertPending=False):
+    if status=='Created': setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
+    elif status=='Pending' and not revertPending:
         setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
         setExecutionAttemptsCount(execution_id, 0)
-    return setExecutionParameter(execution_id, "Status", "Pending")
+    elif status=='Running':
+        setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
+    elif status in ('Finished','Failed'):
+        setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
+    return setExecutionParameter(execution_id, "Status", status)
 
-
-def setExecutionStatusRunning(execution_id):
-    setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
-    return setExecutionParameter(execution_id, "Status", "Running")
-
-
-def setExecutionStatusFinished(execution_id):
-    setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
-    return setExecutionParameter(execution_id, "Status", "Finished")
-
-
-def setExecutionStatusFailed(execution_id):
-    setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
-    return setExecutionParameter(execution_id, "Status", "Failed")
 
 def createExecution(wid: str, version: int, ip: str, no_onto=False):
     wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)

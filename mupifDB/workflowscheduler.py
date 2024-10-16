@@ -379,7 +379,7 @@ def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_rec
                 except Exception as e:
                     log.exception('Error in executeWorkflow_inner2')
                     # set execution code to failed ...yes or no?
-                    restApiControl.setExecutionStatusFailed(we_id)
+                    restApiControl.setExecutionStatus(we_id,'Failed')
                     my_email.sendEmailAboutExecutionStatus(we_id)
                     return None
                 # execute
@@ -387,7 +387,7 @@ def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_rec
                 # update status
                 updateStatRunning(lock, schedulerStat, we_id, wid)
                 #runningJobs[we_id]=wid # for runtime monitoring
-                restApiControl.setExecutionStatusRunning(we_id)
+                restApiControl.setExecutionStatus(we_id,'Running')
                 restApiControl.setExecutionAttemptsCount(we_id, we_rec.Attempts+1)
                 # uses the same python interpreter as the current process
                 cmd = [sys.executable, execScript, '-eid', str(we_id)]
@@ -433,17 +433,17 @@ def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_rec
             # set execution code to completed
             if completed == 0:
                 log.warning("Workflow execution %s Finished" % we_id)
-                restApiControl.setExecutionStatusFinished(we_id)
+                restApiControl.setExecutionStatus(we_id,'Finished')
                 my_email.sendEmailAboutExecutionStatus(we_id)
                 return we_id, ExecutionResult.Finished # XXX ??
             elif completed == 1:
                 log.warning("Workflow execution %s Failed" % we_id)
-                restApiControl.setExecutionStatusFailed(we_id)
+                restApiControl.setExecutionStatus(we_id,'Failed')
                 my_email.sendEmailAboutExecutionStatus(we_id)
                 return we_id, ExecutionResult.Failed # XXX ??
             elif completed == 2:
                 log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
-                restApiControl.setExecutionStatusPending(we_id, True)
+                restApiControl.setExecutionStatus(we_id, 'Pending', revertPending=True)
             else:
                 pass
 
@@ -644,7 +644,7 @@ def main():
                             # check number of attempts for execution
                             if int(wed.Attempts) > 10:
                                 try:
-                                    restApiControl.setExecutionStatusCreated(weid)
+                                    restApiControl.setExecutionStatus(weid,'Created')
                                     if api_type != 'granta':
                                         my_email.sendEmailAboutExecutionStatus(weid)
                                 except Exception as e:
@@ -656,7 +656,7 @@ def main():
                                     # add the correspoding weid to the pool, change status to scheduled
                                     res = False
                                     try:
-                                        res = restApiControl.setExecutionStatusScheduled(weid)
+                                        res = restApiControl.setExecutionStatus(weid,'Scheduled')
                                     except Exception as e:
                                         log.exception()
 

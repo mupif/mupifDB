@@ -339,11 +339,6 @@ def _get_execution_output_item(uid: str, name: str):
     return get_execution_io_item(uid, name, '', inputs=False)
 
 
-class M_IOData_link(BaseModel):
-    ExecID: str
-    Name: str
-    ObjID: str
-
 
 class M_IODataSetContainer(BaseModel):
     link: typing.Optional[dict] = None

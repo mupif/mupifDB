@@ -75,7 +75,7 @@ if __name__ == "__main__":
         if args.download:
             downloadWorkflowFiles(weid)
 
-        mupifDB.restApiControl.setExecutionStatusRunning(weid)
+        mupifDB.restApiControl.setExecutionStatus(weid,'Running')
         
         # add REST logging handler for this weid, add 'weid' field to every message automatically
         import mupifDB.restLogger
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(execution_record.WorkflowID, execution_record.WorkflowVersion)
         if workflow_record is None:
             log.error("Workflow not found")
-            mupifDB.restApiControl.setExecutionStatusFailed(weid)
+            mupifDB.restApiControl.setExecutionStatus(weid,'Failed')
             sys.exit(1)
 
         #
@@ -120,15 +120,15 @@ if __name__ == "__main__":
             log.error('Not enough resources')
             mupifDB.restApiControl.setExecutionStatusFailed(weid)
             sys.exit(2)
-        mupifDB.restApiControl.setExecutionStatusFailed(weid)
+        mupifDB.restApiControl.setExecutionStatus(weid,'Failed')
         sys.exit(1)
 
     except:
         log.info("Unknown error")
         if workflow is not None:
             workflow.terminate()
-        mupifDB.restApiControl.setExecutionStatusFailed(weid)
+        mupifDB.restApiControl.setExecutionStatus(weid,'Failed')
         sys.exit(1)
 
-    mupifDB.restApiControl.setExecutionStatusFinished(weid)
+    mupifDB.restApiControl.setExecutionStatus(weid,'Finished')
     sys.exit(0)
