@@ -9,7 +9,7 @@ from rich import print_json
 from rich.pretty import pprint
 from typing import List,Optional
 
-@pydantic.validate_call
+
 def getUsecaseRecords():
     return [models.UseCase_Model.model_validate(rec) for rec in rGet("usecases/").json()]
 
@@ -253,18 +253,12 @@ def getStatus():
     response = rGet("status/")
     return response.json()
 
-def getExecutionStatistics():
+def getExecutionStatistics() -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
     response = rGet("execution_statistics/")
-    return response.json()
+    return models.MupifDBStatus_Model.ExecutionStatistics_Model.model_validate(response.json())
 
 def getStatScheduler():
-    response = rGet("scheduler_statistics/")
-    response_json = response.json()
-    keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
-    for k in keys:
-        if k not in response_json:
-            response_json[k] = None
-    return response_json
+    return models.MupifDBStatus_Model.Stat_Model.SchedulerStat_Model.model_validate(rGet("scheduler_statistics/").json())
 
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.

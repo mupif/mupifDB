@@ -32,13 +32,9 @@ class StrictBase(pydantic.BaseModel):
         kwargs.setdefault("by_alias", True)
         return super().model_dump_json(**kwargs)
 
-class Parent_Model(StrictBase):
-    where: str
-    id: str
 
-class MongoObj_Model(StrictBase):
+class MongoObjBase_Model(StrictBase):
     dbID: Optional[DatabaseID]=Field(None,alias='_id') # type: ignore[arg-type]
-    parent: Optional[Parent_Model]=None
     def model_dump_db(self):
         '''
         MongoDB-specific enhancement: with _id=None (default), mongoDB would use _id:null instead of treating it as unset. Therefore remove it from the dump if None.
@@ -48,17 +44,28 @@ class MongoObj_Model(StrictBase):
         if '_id' in ret and ret['_id'] is None: del ret['_id']
         return ret
 
+class GridFSFile_Model(MongoObjBase_Model):
+    length: int
+    chunkSize: int
+    uploadDate: datetime.datetime
+    metadata: Dict[str,Any]={}
+
+
+class MongoObj_Model(MongoObjBase_Model):
+    class Parent_Model(StrictBase):
+        where: str
+        id: str
+    parent: Optional[Parent_Model]=None
+
 class UseCase_Model(MongoObj_Model):
     ucid: str
     projectName: str=''
     projectLogo: str=''
     Description: str=''
 
-
 class EDMMappingIDs_Model(StrictBase):
     id: Optional[str]=None
     ids: Optional[List[str]]=[]
-
 
 class EDMMapping_Model(StrictBase):
     id: Optional[str]=None
@@ -70,9 +77,6 @@ class EDMMapping_Model(StrictBase):
     OptionsFilter: Dict[str,str]={}
     createNew: Optional[EDMMappingIDs_Model]=None
     createFrom: Any='' ### XXXX what is this??
-
-
-
 
 class InputOutputBase_Model(StrictBase):
     Name: str
@@ -91,8 +95,8 @@ class InputOutputBase_Model(StrictBase):
 class IODataRecordItem_Model(InputOutputBase_Model):
     class Link_Model(StrictBase):
         ExecID: Str_EmptyFromNone='' # XXX: test loads None
-        Name: Str_EmptyFromNone=''   # XXX: test loads None
-        ObjID: Str_EmptyFromNone=''  # XXX: test loads None
+        Name:   Str_EmptyFromNone='' # XXX: test loads None
+        ObjID:  Str_EmptyFromNone='' # XXX: test loads None
     Value: Optional[dict[str,Any]|str]=None # deema: allow str
     Link: Link_Model=Link_Model()
     FileID: Optional[str]=None
@@ -159,6 +163,9 @@ class WorkflowExecution_Model(MongoObj_Model):
     Outputs: str
 
 
+
+
+
 #class ExecutionQuery_Model(StrictBase):
 #    status: Optional[ExecutionStatus_Literal]=Field(None,alias='Status')
 #    workflow_version: Optional[int]=Field(None,alias='WorkflowVersion')
@@ -166,4 +173,29 @@ class WorkflowExecution_Model(MongoObj_Model):
 #    label: Optional[str]=None
 #    num_limit: int=999999
 
+class MupifDBStatus_Model(StrictBase):
+    class Stat_Model(MongoObjBase_Model):
+        'Persisted in the DB, so deriving from MongoObjBase_Model.'
+        class SchedulerStat_Model(StrictBase):
+            load:         float=0.
+            processedTasks: int=0
+            runningTasks:   int=0
+            scheduledTasks: int=0
+        scheduler: SchedulerStat_Model=SchedulerStat_Model()
+    class ExecutionStatistics_Model(StrictBase):
+        totalExecutions:    int=0
+        finishedExecutions: int=0
+        failedExecutions:   int=0
+        createdExecutions:  int=0
+        pendingExecutions:  int=0
+        scheduledExecutions:int=0
+        runningExecutions:  int=0
 
+    mupifDBStatus: Literal['OK','Failed']
+    schedulerStatus: Literal['OK','Failed']
+    schedulerStat: Stat_Model.SchedulerStat_Model
+    totalStat: ExecutionStatistics_Model
+
+
+#{'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
+# {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}

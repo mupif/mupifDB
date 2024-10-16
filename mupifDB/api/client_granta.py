@@ -104,19 +104,34 @@ def fix_json(val: str) -> str:
     val = val.replace("False", "false").replace("True", "true")
     return val
 
+
+def _getGrantaBinaryFileByID(fid):
+    assert api_type == 'granta'
+    # this is .../filestore instead of ..../api, so the ../filestore should do the trick
+    response = rGet(f"../filestore/{fid}", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, allow_redirects=True)
+    return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
+
+def _uploadGrantaBinaryFile(binary_data):
+    assert api_type == 'granta'
+    response = rPost("../filestore", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, files={"file": binary_data})
+    return response.json()['guid']
+
+
+
 def _getGrantaWorkflowRecordGeneral(wid, version: int):
     r = rGet(f"templates/{wid}", headers=getGrantaHeaders())
     r_json = r.json()
-    workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
-    workflow['_id'] = r_json['guid']
-    workflow['wid'] = r_json['guid']
-    workflow['WorkflowVersion'] = 1
-
-    workflow['modulename'] = 'unknown'
-    workflow['classname'] = 'unknown'
-    workflow['GridFSID'] = 'unknown'
-    workflow['UseCase'] = ''
-    workflow['metadata'] = ''
+    # workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
+    workflow = models.Workflow_Model(
+        dbID = r_json['guid'],
+        wid = r_json['guid'],
+        # Version = 1,
+        modulename = 'unknown',
+        classname = 'unknown',
+        GridFSID = 'unknown',
+        # UseCase = '',
+        # metadata = ''
+    )
 
     fid = None
     gmds = r_json['metadata']
@@ -125,17 +140,17 @@ def _getGrantaWorkflowRecordGeneral(wid, version: int):
         if gmd['name'] == 'muPIF metadata':
             md = json.loads(fix_json(gmd['value']))
             # print(md)
-            workflow['metadata'] = md
-            workflow['classname'] = md['ClassName']
-            workflow['modulename'] = md['ModuleName']
+            workflow.metadata = md
+            workflow.classname = md['ClassName']
+            workflow.modulename = md['ModuleName']
 
         if gmd['name'] == 'workflow python file':
             fid = gmd['value']['url'].split('/')[-1]
 
     if fid:
         file, filename = _getGrantaBinaryFileByID(fid)
-        workflow['GridFSID'] = fid
-        workflow['modulename'] = filename.replace('.py', '')
+        workflow.GridFSID = fid
+        workflow.modulename = filename.replace('.py', '')
 
     return workflow
 
@@ -308,19 +323,18 @@ def _getGrantaExecutionInputItem(eid, name):
     return None
 
 
-def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None): #  -> List[models.WorkflowExecution_Model]: 
+def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None): -> List[models.WorkflowExecution_Model]:
     assert api_type == 'granta'
     r = rGet("executions/", headers=getGrantaHeaders())
-    res = []
-    for ex in r.json():
-        execution = table_structures.extendRecord({}, table_structures.tableExecution)
-        execution['_id'] = ex['guid']
-        execution['WorkflowID'] = ex['template_guid']
-        execution['WorkflowVersion'] = -1
-        execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(ex['status'],ex['status'])
-        execution['Task_ID'] = ''
-        res.append(execution)
-    return res
+    return [
+        models.WorkflowExecution_Model(
+           dbID = ex['guid'],
+           WorkflowID = ex['template_guid'],
+           WorkflowVersion = -1,
+           Status = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(ex['status'],ex['status']),
+           Task_ID = '',
+        )
+    for ex in r.json()]
 
 
 def _getGrantaExecutionRecord(weid: str):
@@ -382,15 +396,4 @@ def _setGrantaExecutionStatus(eid, val):
         return True
     return False
 
-
-def _getGrantaBinaryFileByID(fid):
-    assert api_type == 'granta'
-    # this is .../filestore instead of ..../api, so the ../filestore should do the trick
-    response = rGet(f"../filestore/{fid}", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, allow_redirects=True)
-    return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
-
-def _uploadGrantaBinaryFile(binary_data):
-    assert api_type == 'granta'
-    response = rPost("../filestore", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, files={"file": binary_data})
-    return response.json()['guid']
 

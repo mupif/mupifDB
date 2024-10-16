@@ -158,7 +158,7 @@ def get_usecases() -> List[models.UseCase_Model]:
 
 
 @app.get("/usecases/{uid}", tags=["Usecases"])
-def get_usecase(uid: str):
+def get_usecase(uid: str) -> models.UseCase_Model:
     res = db.UseCases.find_one({"ucid": uid})
     if res is None: raise NotFoundError(f'Database reports no workflow with ucid={uid}.')
     return models.UseCase_Model.model_validate(res)
@@ -171,7 +171,7 @@ def get_usecase_workflows(uid: str) -> List[models.Workflow_Model]:
 
 
 @app.post("/usecases/", tags=["Usecases"])
-def post_usecase(uc: models.UseCase_Model):
+def post_usecase(uc: models.UseCase_Model) -> str:
     res = db.UseCases.insert_one(uc.model_dump_db())
     return str(res.inserted_id)
 
@@ -197,20 +197,18 @@ def get_workflow(workflow_id: str) -> models.Workflow_Model:
 
 @app.patch("/workflows/", tags=["Workflows"])
 def update_workflow(wf: models.Workflow_Model) -> models.Workflow_Model:
-    #print('OOO')
-    #rint_json(data=wf.model_dump())
     res = db.Workflows.find_one_and_update({'wid': wf.wid}, {'$set': wf.model_dump_db()}, return_document=ReturnDocument.AFTER)
     return models.Workflow_Model.model_validate(res)
 
 
 @app.post("/workflows/", tags=["Workflows"])
-def insert_workflow(wf: models.Workflow_Model):
+def insert_workflow(wf: models.Workflow_Model) -> str:
     res = db.Workflows.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
 
 @app.post("/workflows_history/", tags=["Workflows"])
-def insert_workflow_history(wf: models.Workflow_Model):
+def insert_workflow_history(wf: models.Workflow_Model) -> str:
     #print('TTT')
     #print_json(data=wf.model_dump())
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
@@ -223,8 +221,8 @@ def insert_workflow_history(wf: models.Workflow_Model):
 # --------------------------------------------------
 
 @app.get("/workflows_history/{workflow_id}/{workflow_version}", tags=["Workflows"])
-def get_workflow_history(workflow_id: str, workflow_version: int) -> models.Workflow_Model|None:
-    #print(f'AAA: {workflow_id=} {workflow_version=}')
+def get_workflow_history(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
+    # print(f'AAA: {workflow_id=} {workflow_version=}')
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
     if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
     return models.Workflow_Model.model_validate(res)
@@ -555,15 +553,20 @@ def get_status():
                     schedulerStatus = 'Failed'
             except (OSError, ValueError):
                 schedulerStatus = 'Failed'
-
-    # get some scheduler stats
-    stat = mupifDB.schedulerstat.getGlobalStat()
-    schedulerstat = db.Stat.find_one()['scheduler']
-    return {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
+    rec=db.Stat.find_one()
+    # pprint(rec)
+    statRec=models.MupifDBStatus_Model.Stat_Model.model_validate(rec)
+    return models.MupifDBStatus_Model(
+        schedulerStatus=schedulerStatus,
+        mupifDBStatus=mupifDBStatus,
+        # roundtrip to execution_statistics below via API request back to us? wth
+        totalStat=mupifDB.schedulerstat.getGlobalStat(),
+        schedulerStat=statRec.scheduler
+    )
 
 
 @app.get("/execution_statistics/", tags=["Stats"])
-def get_execution_statistics():
+def get_execution_statistics() -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
     res = client.MuPIF.WorkflowExecutions.aggregate([
         {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
     ])
@@ -573,17 +576,15 @@ def get_execution_statistics():
         vals[r['_id']] = r['count']
         tot += r['count']
 
-    output = {}
-    output['totalExecutions'] = tot
-    output['finishedExecutions'] = vals.get('Finished', 0)
-    output['failedExecutions'] = vals.get('Failed', 0)
-    output['createdExecutions'] = vals.get('Created', 0)
-    output['pendingExecutions'] = vals.get('Pending', 0)
-    output['scheduledExecutions'] = vals.get('Scheduled', 0)
-    output['runningExecutions'] = vals.get('Running', 0)
-    return output
-
-
+    return models.MupifDBStatus_Model.ExecutionStatistics_Model(
+        totalExecutions = tot,
+        finishedExecutions = vals.get('Finished', 0),
+        failedExecutions = vals.get('Failed', 0),
+        createdExecutions = vals.get('Created', 0),
+        pendingExecutions = vals.get('Pending', 0),
+        scheduledExecutions = vals.get('Scheduled', 0),
+        runningExecutions = vals.get('Running', 0),
+    )
 
 
 @app.get("/settings/", tags=["Settings"])
@@ -602,7 +603,7 @@ def db_init():
     for coll,rec in [
         ('Settings',{'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
         ('UseCases',models.UseCase_Model(projectName='TEST',projectLogo='https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png',ucid='1',Description='Test usecase').model_dump()),
-        ('Stat',{"scheduler": {"load": 0, "processedTasks": 0, "runningTasks": 0, "scheduledTasks": 0}}),
+        ('Stat',models.MupifDBStatus_Model.Stat_Model().model_dump(mode="json")),
         ('Workflows',None),
         ('WorkflowsHistory',None),
         ('WorkflowExecutions',None),
@@ -655,7 +656,7 @@ def get_status2():
         nameserverStatus = 'Failed'
     # get Scheduler status
     schedulerStatus = 'Failed'
-    query = ns.yplookup(meta_any={"type:scheduler"})
+    query = ns.yplookup(meta_any={"type:scheduler"}) # type: ignore
     try:
         for name, (uri, metadata) in query.items():
             s = Pyro5.api.Proxy(uri)
