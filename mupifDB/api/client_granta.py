@@ -323,7 +323,7 @@ def _getGrantaExecutionInputItem(eid, name):
     return None
 
 
-def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None): -> List[models.WorkflowExecution_Model]:
+def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None) -> List[models.WorkflowExecution_Model]:
     assert api_type == 'granta'
     r = rGet("executions/", headers=getGrantaHeaders())
     return [
