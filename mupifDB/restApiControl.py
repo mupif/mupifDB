@@ -530,7 +530,7 @@ def setExecutionParameter(execution_id, param, value, val_type="str"):
             url = RESTserver + 'executions/' + str(execution_id)
             token = getAuthToken()
             headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
-            newdata = {"logs": {"url": "https://musicode.grantami.com/musicode/filestore/%s" % str(value), "description": None}}
+            newdata = {"logs": {"url": "https://musicode.grantami.com/mi/datasheet.aspx?dbKey=MI_Musicode&recordGuid=%s" % str(value), "description": None}}  # https://musicode.grantami.com/musicode/filestore/
             r = rPatch(url=url, headers=headers, data=json.dumps(newdata))
             if r.status_code == 200:
                 return True
