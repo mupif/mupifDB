@@ -4,13 +4,28 @@ import Pyro5.api
 import mupif as mp
 import os
 
-app = fastapi.FastAPI(openapi_tags=[{'name':'Stats'}])
+### BEGIN CACHING (should be ported to master later)
+from fastapi_cache import FastAPICache
+from fastapi_cache.decorator import cache
+from fastapi_cache.backends.inmemory import InMemoryBackend
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+@asynccontextmanager
+async def lifespan(_: fastapi.FastAPI) -> AsyncIterator[None]:
+    FastAPICache.init(InMemoryBackend())
+    yield
+
+app = fastapi.FastAPI(openapi_tags=[{'name':'Stats'}],lifespan=lifespan)
+### END CACHING
+
+
 
 mongoClient = pymongo.MongoClient("mongodb://localhost:27017")
 
 
 
 @app.get("/status2/", tags=["Stats"])
+@cache(expire=2)
 def get_status2():
     ns = None
     try:
@@ -38,20 +53,24 @@ def get_status2():
 
 
 @app.get("/scheduler-status2/", tags=["Stats"])
+@cache(expire=2)
 def get_scheduler_status2():
     ns = mp.pyroutil.connectNameserver();
     return mp.monitor.schedulerInfo(ns)
 
 @app.get("/ns-status2/", tags=["Stats"])
+@cache(expire=2)
 def get_ns_status2():
     ns = mp.pyroutil.connectNameserver();
     return mp.monitor.nsInfo(ns)
 
 @app.get("/vpn-status2/", tags=["Stats"])
+@cache(expire=2)
 def get_vpn_status2():
     return mp.monitor.vpnInfo(hidePriv=False)
 
 @app.get("/jobmans-status2/", tags=["Stats"])
+@cache(expire=2)
 def get_jobmans_status2():
     ns = mp.pyroutil.connectNameserver();
     return mp.monitor.jobmanInfo(ns)

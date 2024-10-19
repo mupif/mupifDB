@@ -15,6 +15,7 @@ Werkzeug==2.2.2
 psutil
 fastapi
 uvicorn[standard]
+fastapi-cache2
 python-multipart
 networkx
 astropy
