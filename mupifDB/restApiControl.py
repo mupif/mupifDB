@@ -438,14 +438,15 @@ def insertWorkflowHistory(data):
 # --------------------------------------------------
 
 grantaExecutionStatusTranscript = {
+    'Created':'Private',
     'Ready':'Pending',
-    'On-going':'Running',
+    'Scheduled':'Scheduled',
+    'Running':'Running',
     'Completed':'Finished',
     'Completed, to be reviewed':'Finished',
     'Completed & reviewed':'Finished',
-    'Cancelled':'Failed'
+    'Failed':'Failed'
 }
-grantaExecutionStatusTranscript = {'Ready':'Created','Scheduled':'Pending','Running':'Running','Running':'Scheduled','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Failed':'Failed'}
 
 def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None):
     if api_type == 'granta':
