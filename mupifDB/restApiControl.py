@@ -437,9 +437,25 @@ def insertWorkflowHistory(data):
 # Executions
 # --------------------------------------------------
 
+grantaExecutionStatusTranscript = {
+    'Ready':'Pending',
+    'On-going':'Running',
+    'Completed':'Finished',
+    'Completed, to be reviewed':'Finished',
+    'Completed & reviewed':'Finished',
+    'Cancelled':'Failed'
+}
+grantaExecutionStatusTranscript = {'Ready':'Created','Scheduled':'Pending','Running':'Running','Running':'Scheduled','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Failed':'Failed'}
+
 def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None):
     if api_type == 'granta':
+        granta_status_filter = None
+        if status is not None:
+            granta_status_filter = list(grantaExecutionStatusTranscript.keys())[list(grantaExecutionStatusTranscript.values()).index(status)]
+
         url = RESTserver + 'executions/'
+        if granta_status_filter is not None:
+            url = url + '?status=' + granta_status_filter
         token = getAuthToken()
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
         r = rGet(url=url, headers=headers)
@@ -449,7 +465,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
             execution['_id'] = ex['guid']
             execution['WorkflowID'] = ex['template_guid']
             execution['WorkflowVersion'] = -1
-            execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(ex['status'],ex['status'])
+            execution['Status'] = grantaExecutionStatusTranscript.get(ex['status'],ex['status'])
             execution['Task_ID'] = ''
             res.append(execution)
         return res
@@ -484,7 +500,7 @@ def getExecutionRecord(weid):
         execution['WorkflowVersion'] = -1
         execution['Status'] = 'unknown'
 
-        execution['Status'] = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(r_json['status'],r_json['status'])
+        execution['Status'] = grantaExecutionStatusTranscript.get(r_json['status'], r_json['status'])
 
         execution['Task_ID'] = ''
         return execution
