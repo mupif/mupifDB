@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 
 #
 
-def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}, allow_redirects=False):
+def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, files={}, params={}, allow_redirects=True):
     if method == 'get':
         response = requests.get(url=url, timeout=timeout, headers=headers, auth=auth, data=data, params=params, allow_redirects=allow_redirects)
     elif method == 'post':
@@ -36,10 +36,10 @@ def Request(*, method, url, headers=None, auth=None, data=None, timeout=None, fi
     if response.status_code >= 200 and response.status_code <= 299:
         return response
     else:
-        raise Exception('API returned code ' + str(response.status_code))
+        raise Exception(f'API returned code {response.status_code}, message {response.reason} ({url=}, {method=}, {data=}, {auth=}, {timeout=}, {files=}, {params=}, {allow_redirects=}')
     return None
 
-def rGet(*, url, headers=None, auth=None, timeout=100, params={}, allow_redirects=False):
+def rGet(*, url, headers=None, auth=None, timeout=100, params={}, allow_redirects=True):
     return Request(method='get', url=url, headers=headers, auth=auth, timeout=timeout, params=params, allow_redirects=allow_redirects)
 
 def rPost(*, url, headers=None, auth=None, data=None, timeout=100, files={}):
@@ -64,6 +64,12 @@ if not RESTserver[-1] == '/':
     RESTserver += '/'
 
 RESTserverMuPIF = RESTserver
+
+def setRESTserver(r):
+    'Used in tests to set RESTserver after import'
+    global RESTserver
+    global RESTserverMuPIF
+    RESTserver=RESTserverMuPIF=r+'/'
 
 granta_credentials = {'username': '', 'password': ''}
 
@@ -103,11 +109,11 @@ def getAuthToken():
 # Users
 # --------------------------------------------------
 
-def getUserByIP(ip):
-    if api_type == 'granta':
-        return None
-    response = rGet(url=RESTserver + "users/" + str(ip))
-    return response.json()
+# def getUserByIP(ip):
+#     if api_type == 'granta':
+#         return None
+#     response = rGet(url=RESTserver + "users/" + str(ip))
+#     return response.json()
 
 
 # --------------------------------------------------
@@ -185,8 +191,8 @@ def updateWorkflow(data):
 
 def fix_json(val):
     import re
-    val = re.sub(",[ \t\r\n]+}", "}", val)
-    val = re.sub(",[ \t\r\n]+\]", "]", val)
+    val = re.sub(r",[ \t\r\n]+}", "}", val)
+    val = re.sub(r",[ \t\r\n]+\]", "]", val)
     val = val.replace("False", "false").replace("True", "true")
     val
     return val
@@ -431,9 +437,25 @@ def insertWorkflowHistory(data):
 # Executions
 # --------------------------------------------------
 
+grantaExecutionStatusTranscript = {
+    'Ready':'Pending',
+    'On-going':'Running',
+    'Completed':'Finished',
+    'Completed, to be reviewed':'Finished',
+    'Completed & reviewed':'Finished',
+    'Cancelled':'Failed'
+}
+grantaExecutionStatusTranscript = {'Ready':'Created','Scheduled':'Pending','Running':'Running','Running':'Scheduled','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Failed':'Failed'}
+
 def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num_limit=None, status=None):
     if api_type == 'granta':
+        granta_status_filter = None
+        if status is not None:
+            granta_status_filter = list(grantaExecutionStatusTranscript.keys())[list(grantaExecutionStatusTranscript.values()).index(status)]
+
         url = RESTserver + 'executions/'
+        if granta_status_filter is not None:
+            url = url + '?status=' + granta_status_filter
         token = getAuthToken()
         headers = {'content-type': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
         r = rGet(url=url, headers=headers)
@@ -443,20 +465,7 @@ def getExecutionRecords(workflow_id=None, workflow_version=None, label=None, num
             execution['_id'] = ex['guid']
             execution['WorkflowID'] = ex['template_guid']
             execution['WorkflowVersion'] = -1
-            st = ex['status']
-            if st == 'Ready':
-                st = 'Pending'
-            if st == 'On-going':
-                st = 'Running'
-            if st == 'Completed':
-                st = 'Finished'
-            if st == 'Completed, to be reviewed':
-                st = 'Finished'
-            if st == 'Completed & reviewed':
-                st = 'Finished'
-            if st == 'Canceled':
-                st = 'Failed'
-            execution['Status'] = st
+            execution['Status'] = grantaExecutionStatusTranscript.get(ex['status'],ex['status'])
             execution['Task_ID'] = ''
             res.append(execution)
         return res
@@ -491,20 +500,7 @@ def getExecutionRecord(weid):
         execution['WorkflowVersion'] = -1
         execution['Status'] = 'unknown'
 
-        st = r_json['status']
-        if st == 'Ready':
-            st = 'Pending'
-        if st == 'On-going':
-            st = 'Running'
-        if st == 'Completed':
-            st = 'Finished'
-        if st == 'Completed, to be reviewed':
-            st = 'Finished'
-        if st == 'Completed & reviewed':
-            st = 'Finished'
-        if st == 'Canceled':
-            st = 'Failed'
-        execution['Status'] = st
+        execution['Status'] = grantaExecutionStatusTranscript.get(r_json['status'], r_json['status'])
 
         execution['Task_ID'] = ''
         return execution
@@ -589,7 +585,7 @@ def setExecutionOntoBaseObjectIDs(execution_id, name, value):
 def setExecutionAttemptsCount(execution_id, val):
     if api_type == 'granta':
         return None
-    return setExecutionParameter(execution_id, "Attempts", val, "int")
+    return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 
 
 def _setGrantaExecutionResults(eid, val_list):
@@ -888,7 +884,18 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 
 
 # --------------------------------------------------
-# Ontology
+# Settings
+# --------------------------------------------------
+
+def getSettings():
+    if api_type == 'granta':
+        return {}
+    response = rGet(url=RESTserver + "settings")
+    return response.json()
+
+
+# --------------------------------------------------
+# EDM
 # --------------------------------------------------
 
 def getEDMDataArray(DBName, Type):
