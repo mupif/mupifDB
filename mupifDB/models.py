@@ -2,7 +2,7 @@ import datetime
 import pydantic
 from pydantic.networks import IPvAnyAddress
 from pydantic import Field, AliasChoices, BeforeValidator
-from typing import Optional,List,Literal,Any,Annotated,Dict
+from typing import Optional,List,Literal,Any,Annotated,Dict,Tuple
 import bson.objectid
 
 DatabaseID=Annotated[str,BeforeValidator(lambda x: str(x) if isinstance(x,bson.objectid.ObjectId) else x)]
@@ -32,6 +32,14 @@ class StrictBase(pydantic.BaseModel):
         kwargs.setdefault("by_alias", True)
         return super().model_dump_json(**kwargs)
 
+class DbRef_Model(StrictBase):
+    where: str
+    id: str
+
+class TEMP_DbLookup_Model(StrictBase):
+    where: str
+    attrs: List[str]
+    values: List[str]
 
 class MongoObjBase_Model(StrictBase):
     dbID: Optional[DatabaseID]=Field(None,alias='_id') # type: ignore[arg-type]
@@ -43,25 +51,53 @@ class MongoObjBase_Model(StrictBase):
         ret=self.model_dump(mode='json')
         if '_id' in ret and ret['_id'] is None: del ret['_id']
         return ret
+    def TEMP_getChildren(self) -> List[DbRef_Model]: return []
+    def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return []
 
-class GridFSFile_Model(MongoObjBase_Model):
+import abc
+
+
+class ObjectWithParent_Mixin(abc.ABC):
+    @abc.abstractmethod
+    def getParent(self) -> Optional[DbRef_Model]: pass
+    @abc.abstractmethod
+    def TEMP_setParent(self, parent: DbRef_Model) -> None: pass
+    @abc.abstractmethod
+    def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]: pass
+
+
+class GridFSFile_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
     length: int
     chunkSize: int
     uploadDate: datetime.datetime
     metadata: Dict[str,Any]={}
+    def getParent(self) -> Optional[DbRef_Model]:
+        if parent:=self.metadata.get('parent',None): return DbRef_Model.model_validate(parent)
+        return None
+    def TEMP_setParent(self,parent: DbRef_Model) -> None:
+        if 'parent' in self.metadata: raise RuntimeError(f'Parent is already defined: {self.metadata["parent"]=}.')
+        self.metadata['parent']=parent.model_dump(mode='json')
+    def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]:
+        assert 'parent' in self.metadata
+        return {'_id':bson.objectid.ObjectId(self.dbID)},{'$set':{'metadata':self.metadata}}
 
 
-class MongoObj_Model(MongoObjBase_Model):
-    class Parent_Model(StrictBase):
-        where: str
-        id: str
-    parent: Optional[Parent_Model]=None
+class MongoObj_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
+    parent: Optional[DbRef_Model]=None
+    def getParent(self) -> Optional[DbRef_Model]: return self.parent
+    def TEMP_setParent(self, parent: DbRef_Model) -> None:
+        if self.parent is not None: raise RuntimeError(f'Parent is already defined: {self.parent=}.')
+        self.parent=parent
+    def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]:
+        assert self.parent is not None
+        return {'_id':bson.objectid.ObjectId(self.dbID)},{'$set':{'parent':self.parent.model_dump(mode='json')}}
 
 class UseCase_Model(MongoObj_Model):
     ucid: str
     projectName: str=''
     projectLogo: str=''
     Description: str=''
+    def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where=where,attrs=['UseCase'],values=[self.ucid]) for where in ('Workflows','WorkflowsHistory')]
 
 class EDMMappingIDs_Model(StrictBase):
     id: Optional[str]=None
@@ -99,9 +135,12 @@ class IODataRecordItem_Model(InputOutputBase_Model):
         ObjID:  Str_EmptyFromNone='' # XXX: test loads None
     Value: Optional[dict[str,Any]|str]=None # deema: allow str
     Link: Link_Model=Link_Model()
+    # links to fs.files
     FileID: Optional[str]=None
     Compulsory: Optional[bool]=False # deema: allow None
     Object: dict[str,Any]
+    def TEMP_getChildren(self) -> List[DbRef_Model]:
+        return [DbRef_Model(where=where,id=id) for where,id in [('fs.files',self.FileID)] if id is not None and id!='']
 
 class IODataRecord_Model(MongoObj_Model):
     DataSet: List[IODataRecordItem_Model]=[]
@@ -140,6 +179,9 @@ class Workflow_Model(MongoObj_Model):
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
 
+    # TODO: WorkflowID==self.wid and WorkflowVersion==self.Version
+    def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID'],values=[self.wid])]
+
 
 class WorkflowExecution_Model(MongoObj_Model):
     WorkflowID: str
@@ -161,6 +203,9 @@ class WorkflowExecution_Model(MongoObj_Model):
     loggerURI: str|None=None
     Inputs: str
     Outputs: str
+
+    def TEMP_getChildren(self) -> List[DbRef_Model]:
+        return [DbRef_Model(where=where,id=id) for where,id in [('IOData',self.Inputs),('IOData',self.Outputs),('fs.files',self.ExecutionLog)] if id is not None and id!='']
 
 
 
