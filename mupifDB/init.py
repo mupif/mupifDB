@@ -1,9 +1,10 @@
 import pymongo
-
+import sys
+port=(sys.argv[1] if len(sys.argv)>1 else '27017')
 # run this only once to initialize MuPIF DB
-client = pymongo.MongoClient("mongodb://localhost:27017/")
+client = pymongo.MongoClient(f"mongodb://localhost:{port}/")
 db = client.MuPIF
-if db:
+if db is not None:
     usecases = db["UseCases"]
     usecases.insert_one({"_id": "DemoUseCase", "Description": "Demo UseCase"})
     Stat = db["Stat"]

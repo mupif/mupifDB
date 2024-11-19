@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import mupifDB
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
-import table_structures
+from .. import table_structures
 import mupif as mp
 
 
@@ -31,8 +31,8 @@ app.config['MONGO_DBNAME'] = 'MuPIF'
 app.config['MONGO_URI'] = 'mongodb://localhost:27017/MuPIF'
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
 
-nameObjectIDpair = re.compile('([\w ]+){(\d+)}')
-nameObjectIDpairNone = re.compile('([\w ]+){None}')
+nameObjectIDpair = re.compile(r'([\w ]+){(\d+)}')
+nameObjectIDpairNone = re.compile(r'([\w ]+){None}')
 
 mongo = PyMongo(app)
 

@@ -1,18 +1,19 @@
+from typing import Any
 
-def extendRecord(record, structure):
+def extendRecord(record: dict[str,Any], structure: dict[str,Any]) -> dict[str,Any]:
     for def_key in structure.keys():
         if def_key not in record:
             record[def_key] = structure[def_key]
     return record
 
 
-tableUseCase = {
+tableUseCase: dict[str,Any] = {
     'ucid': None,
     'Description': None,
 }
 
 
-tableWorkflow = {
+tableWorkflow: dict[str,Any] = {
     'wid': None,
     'Description': None,
     'UseCase': None,
@@ -26,7 +27,7 @@ tableWorkflow = {
 }
 
 
-tableExecution = {
+tableExecution: dict[str,Any] = {
     'WorkflowID': None,
     'WorkflowVersion': None,
     'Status': "Created",
@@ -46,7 +47,7 @@ tableExecution = {
 }
 
 
-tableUser = {
+tableUser: dict[str,Any] = {
     'IP': None,
     'Name': None,
     'Organization': None,

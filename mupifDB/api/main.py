@@ -1,14 +1,21 @@
-
-if __name__ == '__main__':
+import logging
+logging.basicConfig()
+log=logging.getLogger('mupifDB.api.server')
+import argparse, sys
+_parser=argparse.ArgumentParser()
+_parser.add_argument('--export-openapi',default='',metavar='FILE')
+cmdline_opts,_=_parser.parse_known_args() # don't error on other args, such as --log-level, consumed by uvicorn.run
+if __name__ == '__main__' and not cmdline_opts.export_openapi:
+    print('SERVING')
     import uvicorn
     import os
     host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
     port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
-    uvicorn.run('main:app', host=host, port=port, reload=True)
+    uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
 import time
 
-from fastapi import FastAPI, UploadFile, Depends
+from fastapi import FastAPI, UploadFile, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +25,7 @@ import tempfile
 import gridfs
 import typing
 import io
-import bson
+import bson, bson.objectid
 import psutil
 from pymongo import ReturnDocument
 from pydantic import BaseModel
@@ -28,13 +35,19 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import mupifDB
 import mupif as mp
+import mupif.pyroutil
 import Pyro5.api
-import logging
-logging.basicConfig()
-log=logging.getLogger('restApi')
+import pydantic
+import json
+from typing import Any,List
+from rich import print_json
+from rich.pretty import pprint
+
+# shorthands for common exceptions
+def NotFoundError(detail): return HTTPException(status_code=404,detail=detail)
 
 
-import table_structures
+from mupifDB import models
 
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
 db = client.MuPIF
@@ -99,9 +112,9 @@ app.add_middleware(
 if 1:
     import mupifDB.api.edm as edm
     # when imported at readthedocs, don't try to connect to the DB (no DB running there)
-    if not 'MUPIFDB_DRY_RUN' in os.environ:
+    if 'MUPIFDB_DRY_RUN' not in os.environ and not cmdline_opts.export_openapi:
         edm.initializeEdm(client)
-    else: print('MUPIFDB_DRY_RUN defined, not initializing EDM DB connection.')
+    else: log.info('MUPIFDB_DRY_RUN / --generate-openapi active, not initializing EDM DB connection.')
     app.include_router(edm.dms3.router)
 
 
@@ -139,43 +152,27 @@ def read_root():
 # --------------------------------------------------
 
 @app.get("/usecases/", tags=["Usecases"])
-def get_usecases():
-    output = []
+def get_usecases() -> List[models.UseCase_Model]:
     res = db.UseCases.find()
-    if res:
-        for s in res:
-            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableUseCase))
-        return output
-    return []
+    return [models.UseCase_Model.model_validate(r) for r in res]
 
 
 @app.get("/usecases/{uid}", tags=["Usecases"])
-def get_usecase(uid: str):
+def get_usecase(uid: str) -> models.UseCase_Model:
     res = db.UseCases.find_one({"ucid": uid})
-    if res is not None:
-        return table_structures.extendRecord(fix_id(res), table_structures.tableUseCase)
-    return None
+    if res is None: raise NotFoundError(f'Database reports no workflow with ucid={uid}.')
+    return models.UseCase_Model.model_validate(res)
 
 
 @app.get("/usecases/{uid}/workflows", tags=["Usecases"])
-def get_usecase_workflows(uid: str):
-    output = []
+def get_usecase_workflows(uid: str) -> List[models.Workflow_Model]:
     res = db.Workflows.find({"UseCase": uid})
-    if res:
-        for s in res:
-            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableWorkflow))
-        return output
-    return []
-
-
-class M_UseCase(BaseModel):
-    ucid: str
-    description: str
+    return [models.Workflow_Model.model_validate(r) for r in res]
 
 
 @app.post("/usecases/", tags=["Usecases"])
-def post_usecase(data: M_UseCase):
-    res = db.UseCases.insert_one({"ucid": data.ucid, "Description": data.description})
+def post_usecase(uc: models.UseCase_Model) -> str:
+    res = db.UseCases.insert_one(uc.model_dump_db())
     return str(res.inserted_id)
 
 
@@ -184,43 +181,38 @@ def post_usecase(data: M_UseCase):
 # --------------------------------------------------
 
 @app.get("/workflows/", tags=["Workflows"])
-def get_workflows():
-    output = []
+def get_workflows() -> List[models.Workflow_Model]:
     res = db.Workflows.find()
-    if res:
-        for s in res:
-            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableWorkflow))
-        return output
-    return []
+    return [models.Workflow_Model.model_validate(r) for r in res]
 
 
 @app.get("/workflows/{workflow_id}", tags=["Workflows"])
-def get_workflow(workflow_id: str):
+def get_workflow(workflow_id: str) -> models.Workflow_Model:
     res = db.Workflows.find_one({"wid": workflow_id})
-    if res:
-        return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
-    return None
+    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id}.')
+    return models.Workflow_Model.model_validate(res)
 
 
-class M_Dict(BaseModel):
-    entity: dict
 
 
 @app.patch("/workflows/", tags=["Workflows"])
-def update_workflow(data: M_Dict):
-    res = db.Workflows.find_one_and_update({'wid': data.entity['wid']}, {'$set': data.entity}, return_document=ReturnDocument.AFTER)
-    return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
+def update_workflow(wf: models.Workflow_Model) -> models.Workflow_Model:
+    res = db.Workflows.find_one_and_update({'wid': wf.wid}, {'$set': wf.model_dump_db()}, return_document=ReturnDocument.AFTER)
+    return models.Workflow_Model.model_validate(res)
 
 
 @app.post("/workflows/", tags=["Workflows"])
-def insert_workflow(data: M_Dict):
-    res = db.Workflows.insert_one(data.entity)
+def insert_workflow(wf: models.Workflow_Model) -> str:
+    res = db.Workflows.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
 
 @app.post("/workflows_history/", tags=["Workflows"])
-def insert_workflow_history(data: M_Dict):
-    res = db.WorkflowsHistory.insert_one(data.entity)
+def insert_workflow_history(wf: models.Workflow_Model) -> str:
+    #print('TTT')
+    #print_json(data=wf.model_dump())
+    res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
+    #print(f'{res=}')
     return str(res.inserted_id)
 
 
@@ -229,11 +221,12 @@ def insert_workflow_history(data: M_Dict):
 # --------------------------------------------------
 
 @app.get("/workflows_history/{workflow_id}/{workflow_version}", tags=["Workflows"])
-def get_workflow_history(workflow_id: str, workflow_version: int):
+def get_workflow_history(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
+    # print(f'AAA: {workflow_id=} {workflow_version=}')
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
-    if res:
-        return table_structures.extendRecord(fix_id(res), table_structures.tableWorkflow)
-    return None
+    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
+    return models.Workflow_Model.model_validate(res)
+
 
 
 # --------------------------------------------------
@@ -241,7 +234,7 @@ def get_workflow_history(workflow_id: str, workflow_version: int):
 # --------------------------------------------------
 
 @app.get("/executions/", tags=["Executions"])
-def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str = "", num_limit: int = 0, label: str = ""):
+def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str = "", num_limit: int = 0, label: str = "") -> List[models.WorkflowExecution_Model]:
     output = []
     filtering = {}
     if status:
@@ -254,20 +247,19 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
         filtering["label"] = label
     if num_limit == 0:
         num_limit = 999999
+    #print(200*'!')
+    #pprint(filtering)
     res = db.WorkflowExecutions.find(filtering).sort('SubmittedDate', 1).limit(num_limit)
-    if res:
-        for s in res:
-            output.append(table_structures.extendRecord(fix_id(s), table_structures.tableExecution))
-        return output
-    return []
+    # pprint(res)
+    return [models.WorkflowExecution_Model.model_validate(r) for r in res]
 
 
 @app.get("/executions/{uid}", tags=["Executions"])
-def get_execution(uid: str):
+def get_execution(uid: str) -> models.WorkflowExecution_Model:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    if res:
-        return table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
-    return None
+    if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
+    return models.WorkflowExecution_Model.model_validate(res)
+
 
 
 @app.get("/edm_execution/{uid}", tags=["Executions"])
@@ -315,35 +307,37 @@ class M_WorkflowExecutionAddSpec(BaseModel):
 
 
 @app.post("/executions/create/", tags=["Executions"])
-def create_execution(data: M_WorkflowExecutionAddSpec):
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=data.wid, workflowVer=int(data.version), requestedBy='', ip=data.ip, no_onto=bool(data.no_onto))
+def create_execution(wec: models.WorkflowExecutionCreate_Model) -> str:
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wec.wid, workflowVer=wec.version, requestedBy='', ip=wec.ip, no_onto=wec.no_onto)
     return str(c.executionID)
 
 
 @app.post("/executions/", tags=["Executions"])
-def insert_execution(data: M_Dict):
-    res = db.WorkflowExecutions.insert_one(data.entity)
+def insert_execution(data: models.WorkflowExecution_Model) -> str:
+    res = db.WorkflowExecutions.insert_one(data.model_dump_db())
     return str(res.inserted_id)
 
+### XXX: fix return annotations
 
 @app.get("/executions/{uid}/inputs/", tags=["Executions"])
-def get_execution_inputs(uid: str):
+def get_execution_inputs(uid: str) -> List[models.IODataRecordItem_Model]:
+    # print(100*'@'+f'\n{uid=}')
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    # pprint(res)
     if res:
-        if res.get('Inputs', None) is not None:
-            inp = db.IOData.find_one({'_id': bson.objectid.ObjectId(res['Inputs'])})
-            return inp.get('DataSet', None)
-    return None
+        ex=models.WorkflowExecution_Model.model_validate(res)
+        if ex.Inputs: return models.IODataRecord_Model.model_validate(db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs)})).DataSet
+    return []
 
 
 @app.get("/executions/{uid}/outputs/", tags=["Executions"])
-def get_execution_outputs(uid: str):
+def get_execution_outputs(uid: str) -> List[models.IODataRecordItem_Model]:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    # pprint(res)
     if res:
-        if res.get('Outputs', None) is not None:
-            inp = db.IOData.find_one({'_id': bson.objectid.ObjectId(res['Outputs'])})
-            return inp.get('DataSet', None)
-    return None
+        ex=models.WorkflowExecution_Model.model_validate(res)
+        if ex.Inputs: return models.IODataRecord_Model.model_validate(db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Outputs)})).DataSet
+    return []
 
 @app.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
 def get_execution_livelog(uid: str, num: int):
@@ -356,43 +350,38 @@ def get_execution_livelog(uid: str, num: int):
         proxy._pyroTimeout=5
         ll=proxy.tail(num,raw=True)
         if isinstance(ll,dict): ll=serpent.tobytes(ll)
-        ll=pickle.loads(ll)
+        ll=pickle.loads(ll)                                  # type: ignore
         return [fmt.format(rec) for rec in ll]
 
 
-def get_execution_io_item(uid, name, obj_id, inout):
-    we = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    data = db.IOData.find_one({'_id': bson.objectid.ObjectId(we[inout])})
-    for elem in data['DataSet']:
-        if elem.get('Name', None) == name and elem.get('ObjID', '') == obj_id:
+def get_execution_io_item(uid: str, name, obj_id: str, inputs: bool):
+    we = models.WorkflowExecution_Model.model_validate(db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)}))
+    data = models.IODataRecord_Model.model_validate(db.IOData.find_one({'_id': bson.objectid.ObjectId(we.Inputs if inputs else we.Outputs)}))
+    for elem in data.DataSet:
+        if elem.Name == name and elem.ObjID == obj_id:
             return elem
     return None
 
 
 @app.get("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
 def get_execution_input_item(uid: str, name: str, obj_id: str):
-    return get_execution_io_item(uid, name, obj_id, 'Inputs')
+    return get_execution_io_item(uid, name, obj_id, inputs=True)
 
 
 @app.get("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
 def get_execution_output_item(uid: str, name: str, obj_id: str):
-    return get_execution_io_item(uid, name, obj_id, 'Outputs')
+    return get_execution_io_item(uid, name, obj_id, inputs=False)
 
 
 @app.get("/executions/{uid}/input_item/{name}//", tags=["Executions"])
 def _get_execution_input_item(uid: str, name: str):
-    return get_execution_io_item(uid, name, '', 'Inputs')
+    return get_execution_io_item(uid, name, '', inputs=True)
 
 
 @app.get("/executions/{uid}/output_item/{name}//", tags=["Executions"])
 def _get_execution_output_item(uid: str, name: str):
-    return get_execution_io_item(uid, name, '', 'Outputs')
+    return get_execution_io_item(uid, name, '', inputs=False)
 
-
-class M_IOData_link(BaseModel):
-    ExecID: str
-    Name: str
-    ObjID: str
 
 
 class M_IODataSetContainer(BaseModel):
@@ -400,11 +389,11 @@ class M_IODataSetContainer(BaseModel):
     object: typing.Optional[dict] = None
 
 
-def set_execution_io_item(uid, name, obj_id, inout, data_container):
-    we = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    if (we.get('Status', '') == 'Created' and inout == 'Inputs') or (we.get('Status', '') == 'Running' and inout == 'Outputs'):
-        id_condition = {'_id': bson.objectid.ObjectId(we[inout])}
-        if data_container.link is not None and inout == 'Inputs':
+def set_execution_io_item(uid, name, obj_id, inputs: bool, data_container):
+    we = models.WorkflowExecution_Model.model_validate(db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)}))
+    if (we.Status == 'Created' and inputs==True) or (we.Status == 'Running' and inputs==False):
+        id_condition = {'_id': bson.objectid.ObjectId(we.Inputs if inputs else we.Outputs)}
+        if data_container.link is not None and inputs==True:
             res = db.IOData.update_one(id_condition, {'$set': {"DataSet.$[r].Link": data_container.link}}, array_filters=[{"r.Name": name, "r.ObjID": str(obj_id)}])
             return res.matched_count > 0
         if data_container.object is not None:
@@ -415,22 +404,22 @@ def set_execution_io_item(uid, name, obj_id, inout, data_container):
 
 @app.patch("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
 def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
-    return set_execution_io_item(uid, name, obj_id, 'Inputs', data)
+    return set_execution_io_item(uid, name, obj_id, True, data)
 
 
 @app.patch("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
 def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
-    return set_execution_io_item(uid, name, obj_id, 'Outputs', data)
+    return set_execution_io_item(uid, name, obj_id, False, data)
 
 
 @app.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"])
 def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer):
-    return set_execution_io_item(uid, name, '', 'Inputs', data)
+    return set_execution_io_item(uid, name, '', True, data)
 
 
 @app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"])
 def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer):
-    return set_execution_io_item(uid, name, '', 'Outputs', data)
+    return set_execution_io_item(uid, name, '', False, data)
 
 
 class M_ModifyExecutionOntoBaseObjectID(BaseModel):
@@ -439,7 +428,7 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
 
 
 @app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
+def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}})
     return get_execution(uid)
 
@@ -449,9 +438,9 @@ class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
 
 
 @app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDMultiple):
-    for d in data.data:
-        db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": d['name']}, {"$set": {"EDMMapping.$.id": d['value']}})
+def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID]):
+    for d in data:
+        db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": d.name}, {"$set": {"EDMMapping.$.id": d.value}})
     return get_execution(uid)
 
 
@@ -461,7 +450,7 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
 
 
 @app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
+def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}})
     return get_execution(uid)
 
@@ -480,11 +469,10 @@ def modify_execution(uid: str, data: M_ModifyExecution):
 @app.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str):
     execution_record = get_execution(uid)
-    if execution_record['Status'] == 'Created' or True:
+    if execution_record.Status == 'Created' or True:
         data = type('', (), {})()
-        data.key = "Status"
-        data.value = "Pending"
-        return modify_execution(uid, data)
+        mod=M_ModifyExecution(key = "Status",value = "Pending")
+        return modify_execution(uid, mod)
     return None
 
 
@@ -500,8 +488,8 @@ def get_execution_iodata(uid: str):
 
 
 @app.post("/iodata/", tags=["IOData"])
-def insert_execution_iodata(data: M_Dict):
-    res = db.IOData.insert_one(data.entity)
+def insert_execution_iodata(data: models.IODataRecord_Model):
+    res = db.IOData.insert_one(data.model_dump_db())
     return str(res.inserted_id)
 
 
@@ -579,8 +567,8 @@ def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir)):
 # --------------------------------------------------
 
 @app.post("/logs/", tags=["Logs"])
-def insert_log(data: M_Dict):
-    res = db.Logs.insert_one(data.entity)
+def insert_log(data: dict):
+    res = db.Logs.insert_one(data)
     return str(res.inserted_id)
 
 
@@ -600,20 +588,24 @@ def get_status():
         with open(pidfile, "r") as f:
             try:
                 pid = int(f.read())
+                if not psutil.pid_exists(pid):
+                    schedulerStatus = 'Failed'
             except (OSError, ValueError):
                 schedulerStatus = 'Failed'
-
-        if not psutil.pid_exists(pid):
-            schedulerStatus = 'Failed'
-
-    # get some scheduler stats
-    stat = mupifDB.schedulerstat.getGlobalStat()
-    schedulerstat = db.Stat.find_one()['scheduler']
-    return {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
+    rec=db.Stat.find_one()
+    # pprint(rec)
+    statRec=models.MupifDBStatus_Model.Stat_Model.model_validate(rec)
+    return models.MupifDBStatus_Model(
+        schedulerStatus=schedulerStatus,
+        mupifDBStatus=mupifDBStatus,
+        # roundtrip to execution_statistics below via API request back to us? wth
+        totalStat=mupifDB.schedulerstat.getGlobalStat(),
+        schedulerStat=statRec.scheduler
+    )
 
 
 @app.get("/execution_statistics/", tags=["Stats"])
-def get_execution_statistics():
+def get_execution_statistics() -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
     res = client.MuPIF.WorkflowExecutions.aggregate([
         {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
     ])
@@ -623,15 +615,15 @@ def get_execution_statistics():
         vals[r['_id']] = r['count']
         tot += r['count']
 
-    output = {}
-    output['totalExecutions'] = tot
-    output['finishedExecutions'] = vals.get('Finished', 0)
-    output['failedExecutions'] = vals.get('Failed', 0)
-    output['createdExecutions'] = vals.get('Created', 0)
-    output['pendingExecutions'] = vals.get('Pending', 0)
-    output['scheduledExecutions'] = vals.get('Scheduled', 0)
-    output['runningExecutions'] = vals.get('Running', 0)
-    return output
+    return models.MupifDBStatus_Model.ExecutionStatistics_Model(
+        totalExecutions = tot,
+        finishedExecutions = vals.get('Finished', 0),
+        failedExecutions = vals.get('Failed', 0),
+        createdExecutions = vals.get('Created', 0),
+        pendingExecutions = vals.get('Pending', 0),
+        scheduledExecutions = vals.get('Scheduled', 0),
+        runningExecutions = vals.get('Running', 0),
+    )
 
 
 @app.get("/settings/", tags=["Settings"])
@@ -641,6 +633,30 @@ def get_settings():
         del s['_id']
         return s
     return {}
+
+
+@app.get("/database/maybe_init",tags=["Settings"])
+def db_init():
+    # probably initialized already
+    if 'Settings' in db.list_collection_names(): return False
+    for coll,rec in [
+        ('Settings',{'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
+        ('UseCases',models.UseCase_Model(projectName='TEST',projectLogo='https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png',ucid='1',Description='Test usecase').model_dump()),
+        ('Stat',models.MupifDBStatus_Model.Stat_Model().model_dump(mode="json")),
+        ('Workflows',None),
+        ('WorkflowsHistory',None),
+        ('WorkflowExecutions',None),
+        ('IOData',None)
+    ]:
+        try:
+            c=db.create_collection(coll)
+            if rec is None: continue
+            try: c.insert_one(rec)
+            except Exception: log.exception(f'Error populating initial collection {coll} with {rec}.')
+        except Exception as e: log.exception(f'Error creating initial collection {coll}.')
+    return True
+
+
 
 
 @app.get("/scheduler_statistics/", tags=["Stats"])
@@ -673,14 +689,13 @@ def set_scheduler_statistics(data: M_ModifyStatistics):
 def get_status2():
     ns = None
     try:
-        ns = mp.pyroutil.connectNameserver();
+        ns = mupif.pyroutil.connectNameserver()
         nameserverStatus = 'OK'
     except:
         nameserverStatus = 'Failed'
-    
     # get Scheduler status
     schedulerStatus = 'Failed'
-    query = ns.yplookup(meta_any={"type:scheduler"})
+    query = ns.yplookup(meta_any={"type:scheduler"}) # type: ignore
     try:
         for name, (uri, metadata) in query.items():
             s = Pyro5.api.Proxy(uri)
@@ -699,21 +714,21 @@ def get_status2():
 
 @app.get("/scheduler-status2/", tags=["Stats"])
 def get_scheduler_status2():
-    ns = mp.pyroutil.connectNameserver();
+    ns = mupif.pyroutil.connectNameserver();
     return mp.monitor.schedulerInfo(ns)
 
 @app.get("/ns-status2/", tags=["Stats"])
 def get_ns_status2():
-    ns = mp.pyroutil.connectNameserver();
+    ns = mupif.pyroutil.connectNameserver();
     return mp.monitor.nsInfo(ns)
 
 @app.get("/vpn-status2/", tags=["Stats"])
 def get_vpn_status2():
-    return mp.monitor.vpnInfo(hidePriv=False)
+    return mupif.monitor.vpnInfo(hidePriv=False)
 
 @app.get("/jobmans-status2/", tags=["Stats"])
 def get_jobmans_status2():
-    ns = mp.pyroutil.connectNameserver();
+    ns = mupif.pyroutil.connectNameserver();
     return mp.monitor.jobmanInfo(ns)
 
 
@@ -748,5 +763,9 @@ def edm_find(db: str, type: str, data: M_FindParams):
     res = client[db][type].find(data.filter)
     ids = [str(r["_id"]) for r in res]
     return ids
+
+
+if __name__ == '__main__' and cmdline_opts.export_openapi:
+    open(cmdline_opts.export_openapi,'w').write(json.dumps(app.openapi(),indent=2))
 
 

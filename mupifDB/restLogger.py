@@ -5,8 +5,8 @@ import threading
 
 import sys
 import os.path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import restApiControl
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+'/..')
+from . import restApiControl
 
 
 class RestLogHandler(logging.StreamHandler):
@@ -30,7 +30,6 @@ class RestLogHandler(logging.StreamHandler):
 
 
 if __name__ == '__main__':
-    import restApiControl
     logging.getLogger().setLevel(logging.DEBUG)
     log = logging.getLogger('test')
     log.setLevel(logging.DEBUG)

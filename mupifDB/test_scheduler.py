@@ -6,12 +6,16 @@ from xprocess import ProcessStarter
 from rich.pretty import pprint
 from rich import print_json
 
+import logging
+logging.basicConfig()
+log=logging.getLogger()
+
 def anyPort():
     s=socket.socket()
     s.bind(('',0))
     return s.getsockname()[1]
 
-PORTS={'nameserver':anyPort(),'mongodb':anyPort(),'restApi':anyPort()}
+PORTS={'nameserver':anyPort(),'mongodb':anyPort(),'restApi':anyPort(),'web':anyPort()}
 PORTS=dict([(k,str(v)) for k,v in PORTS.items()])
 pprint(PORTS)
 
@@ -66,9 +70,9 @@ def restApi(xprocess,mongodb,nameserver):
             'PYTHONPATH':mupifDB.__path__[0]+'/..',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
-        args = [ sys.executable, 'main.py' ]
+        args = [ sys.executable, 'main.py', '--log-level','debug' ]
         timeout = 5
-        max_read_lines = 50
+        max_read_lines = 500
         pattern = 'Application startup complete.'
         terminate_on_interrupt = True
     xprocess.ensure("restApi",Starter)
@@ -83,18 +87,42 @@ def scheduler(xprocess,restApi):
             'PYTHONPATH':mupifDB.__path__[0]+':'+mupifDB.__path__[0]+'/..',
             'MUPIF_NS':f'localhost:'+PORTS['nameserver'],
             'MUPIF_LOG_LEVEL':'DEBUG',
-            'MUPIFDB_REST_SERVER':'http://localhost:'+PORTS['restApi'],
+            'MUPIFDB_REST_SERVER':MUPIFDB_REST_SERVER,
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
         args = [ sys.executable, '-c', 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=.5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' ]
         timeout = 10
-        max_read_lines = 50
+        max_read_lines = 500
         # pattern = 'Entering main loop to check for Pending executions'
         pattern = 'procInit called'
         terminate_on_interrupt = True
     xprocess.ensure("scheduler",Starter)
     yield
     xprocess.getinfo("scheduler").terminate()
+
+@pytest.fixture
+def web(xprocess):
+    class Starter(ProcessStarter):
+        env = {
+            'PYTHONUNBUFFERED':'1',
+            'PYTHONPATH':mupifDB.__path__[0],
+            #'MUPIF_NS':f'localhost:'+PORTS['nameserver'],
+            'MUPIF_LOG_LEVEL':'DEBUG',
+            'MUPIFDB_REST_SERVER':'http://localhost:'+PORTS['restApi'],
+            'MUPIFDB_WEB_FAKE_AUTH':'1',
+            'FLASK_APP':'webapi/index.py',
+        }
+        popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/..' }
+        args = [ sys.executable, '-m', 'flask','run','--host','localhost','--port',PORTS['web']]
+        timeout = 10
+        max_read_lines = 500
+        # pattern = 'Entering main loop to check for Pending executions'
+        pattern = ' * Running on http://localhost:'
+        terminate_on_interrupt = True
+    xprocess.ensure("web",Starter)
+    yield
+    xprocess.getinfo("web").terminate()
+
 
 #@pytest.fixture
 #def ex2server(scheduler):
@@ -122,29 +150,41 @@ def test_suite_cleanup():
 
 
 class TestFoo:
-    def test_workflowdemo01(self,scheduler):
+    def test_01_workflowdemo01(self,scheduler):
         wf=wfmini01.MiniWorkflow1()
         md=lambda k: wf.getMetadata(k)
         wid=md('ID')
         id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md('Description'),source=wfmini01.__file__,useCase='useCase1',workflowInputs=md('Inputs'),workflowOutputs=md('Outputs'),modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md('Models'))
         print(f'Workflow inserted, {id=}')
         wrec=restApiControl.getWorkflowRecord(wid)
-        assert wrec['wid']==wid
+        assert wrec.wid==wid
         # print_json(data=wrec)
-        weid=restApiControl.createExecution(wid,version='1',ip='localhost')
-        #for inp in [
-        #    mp.ConstantProperty(value=16., propID=DataID.PID_Concentration,valueType=ValueType.Scalar,unit=mp.U['m'])
-        #]:
-        #    restApiControl.setExecutionInputObject(weid,
+        weid=restApiControl.createExecution(wid,version=1,ip='localhost')
         print(f'Execution created, {weid=}')
         restApiControl.scheduleExecution(weid)
         print(f'Execution scheduled, {weid=}')
+        logID=None
         for i in range(10):
-            data=restApiControl.getExecutionRecord(weid)
-            print(f'Execution status: {data["Status"]}')
+            exe=restApiControl.getExecutionRecord(weid)
+            print(f'Execution: {exe.Status}')
+            if exe.Status=='Finished': break
+            # print(f'Pending executions: {restApiControl.getPendingExecutions(num_limit=10)}')
             time.sleep(1)
-        assert data['Status']=='Finished'
-
+        try:
+            if exe.ExecutionLog is None:
+                print('Execution log not available')
+                logContent=None
+            logContent,logName=restApiControl.getBinaryFileByID(exe.ExecutionLog)
+        except: log.error('Error downloading log')
+        (log.error if exe.Status!='Finished' else log.info)(logContent.decode('utf-8'))
+        assert exe.Status=='Finished'
+    def test_02_web(self,scheduler,web):
+        server='http://localhost:'+PORTS['web']
+        import requests
+        for what in ('about','workflows','workflowexecutions','workflows/1'):
+            resp=requests.get(server+f'/{what}')
+            open(f'/tmp/{what.replace("/","_")}.html','wb').write(resp.content)
+            assert resp.status_code==200
 
         # time.sleep(10)
     # def test_schedule(self, ex2server):
