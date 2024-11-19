@@ -180,9 +180,11 @@ class TestFoo:
                 print('Execution log not available')
                 logContent=None
             logContent,logName=restApiControl.getBinaryFileByID(exe.ExecutionLog)
-        except: log.error('Error downloading log')
-        (log.error if exe.Status!='Finished' else log.info)(logContent.decode('utf-8'))
+        except:
+            log.error('Error downloading log')
+            (log.error if exe.Status!='Finished' else log.info)(logContent.decode('utf-8'))
         assert exe.Status=='Finished'
+        assert logContent is not None
     def test_02_web(self,scheduler,web):
         server='http://localhost:'+PORTS['web']
         import requests

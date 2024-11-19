@@ -41,7 +41,7 @@ jobs:
     - name: pytest (native)
       timeout-minutes: 2
       run: |
-        python -m pytest .
+        python -m pytest . || { for f in .pytest_cache/d/.xprocess/*/*.log; do echo @@@@@@@@@@@@@@@@@@@@@@@@@@@ $f @@@@@@@@@@@@@@@@@@@@@@@@@; cat $f; done }
     - name: webapi test
       timeout-minutes: 2
       run: |
