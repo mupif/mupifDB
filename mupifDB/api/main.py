@@ -257,9 +257,53 @@ def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str
 @app.get("/executions/{uid}", tags=["Executions"])
 def get_execution(uid: str) -> models.WorkflowExecution_Model:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    # print(f'OOO: {res=}')
     if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
     return models.WorkflowExecution_Model.model_validate(res)
+
+
+
+@app.get("/edm_execution/{uid}", tags=["Executions"])
+def get_edm_execution(uid: str):
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res:
+        e = table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
+        mapping = e.get('EDMMapping', [])
+        for m in mapping:
+            if 'createFrom' in m or 'createNew' in m:
+                m['ioType'] = 'output'
+            else:
+                m['ioType'] = 'input'
+        return mapping
+    return None
+
+
+@app.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
+def get_edm_execution(uid: str, entity: str, iotype: str):
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res:
+        e = table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
+        mapping = e.get('EDMMapping', [])
+        for m in mapping:
+            if 'createFrom' in m or 'createNew' in m:
+                m['ioType'] = 'output'
+            else:
+                m['ioType'] = 'input'
+
+        for m in mapping:
+            if m['ioType'] == iotype and m['EDMEntity'] == entity:
+                if m.get('id', None):
+                    return m['id']
+                elif m.get('ids', None):
+                    return m['ids']
+                return None
+    return None
+
+
+class M_WorkflowExecutionAddSpec(BaseModel):
+    wid: str
+    version: str
+    ip: str
+    no_onto: bool
 
 
 @app.post("/executions/create/", tags=["Executions"])
