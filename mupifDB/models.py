@@ -122,6 +122,7 @@ class InputOutputBase_Model(StrictBase):
     Type_ID: str = Field('',alias=AliasChoices('Type_ID','TypeID'))   # XXX deema: '' as default     # type: ignore[arg-type]
     ValueType: Literal['Vector','Scalar','Tensor','ScalarArray','VectorArray','TensorArray','']='Scalar'  # deema: allow ''
     Units: str
+    # XXX: disallow None, since that can be emulated via '' or [] ??, and needs special-casing in code?
     ObjID: Str_EmptyFromNone|List[str]|None = Field([],alias=AliasChoices('ObjID','Obj_ID'))  # type: ignore[arg-type] # XXX: test reads None
     EDMPath: Optional[str]=None
     # allow transparent read-only access as TypeID from python as well

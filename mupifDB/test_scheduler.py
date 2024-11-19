@@ -150,11 +150,16 @@ def test_suite_cleanup():
 
 
 class TestFoo:
+    def test_00_status(self,restApi):
+        from rich.pretty import pprint
+        # this initializes the db
+        pprint(restApiControl.getSettings(maybe_init_db=True))
     def test_01_workflowdemo01(self,scheduler):
         wf=wfmini01.MiniWorkflow1()
-        md=lambda k: wf.getMetadata(k)
-        wid=md('ID')
-        id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md('Description'),source=wfmini01.__file__,useCase='useCase1',workflowInputs=md('Inputs'),workflowOutputs=md('Outputs'),modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md('Models'))
+        md=wf.metadata
+        mdd=md.model_dump()
+        wid=wf.metadata.ID
+        id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md.Description,source=wfmini01.__file__,useCase='useCase1',workflowInputs=mdd['Inputs'],workflowOutputs=mdd['Outputs'],modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md.Models)
         print(f'Workflow inserted, {id=}')
         wrec=restApiControl.getWorkflowRecord(wid)
         assert wrec.wid==wid

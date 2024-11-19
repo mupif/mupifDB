@@ -137,7 +137,8 @@ class WorkflowExecutionIODataSet:
         data: list[models.IODataRecordItem_Model] = []
         # loop over workflow inputs or outputs
         for io in {'Inputs':IOCard.Inputs,'Outputs':IOCard.Outputs}[type]:  # type: ignore 
-            for objid in ([io.ObjID] if isinstance(io.ObjID,str) else io.ObjID):
+            objids=([io.ObjID] if isinstance(io.ObjID,str) else (io.ObjID if io.ObjID is not None else []))
+            for objid in objids:
                 data.append(
                     models.IODataRecordItem_Model.model_validate(
                         # upcast to common base class (InputOutputBase_Model), filtering only inherited keys
