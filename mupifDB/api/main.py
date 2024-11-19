@@ -39,7 +39,7 @@ import mupif.pyroutil
 import Pyro5.api
 import pydantic
 import json
-from typing import Any,List
+from typing import Any,List,Literal
 from rich import print_json
 from rich.pretty import pprint
 
@@ -263,47 +263,22 @@ def get_execution(uid: str) -> models.WorkflowExecution_Model:
 
 
 @app.get("/edm_execution/{uid}", tags=["Executions"])
-def get_edm_execution(uid: str):
+def get_edm_execution_uid(uid: str) -> models.WorkflowExecution_Model:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    if res:
-        e = table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
-        mapping = e.get('EDMMapping', [])
-        for m in mapping:
-            if 'createFrom' in m or 'createNew' in m:
-                m['ioType'] = 'output'
-            else:
-                m['ioType'] = 'input'
-        return mapping
-    return None
-
+    if res is None: raise NotFoundError(f'Database reports no edm_execution with uid={uid}.')
+    obj=models.WorkflowExecution_Model.model_validate(res)
+    return obj
 
 @app.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
-def get_edm_execution(uid: str, entity: str, iotype: str):
-    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
-    if res:
-        e = table_structures.extendRecord(fix_id(res), table_structures.tableExecution)
-        mapping = e.get('EDMMapping', [])
-        for m in mapping:
-            if 'createFrom' in m or 'createNew' in m:
-                m['ioType'] = 'output'
-            else:
-                m['ioType'] = 'input'
-
-        for m in mapping:
-            if m['ioType'] == iotype and m['EDMEntity'] == entity:
-                if m.get('id', None):
-                    return m['id']
-                elif m.get('ids', None):
-                    return m['ids']
-                return None
-    return None
-
-
-class M_WorkflowExecutionAddSpec(BaseModel):
-    wid: str
-    version: str
-    ip: str
-    no_onto: bool
+def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['input','output']) -> List[str]:
+    obj=get_edm_execution_uid(uid)
+    for m in obj.EDMMapping:
+        T='input' if (m.createFrom or m.createNew) else 'output'
+        if T==iotype and m.EDMEntity==entity:
+            if m.id is not None: return [m.id]
+            elif m.ids is not None: return m.ids
+            else: return []
+    return []
 
 
 @app.post("/executions/create/", tags=["Executions"])
