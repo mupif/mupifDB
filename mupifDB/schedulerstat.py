@@ -24,37 +24,24 @@ def getHourlyExecutionStat(nrec=48):
     # get the current date
     now = datetime.datetime.now()
     nowh1 = now+datetime.timedelta(hours=1, minutes=-now.minute, seconds=-now.second, microseconds=-now.microsecond) 
+    # XXX: pass time range to the query
     for wed in restApiControl.getExecutionRecords():
-        scheduledDate = None
-        if 'ScheduledDate' in wed.keys():
-            scheduledDate = wed['ScheduledDate']
-        elif 'StartDate' in wed.keys():
-            scheduledDate = wed['StartDate']
-        if scheduledDate:
-            if isinstance(scheduledDate, str):
-                scheduledDate = dateutil.parser.parse(scheduledDate)
+        if wed.StartDate: # may be None
             # print("Scheduled:"+str(scheduledDate))
             # get difference in hours
-            diff = int((nowh1-scheduledDate).total_seconds()//3600)
+            diff = int((nowh1-wed.StartDate).total_seconds()//3600)
             if diff < nrec:
                 # print(diff)
                 hourlyScheduledExecutions[nrec-1-diff] += 1
-        if 'EndDate' in wed.keys():
-            finishedDate = wed['EndDate']
-            if finishedDate:
-                if isinstance(finishedDate, str):
-                    finishedDate = dateutil.parser.parse(finishedDate)
-                # print('finishedDate:'+str(finishedDate))
-                # get difference in hours
-                diff = int((nowh1-finishedDate).total_seconds() // 3600)
-                # print("Monday2:",monday2, diff)
-                if diff < nrec:
-                    hourlyFinishedExecutions[nrec-1-diff] += 1
-    xlabels = []
+        if wed.EndDate: # may be None
+            # print('finishedDate:'+str(finishedDate))
+            # get difference in hours
+            diff = int((nowh1-wed.EndDate).total_seconds() // 3600)
+            # print("Monday2:",monday2, diff)
+            if diff < nrec:
+                hourlyFinishedExecutions[nrec-1-diff] += 1
     startDateTime = nowh1-datetime.timedelta(hours=nrec)
-    for hr in range(nrec):
-        xlabels.append((startDateTime+datetime.timedelta(hours=hr)).hour)
-    return {'ScheduledExecutions': hourlyScheduledExecutions, 'ProcessedExecutions': hourlyFinishedExecutions, 'xlabels': xlabels}
+    return {'ScheduledExecutions': hourlyScheduledExecutions, 'ProcessedExecutions': hourlyFinishedExecutions, 'xlabels': [(startDateTime+datetime.timedelta(hours=hr)).hour for hr in range(nrec)]}
 
 
 def getWeeklyExecutionStat():
@@ -63,36 +50,25 @@ def getWeeklyExecutionStat():
     # get the current date
     today = datetime.date.today()
     monday = (today - datetime.timedelta(days=today.weekday()))
-    # print("today:"+str(today)+" monday:"+str(monday))
+    # XXX: pass time range to the query
     for wed in restApiControl.getExecutionRecords():
-        scheduledDate = None
-        if 'ScheduledDate' in wed.keys():
-            scheduledDate = wed['ScheduledDate']
-        elif 'StartDate' in wed.keys():
-            scheduledDate = wed['StartDate']
-        if scheduledDate:
-            if isinstance(scheduledDate, str):
-                scheduledDate = dateutil.parser.parse(scheduledDate).date()
+        if wed.StartDate:
             # print("Scheduled:"+str(scheduledDate))
             # get difference in weeks
-            monday2 = (scheduledDate - datetime.timedelta(days=scheduledDate.weekday()))
+            monday2 = (wed.StartDate - datetime.timedelta(days=wed.StartDate.weekday()))
             # print("Monday2:", monday2, (monday-monday2).days)
             diff = (monday - monday2).days // 7
             # print(monday2, diff)
             if diff < 52:
                 weeklyScheduledExecutions[51-diff] += 1
-        if 'EndDate' in wed.keys():
-            finishedDate = wed['EndDate']
-            if finishedDate:
-                if isinstance(finishedDate, str):
-                    finishedDate = dateutil.parser.parse(finishedDate).date()
-                # print('finishedDate:'+str(finishedDate))
-                # get difference in weeks
-                monday2 = (scheduledDate - datetime.timedelta(days=scheduledDate.weekday()))
-                diff = (monday - monday2).days // 7
-                # print("Monday2:",monday2, diff)
-                if diff < 52:
-                    weeklyFinishedExecutions[51-diff] += 1
+        if wed.EndDate:
+            # print('finishedDate:'+str(finishedDate))
+            # get difference in weeks
+            monday2 = (wed.EndDate - datetime.timedelta(days=wed.EndDate.weekday()))
+            diff = (monday - monday2).days // 7
+            # print("Monday2:",monday2, diff)
+            if diff < 52:
+                weeklyFinishedExecutions[51-diff] += 1
     return {'ScheduledExecutions': weeklyScheduledExecutions, 'ProcessedExecutions': weeklyFinishedExecutions}
 
 
