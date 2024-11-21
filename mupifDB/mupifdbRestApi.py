@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 import mupifDB
 from mongoflask import MongoJSONEncoder, ObjectIdConverter
-from .. import table_structures
+from . import table_structures
 import mupif as mp
 
 
