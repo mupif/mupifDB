@@ -401,16 +401,13 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     name: str
     value: str
 
-
 @app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
 def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}})
     return get_execution(uid)
 
-
 class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
     data: list[dict]
-
 
 @app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
 def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID]):
@@ -423,7 +420,6 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
     name: str
     value: list[str]
 
-
 @app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
 def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
     db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}})
@@ -433,7 +429,6 @@ def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
 class M_ModifyExecution(BaseModel):
     key: str
     value: str
-
 
 @app.patch("/executions/{uid}", tags=["Executions"])
 def modify_execution(uid: str, data: M_ModifyExecution):
@@ -456,12 +451,12 @@ def schedule_execution(uid: str):
 # --------------------------------------------------
 
 @app.get("/iodata/{uid}", tags=["IOData"])
-def get_execution_iodata(uid: str):
+def get_execution_iodata(uid: str) -> models.IODataRecord_Model:
     res = db.IOData.find_one({'_id': bson.objectid.ObjectId(uid)})
-    return fix_id(res)
-    # return res.get('DataSet', None)
+    if res is None: raise NotFoundError(f'Database reports no iodata with uid={uid}.')
+    return models.IODataRecord_Model.model_validate(res)
 
-
+# TODO: pass and store parent data as well
 @app.post("/iodata/", tags=["IOData"])
 def insert_execution_iodata(data: models.IODataRecord_Model):
     res = db.IOData.insert_one(data.model_dump_db())
@@ -494,7 +489,7 @@ def get_file(uid: str, tdir=Depends(get_temp_dir)):
     fn = foundfile.filename
     return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
 
-
+# TODO: store parent as metadata, validate the fs.files record as well
 @app.post("/file/", tags=["Files"])
 def upload_file(file: UploadFile):
     if file:
@@ -506,6 +501,7 @@ def upload_file(file: UploadFile):
 
 @app.get("/property_array_data/{fid}/{i_start}/{i_count}/", tags=["Additional"])
 def get_property_array_data(fid: str, i_start: int, i_count: int):
+    # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
         full_path = tempDir + "/file.h5"
@@ -526,6 +522,7 @@ def get_property_array_data(fid: str, i_start: int, i_count: int):
 
 @app.get("/field_as_vtu/{fid}", tags=["Additional"])
 def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir)):
+    # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
     full_path = tdir + "/file.h5"
     f = open(full_path, 'wb')

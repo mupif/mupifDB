@@ -78,16 +78,15 @@ def resolve_DbRef(db, ref: models.DbRef_Model):
     return coll2model[ref.where].model_validate(rec)
 
 def set_parent_db(dbColl, child, parent: models.DbRef_Model):
-    if parentPrev:=child.getParent():
-        if parentPrev!=parent: raise RuntimeError(f'Old and new parents differ: {parentPrev=} {parent=}')
-        return
-    child.TEMP_setParent(parent)
+    if child.parent and child.parent!=parent:
+        raise RuntimeError(f'Old and new parents differ: {child.parent=} {parent=}')
+    child.parent=parent
     querySet=child.TEMP_mongoParentQuerySet()
     child2a=dbColl.find_one_and_update(*querySet,return_document=pymongo.ReturnDocument.AFTER)
     # pprint(child2a)
     if child2a is None: raise RuntimeError('Object to be updated not found?')
     #child2=type(child).model_validate(child2a)
-    #assert child.getParent()==parent
+    #assert child.parent==parent
 
 # TODO: this will set dangling reference in the parent object to null
 def set_attr_null(dbColl,obj,attr):
@@ -132,7 +131,7 @@ if 1:
                                 log.error(f'Unresolvable child {cref=} (setting to null not yet implemented)')
                                 print_mongo(rec)
                                 continue
-                            if child.getParent() is None:
+                            if child.parent is None:
                                 parentsAdded+=1
                                 set_parent_db(db.get_collection(cref.where),child,thisRef)
                     for clook in obj.TEMP_getLookupChildren():
@@ -142,7 +141,7 @@ if 1:
                                     log.error(f'Unresolvable child {cref=} {clook=} (setting to null not yet implemented)')
                                     print_mongo(rec)
                                     continue
-                                if child.getParent() is None:
+                                if child.parent is None:
                                     parentsAdded+=1
                                     set_parent_db(db.get_collection(cref.where),child,thisRef)
                             progress.update(chi_task,visible=False)
@@ -178,7 +177,7 @@ if 1:
             progress.start_task(doc_task)
             for irec,rec in enumerate(cursor):
                 obj=Model.model_validate(rec)
-                if parent:=obj.getParent() is None: noParent.append((coll,obj.dbID))
+                if obj.parent is None: noParent.append((coll,obj.dbID))
                     # print(coll,obj.dbID)
                 progress.advance(doc_task)
                 # if irec>1000: break

@@ -59,10 +59,6 @@ import abc
 
 class ObjectWithParent_Mixin(abc.ABC):
     @abc.abstractmethod
-    def getParent(self) -> Optional[DbRef_Model]: pass
-    @abc.abstractmethod
-    def TEMP_setParent(self, parent: DbRef_Model) -> None: pass
-    @abc.abstractmethod
     def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]: pass
 
 
@@ -71,23 +67,32 @@ class GridFSFile_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
     chunkSize: int
     uploadDate: datetime.datetime
     metadata: Dict[str,Any]={}
-    def getParent(self) -> Optional[DbRef_Model]:
+    # enable to make parent mandatory when validating the model
+    if 0:
+        @pydantic.field_validator('metadata')
+        @classmethod
+        def validate_metadata_parent(cls, md: Dict[str,Any]):
+            assert 'parent' in md
+            DbRef_Model.model_validate(md['parent'])
+            return md
+    # emulate parent as property, dynamically get/set via metadata (API in alignment with MongoObj_Model which store it in the db directly)
+    @property
+    def parent(self):
         if parent:=self.metadata.get('parent',None): return DbRef_Model.model_validate(parent)
         return None
-    def TEMP_setParent(self,parent: DbRef_Model) -> None:
+    @parent.setter
+    def parent(self,parent):
         if 'parent' in self.metadata: raise RuntimeError(f'Parent is already defined: {self.metadata["parent"]=}.')
         self.metadata['parent']=parent.model_dump(mode='json')
     def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]:
         assert 'parent' in self.metadata
+        DbRef_Model.model_validate(self.metadata['parent'])
         return {'_id':bson.objectid.ObjectId(self.dbID)},{'$set':{'metadata':self.metadata}}
 
 
 class MongoObj_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
+    # remove Optional to make parent mandatory when validating the model
     parent: Optional[DbRef_Model]=None
-    def getParent(self) -> Optional[DbRef_Model]: return self.parent
-    def TEMP_setParent(self, parent: DbRef_Model) -> None:
-        if self.parent is not None: raise RuntimeError(f'Parent is already defined: {self.parent=}.')
-        self.parent=parent
     def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]:
         assert self.parent is not None
         return {'_id':bson.objectid.ObjectId(self.dbID)},{'$set':{'parent':self.parent.model_dump(mode='json')}}

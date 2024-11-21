@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-import Pyro5
+import Pyro5.api
 
 
 from builtins import str
