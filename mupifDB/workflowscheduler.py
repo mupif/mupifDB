@@ -24,9 +24,13 @@ import shutil
 import datetime
 
 import Pyro5.api
+import Pyro5.errors
 import mupif as mp
 
 import logging
+
+# show remote traceback when remote calls fail
+sys.excepthook = Pyro5.errors.excepthook
 
 
 log=logging.getLogger('workflow-scheduler') 
@@ -47,85 +51,6 @@ try:
     authKey = schedulerConfig.authToken
 except ImportError:
     log.info("schedulerConfig import failed")
-# WorkflowScheduler is a daemon, which
-# will try to execute pending workflow executions in DB (those with status "Scheduled")
-# internally uses a multiprocessing pool to handle workflow execution requests
-#
-
-
-# WEID Status
-# Created -> Pending -> Scheduled -> Running -> Finished | Failed
-#
-# Created-> the execution record allocated and initialized
-# Pending -> execution record finalized (inputs sets), ready to be scheduled
-# Scheduled -> execution scheduled by the scheduler
-# Running -> execution processed (it is running)
-# Finished|Failed -> execution finished
-#
-
-class ExecutionResult(enum.Enum):
-    Finished = 1  # successful
-    Failed = 2
-
-
-class index(enum.IntEnum):
-    status = 0
-    scheduledTasks = 1
-    runningTasks = 2
-    processedTasks = 3
-    load = 4
-
-
-def historyMoveHelper(data, epoch, prefix): 
-    # fill the gap between current index and last valid entry (self.index)
-    indx = int(epoch/data[prefix+'epochDelta'])
-    if (indx == data[prefix+'index']):
-        return
-    elif (indx < data[prefix+'index']):
-        raise IndexError ();
-    else:
-        gap = indx-data[prefix+'index']
-        if (gap>data[prefix+'size']):
-            gap=data[prefix+'size']
-
-        arrays = [prefix+'pooledTasks', prefix+'processedTasks', prefix+'finishedTasks', prefix+'failedTasks', prefix+'load', prefix+'loadTicks']
-        for a in arrays:
-            for i in range(gap):
-               data[a].pop(0)
-               data[a].append(0)
-        data[prefix+'index'] = indx
-
-def historyMove(data, epoch):
-    historyMoveHelper(data, epoch, 's1_')
-    
-def historyUpdateLoad(data, epoch, currentLoad):
-    historyMove(data, epoch)
-    data['s1_load'][-1] = (data['s1_load'][-1]*data['s1_loadTicks'][-1] + currentLoad)/(data['s1_loadTicks'][-1]+1)
-    data['s1_loadTicks'][-1]+=1
-def historyUpdatePooled(data, epoch, numberOfPendingExecution):
-    historyMove(data,epoch)
-    data['s1_pooledTasks'][-1] += numberOfPendingExecution
-def historyUpdateRunning(data, epoch):
-    historyMove(data,epoch)
-    #data['s1_pooledTasks'][-1] -= 1 # history tracks accumulated values
-    #data['s1_runningTasks'][-1] += 1
-def historyUpdateFinished(data, epoch):
-    historyMove(data,epoch)
-    data['s1_processedTasks'][-1] += 1
-    data['s1_finishedTasks'][-1] += 1
-    #data['s1_runningTasks'][-1] -= 1
-def historyUpdateFailed(data, epoch):
-    historyMove(data,epoch)
-    data['s1_processedTasks'][-1] +=1
-    data['s1_failedTasks'][-1] += 1
-    #data['s1_runningTasks'][-1] -= 1
-
-# global vars 
-runningTasks = 0
-scheduledTasks = 0
-processedTasks = 0
-finishedTasks = 0 # with success
-failedTasks = 0
 
 
 schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"
@@ -138,34 +63,126 @@ ns_uri = str(ns._pyroUri)
 poolsize = 30
 stopFlag = False # set to tru to end main scheduler loop
 
-fd = None
-buf = None
+
+import pydantic
+from typing import Literal,List
+import threading
+import multiprocessing
+
+
+class SchedulerStat(pydantic.BaseModel,extra='forbid'):
+    _lock: threading.RLock=pydantic.PrivateAttr(default_factory=threading.RLock)
+    class Tasks(pydantic.BaseModel,extra='forbid'):
+        running: int=0
+        scheduled: int=0
+        processed: int=0
+        finished: int=0
+        failed: int=0
+    tasks: Tasks=Tasks()
+    load: float=0.
+    class JobInfo(pydantic.BaseModel,extra='forbid'):
+        we_id: str
+        wid: str
+        status: Literal['Running','Finished','Failed']
+        time: datetime.datetime
+    lastJobs: List[JobInfo]=[]
+    class Hist(pydantic.BaseModel,extra='forbid'):
+        interval: int=60*60
+        count: int=48
+        headPeriod: int=0
+        processed: List[int]=[]
+        pooled: List[int]=[]
+        finished: List[int]=[]
+        failed: List[int]=[]
+        load: List[float]=[]
+        def reset(self):
+            self.moveBy(2*self.count)
+            self.headPeriod=0
+        def moveBy(self,n):
+            def m(seq,n): seq[:]=seq[n:]+min(n,self.count)*[0] # modify in-place
+            m(self.processed,n); m(self.pooled,n); m(self.finished,n); m(self.failed,n); m(self.load,n)
+        def selfCheck(self):
+            if set([len(s) for s in (self.processed,self.pooled,self.finished,self.failed)])!=set([self.count]): self.reset()
+        def advance(self):
+            self.selfCheck()
+            per=int(time.time()//self.interval)
+            if per==self.headPeriod: return # nothing to do
+            elif per<self.headPeriod: raise RuntimeError('Traveling to the past?')
+            else: self.moveBy(per-self.headPeriod)
+            self.headPeriod=per
+    hist48h: Hist=Hist(interval=3600,count=48)
+
+    def advanceTime(self):
+        self.hist48h.advance()
+    def updateLastJobs(self, job: JobInfo, max=5) -> None:
+        match=[j for j in self.lastJobs if j.we_id==job.we_id]
+        if len(match)==0:
+            self.lastJobs.append(job)
+            self.lastJobs=self.lastJobs[-max:]
+        elif len(match)==1:
+            match[0].status=job.status
+            match[0].time=job.time
+        else: log.error('Multiple lastJobs with {we_id=}??')
+    def updateLoad(self) -> None:
+        self.load=int(100*self.tasks.running*1./poolsize)
+        self.hist48h.load[-1]=self.load
+    def sync(self):
+        self.updateLoad()
+        restApiControl.setStatScheduler(
+            runningTasks=self.tasks.running,
+            scheduledTasks=self.tasks.scheduled,
+            processedTasks=self.tasks.processed,
+            load=self.load
+        )
+    @staticmethod
+    def load_from_file(f):
+        with open(f,'r') as f: return SchedulerStat.model_validate_json(f.read())
+    def save_to_file(self,f):
+        open(f,'w').write(self.model_dump_json())
+
 
 @Pyro5.api.expose
-class SchedulerMonitor (object):
-    def __init__(self, ns, schedulerStat,lock):
+class SchedulerMonitor(object):
+    # class attribute, holding the URI of the instance once exposed over Pyro
+    URI: str|None=None
+
+    def __init__(self, ns): # , schedulerStat,lock):
         self.ns = ns
-        self.stat = schedulerStat
-        self.lock = lock
+        self.stat = SchedulerStat()
+        global schedulerStatFile
+        if (Path(schedulerStatFile).is_file()):
+            try:
+                self.stat=SchedulerStat.load_from_file(schedulerStatFile)
+            except:
+                log.exception(f'Failure reading persistent schedule statistics from {schedulerStatFile}, starting from scratch.')
+
     def runServer(self):
         log.info("SchedulerMonitor: runningServer")
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata={"type:scheduler"})
-    def getStatistics(self):
-        with self.lock:
-            return {
-                'runningTasks': self.stat['runningTasks'],
-                'scheduledTasks': self.stat['scheduledTasks'],
-                'processedTasks': self.stat['processedTasks'],
-                'finishedTasks': self.stat['finishedTasks'],
-                'failedTasks': self.stat['failedTasks'],
-                'lastJobs': self.stat['lastJobs'],
-                'currentLoad': self.stat['load'],
-                'processedTasks48': self.stat['s1_processedTasks'][:],
-                'pooledTasks48': self.stat['s1_pooledTasks'][:],
-                'finishedTasks48': self.stat['s1_finishedTasks'][:],
-                'failedTasks48': self.stat['s1_failedTasks'][:],
-                'load48': self.stat['s1_load'][:]
-            }
+
+    def advanceTime(self):
+        with self.stat._lock: self.stat.advanceTime()
+    def getStatistics(self,raw=False):
+        # the default raw=False will return data translated to the old format
+        # raw=True makes it suitable for reconstructing the model on the other side
+        self.advanceTime()
+        s=self.stat
+        with s._lock:
+            if raw: return s.model_dump(mode='json')
+            return dict(
+                runningTasks     = s.tasks.running,
+                scheduledTasks   = s.tasks.scheduled,
+                processedTasks   = s.tasks.processed,
+                finishedTasks    = s.tasks.finished,
+                failedTasks      = s.tasks.failed,
+                lastJobs         = [list(j.model_dump(mode='json').values()) for j in s.lastJobs],
+                currentLoad      = s.load,
+                processedTasks48 = s.hist48h.processed,
+                pooledTasks48    = s.hist48h.pooled,
+                finishedTasks48  = s.hist48h.finished,
+                failedTasks48    = s.hist48h.failed,
+                load48           = s.hist48h.load,
+            )
 
     @staticmethod
     def getExecutions(status='Running'):
@@ -174,131 +191,63 @@ class SchedulerMonitor (object):
         except Exception as e:
             log.error(repr(e))
             return []
-    def stop (self):
+    def stop(self):
         stopFlag=True
         self.ns.remove("mupif.scheduler")
-    # no-op: runServer wants  this for some reason?
+    # no-op: runServer wants this for some reason?
     def registerPyro(self,*,daemon,ns,uri,appName,exclusiveDaemon): 
         pass
 
+    def ensureLocalAccess(self) -> None:
+        if not hasattr(Pyro5,'current_context'): return
+        import ipaddress
+        addr=ipaddress.ip_address(Pyro5.current_context.client_sock_addr[0]) # type: ignore
+        if not addr.is_loopback: raise PermissionError(f'SchedulerMonitor: only local access is allowed (not from {addr})')
+
+    def updateRunning(self,we_id,wid):
+        self.ensureLocalAccess()
+        self.advanceTime()
+        with self.stat._lock:
+            self.stat.tasks.scheduled-=1
+            self.stat.tasks.running+=1
+            self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',time=datetime.datetime.now()))
+            self.stat.sync()
+    def updateScheduled(self,numPending: int):
+        self.ensureLocalAccess()
+        self.advanceTime()
+        with self.stat._lock:
+            self.stat.tasks.scheduled=numPending
+            self.stat.hist48h.pooled[-1]+=numPending
+            self.stat.sync()
+    def updateFinished(self,retCode,we_id):
+        self.ensureLocalAccess()
+        self.advanceTime()
+        with self.stat._lock:
+            self.stat.tasks.running-=1
+            self.stat.tasks.processed+=1
+            self.stat.hist48h.processed[-1]+=1
+            if retCode==0:
+                self.stat.tasks.finished+=1
+                self.stat.hist48h.finished[-1]+=1
+            else:
+                self.stat.tasks.failed+=1
+                self.stat.hist48h.failed[-1]+=1
+            # wid is not passed in here, use "?" in case the job is not found anymore
+            self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid='?',status=('Finished' if retCode==0 else 'Failed'),time=datetime.datetime.now()))
+            self.stat.sync()
+    def persistStat(self):
+        self.ensureLocalAccess()
+        self.advanceTime()
+        with self.stat._lock: self.stat.save_to_file(schedulerStatFile)
+
 
 def procInit():
-    global fd
-    global buf
-    # create new empty file to back memory map on disk
-    # fd = os.open('/tmp/workflowscheduler', os.O_RDWR)
-
-    # Create the mmap instace with the following params:
-    # fd: File descriptor which backs the mapping or -1 for anonymous mapping
-    # length: Must in multiples of PAGESIZE (usually 4 KB)
-    # flags: MAP_SHARED means other processes can share this mmap
-    # prot: PROT_WRITE means this process can write to this mmap
-    # buf = mmap.mmap(fd, mmap.PAGESIZE, mmap.MAP_SHARED, mmap.PROT_WRITE)
     log.info("procInit called")
-
-
 def procFinish(r):
-    log.info("procFinish called")
-
-
+   log.info("procFinish called")
 def procError(r):
-    log.info("procError called:"+str(r))
+   log.info("procError called:"+str(r))
 
-
-def updateStatRunning(lock, schedulerStat, we_id, wid):
-    with lock:
-        log.info("updateStatRunning called")
-        # print (schedulerStat)
-        # print ('------------------')
-
-        schedulerStat['scheduledTasks'] = schedulerStat['scheduledTasks']-1
-        schedulerStat['runningTasks']=schedulerStat['runningTasks']+1
-        # schedulerStat['runningJobs'].append(str(we_id)+':'+str(wid)) # won't work
-        # Modifications to mutable values or items in dict and list proxies will not be propagated through the manager,
-        # because the proxy has no way of knowing when its values or items are modified.
-        # To modify such an item, you can re-assign the modified object to the container proxy.
-        jobs = [(we_id, wid, 'Running', datetime.datetime.now().isoformat(timespec='seconds'), '-')]
-        for i in range(min(4,len(schedulerStat['lastJobs']))):
-            jobs.append(schedulerStat['lastJobs'][i])
-        schedulerStat['lastJobs'] = jobs
-
-        # print (we_id, wid)
-        # print (schedulerStat)
-        # print ('=======================')
-        epoch=time.time()
-        l = int(100 * int(schedulerStat['runningTasks']) / poolsize)
-        historyUpdateRunning(schedulerStat,epoch)  
-        restApiControl.setStatScheduler(load=l)
-        schedulerStat['load'] = l
-        restApiControl.setStatScheduler(runningTasks = schedulerStat['runningTasks'])
-        restApiControl.setStatScheduler(scheduledTasks = schedulerStat['scheduledTasks'])
-
-
-
-def updateStatScheduled(lock, schedulerStat, numberOfPendingExecutions):
-    with lock:
-        log.info("updateStatScheduled called")
-        #
-        schedulerStat['scheduledTasks'] = numberOfPendingExecutions
-        restApiControl.setStatScheduler(scheduledTasks = numberOfPendingExecutions)
-        epoch=time.time()
-        historyUpdatePooled(schedulerStat, epoch, numberOfPendingExecutions)
-
-
-def updateStatFinished(lock, schedulerStat, retCode, we_id):
-    try:
-        with lock:
-            log.info("updateStatFinished called")
-
-            #stats_temp = restApiControl.getStatScheduler()
-            #restApiControl.setStatScheduler(load=int(100*int(stats_temp['runningTasks'])/poolsize))
-            #
-            schedulerStat['runningTasks']=schedulerStat['runningTasks']-1
-            if (retCode == 0):
-                schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
-                schedulerStat['finishedTasks']=schedulerStat['finishedTasks']+1
-            elif (retCode == 1):
-                schedulerStat['processedTasks']=schedulerStat['processedTasks']+1
-                schedulerStat['failedTasks'] =schedulerStat['failedTasks']+1
-            l = int(100 * int(schedulerStat['runningTasks']) / poolsize)            
-            restApiControl.setStatScheduler(load=l)
-            schedulerStat['load'] = l
-            restApiControl.setStatScheduler(runningTasks=schedulerStat['runningTasks'])
-            restApiControl.setStatScheduler(processedTasks=schedulerStat['processedTasks'])
-
-            jobs = []
-            for i in range(len(schedulerStat['lastJobs'])):
-                if (schedulerStat['lastJobs'][i][0] == we_id):
-                    if (retCode == 0):
-                        jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Finished", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
-                    else:
-                        jobs.append((we_id, schedulerStat['lastJobs'][i][1], "Failed", schedulerStat['lastJobs'][i][3], datetime.datetime.now().isoformat(timespec='seconds')))
-                else:
-                    jobs.append(schedulerStat['lastJobs'][i])
-            schedulerStat['lastJobs'] = jobs
-
-            epoch=time.time()
-            historyUpdateFinished(schedulerStat, epoch)
-            # print (schedulerStat)
-    except Exception as e:
-        log.error(repr(e))
-
-
-def updateStatPersistent (schedulerStat):
-    # log.info("updateStatPersistent called")
-    if (False):
-        return
-    else:
-        localStat = schedulerStat.copy()
-        arrayToCopy = ['s1_pooledTasks', 's1_processedTasks', 's1_finishedTasks', 's1_failedTasks', 's1_load', 's1_loadTicks']
-        for i in arrayToCopy:
-           localStat[i] = schedulerStat[i][:]
-        
-        jsonFile= open(schedulerStatFile, 'w')
-        json.dump(localStat, jsonFile)
-        jsonFile.close()
-        # log.info("Update:", stat)
-        # log.info("updateStatPersistent finished")
 
 
 def copyLogToDB (we_id, workflowLogName):
@@ -315,14 +264,14 @@ def copyLogToDB (we_id, workflowLogName):
         log.error(repr(e))
 
 
-def executeWorkflow(lock, schedulerStat, we_id: str) -> None:
+def executeWorkflow(we_id: str) -> None:
     try:
         log.info("executeWorkflow invoked")
-        return executeWorkflow_inner1(lock, schedulerStat, we_id)
+        return executeWorkflow_inner1(we_id)
     except Exception as e:
         log.exception("Execution of workflow %s failed." % we_id)
 
-def executeWorkflow_inner1(lock, schedulerStat, we_id: str) -> None:
+def executeWorkflow_inner1(we_id: str) -> None:
     we_rec = restApiControl.getExecutionRecord(we_id)
     if we_rec is None:
         log.error("Workflow Execution record %s not found" % we_id)
@@ -341,13 +290,14 @@ def executeWorkflow_inner1(lock, schedulerStat, we_id: str) -> None:
 
     # check if status is "Scheduled"
     if we_rec.Status == 'Scheduled' or api_type == 'granta':  # todo remove granta
-        return executeWorkflow_inner2(lock,schedulerStat,we_id,we_rec,workflow_record)
+        return executeWorkflow_inner2(we_id,we_rec,workflow_record)
     else:
         log.error("WEID %s not scheduled for execution" % we_id)
         raise KeyError("WEID %s not scheduled for execution" % we_id)
 
-def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_record) -> None:
+def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
     '''Process workflow which is already scheduled'''
+    _mon=Pyro5.api.Proxy(SchedulerMonitor.URI)
     wid = we_rec.WorkflowID
     completed = 1  # todo check
     log.info("we_rec status is Scheduled, processing")
@@ -373,7 +323,8 @@ def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_rec
         # execute
         log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
         # update status
-        updateStatRunning(lock, schedulerStat, we_id, wid)
+        _mon.updateRunning(we_id,wid)
+        # updateStatRunning(lock, schedulerStat, we_id, wid)
         #runningJobs[we_id]=wid # for runtime monitoring
         restApiControl.setExecutionStatus(we_id,'Running')
         restApiControl.setExecutionAttemptsCount(we_id, we_rec.Attempts+1)
@@ -415,7 +366,8 @@ def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_rec
             log.info("Copying log files was not successful")
 
         # update status
-        updateStatFinished(lock, schedulerStat, completed, we_id)
+        _mon.updateFinished(completed,we_id)
+        # updateStatFinished(lock, schedulerStat, completed, we_id)
         # del runningJobs[we_id] # remove we_id from running jobs; for monitoring
     log.info("Updating we_id %s status to %s" % (we_id, completed))
     # set execution code to completed
@@ -472,9 +424,7 @@ def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> None
     shutil.copy(mupifDBModDir+'/workflow_execution_script.py', execScript)
 
 
-
-
-def stop(var_pool):
+def stopPool(var_pool):
     try:
         log.info("Stopping the scheduler, waiting for workers to terminate")
         # @TODO: do not reset processedTasks, continue counting
@@ -513,9 +463,8 @@ def checkExecutionResources(eid):
 
 
 
-def scheduler_startup_execute_scheduled(pool,statusLock,schedulerStat):
+def scheduler_startup_execute_scheduled(pool):
     # import first already scheduled executions
-
     try:
         scheduled_executions = restApiControl.getScheduledExecutions()
     except Exception as e:
@@ -530,7 +479,7 @@ def scheduler_startup_execute_scheduled(pool,statusLock,schedulerStat):
         # result1 = pool.apply_async(test)
         # log.info(result1.get())
         if checkExecutionResources(weid):
-            result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat,weid), callback=procFinish, error_callback=procError)
+            result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
             log.info(result)
             log.info("WEID %s added to the execution pool" % weid)
         else:
@@ -542,24 +491,21 @@ def scheduler_startup_execute_scheduled(pool,statusLock,schedulerStat):
                 log.exception('Error running scheduled execution:')
 
 
-def scheduler_schedule_pending(pool,statusLock,schedulerStat):
+def scheduler_schedule_pending(pool):
     # retrieve weids with status "Scheduled" from DB
     try:
         pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*10)
-        # if schedulerStat['scheduledTasks'] < 200:
-        #     pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
-        # else:
-        #     pending_executions = []
     except Exception as e:
         log.exception('Error checking pending executions')
         pending_executions = []
 
-    updateStatScheduled(statusLock, schedulerStat, len(pending_executions))  # update status
+    _mon=Pyro5.api.Proxy(SchedulerMonitor.URI)
+    _mon.updateScheduled(len(pending_executions))
+
     for wed in pending_executions:
         weid = wed.dbID
         assert weid is not None # make pyright happy
         log.info(f'{weid} found as pending')
-
         # check number of attempts for execution
         if int(wed.Attempts) > 10:
             try:
@@ -568,7 +514,6 @@ def scheduler_schedule_pending(pool,statusLock,schedulerStat):
                     my_email.sendEmailAboutExecutionStatus(weid)
             except Exception as e:
                 log.exception('')
-
         else:
             time.sleep(2)
             if checkExecutionResources(weid):
@@ -584,7 +529,7 @@ def scheduler_schedule_pending(pool,statusLock,schedulerStat):
                 else:
                     log.info("Updated status of execution")
 
-                result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat, weid), callback=procFinish, error_callback=procError)
+                result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                 # log.info(result.get())
                 log.info(f"WEID {weid} added to the execution pool")
             else:
@@ -596,11 +541,11 @@ def scheduler_schedule_pending(pool,statusLock,schedulerStat):
                     except Exception as e:
                         log.exception('Failure getting execution record (for execution with resources unavailable)')
 
-    # ok, no more jobs to schedule for now, wait
-    l = int(100*int(schedulerStat['runningTasks'])/poolsize)
-    with statusLock:
-            restApiControl.setStatScheduler(load=l)
-            historyUpdateLoad(schedulerStat, time.time(), l)
+    ## ok, no more jobs to schedule for now, wait
+    #l = int(100*int(schedulerStat['runningTasks'])/poolsize)
+    #with statusLock:
+    #        restApiControl.setStatScheduler(load=l)
+    #        historyUpdateLoad(schedulerStat, time.time(), l)
 
     # display progress (consider use of tqdm)
     lt = time.localtime(time.time())
@@ -608,25 +553,17 @@ def scheduler_schedule_pending(pool,statusLock,schedulerStat):
         try:
             #stats = restApiControl.getStatScheduler()
             # bp HUHUHUHUHUHUUH
+            stat=SchedulerStat.model_validate(_mon.getStatistics(raw=True))
             log.info(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                str(schedulerStat['scheduledTasks'])+"/"+str(schedulerStat['runningTasks'])+"/"+str(schedulerStat['load']))
+                str(stat.tasks.scheduled)+"/"+str(stat.tasks.running)+"/"+str(stat.load))
         except Exception as e:
             log.exception('')
 
 
 def main():
-    if (Path(schedulerStatFile).is_file()):
-        with open(schedulerStatFile,'r') as f:
-            stat = json.load(f)
-            # print (stat)
-    else:
-        # create empty stat
-        stat={'runningTasks':0, 'scheduledTasks': 0, 'load':0, 'processedTasks':0, 'finishedTasks':0, 'failedTasks':0}
-        #with open(schedulerStatFile,'w') as f:
-        #    f.write(jsonpickle.encode(stat))
-
     import requests.adapters
     import urllib3
+    # FIXME: session not used at all
     adapter = requests.adapters.HTTPAdapter(max_retries=urllib3.Retry(total=8, backoff_factor=.05))
     session = requests.Session()
     for proto in ('http://', 'https://'):
@@ -639,36 +576,10 @@ def main():
     except Exception as e:
         log.error(repr(e))
 
-    
-
-    with multiprocessing.Manager() as manager:
-        schedulerStat=manager.dict()
-        schedulerStat['runningTasks'] = 0
-        schedulerStat['scheduledTasks'] = 0
-        schedulerStat['load'] = 0
-        schedulerStat['processedTasks'] = stat.get('processedTasks', 0)
-        schedulerStat['finishedTasks'] = stat.get('finishedTasks', 0)
-        schedulerStat['failedTasks'] = stat.get('failedTasks', 0)
-        schedulerStat['lastJobs'] = []  # manager.list()
-        # 48hrs statistics
-        schedulerStat['s1_size']=48
-        schedulerStat['s1_index']=stat.get('s1_index', 0)
-        schedulerStat['s1_epochDelta']=60*60
-        schedulerStat['s1_pooledTasks']=manager.list(stat.get('s1_pooledTasks', [0]*schedulerStat['s1_size']))
-        schedulerStat['s1_processedTasks']=manager.list(stat.get('s1_processedTasks', [0]*schedulerStat['s1_size']))
-        schedulerStat['s1_finishedTasks']=manager.list(stat.get('s1_finishedTasks', [0]*schedulerStat['s1_size']))
-        schedulerStat['s1_failedTasks']=manager.list(stat.get('s1_failedTasks', [0]*schedulerStat['s1_size']))
-        schedulerStat['s1_load']=manager.list(stat.get('s1_load', [0]*schedulerStat['s1_size']))
-        schedulerStat['s1_loadTicks']=manager.list(stat.get('s1_loadTicks', [0]*schedulerStat['s1_size']))
-        
-        updateStatPersistent (schedulerStat)
-
-        statusLock = manager.Lock()
-
-        monitor = SchedulerMonitor(ns, schedulerStat, statusLock)
-
-        # run scheduler monitor
-        monitor.runServer()
+    if 1:
+        monitor = SchedulerMonitor(ns)
+        SchedulerMonitor.URI=monitor.runServer()
+        _mon=Pyro5.api.Proxy(SchedulerMonitor.URI)
 
         # https://github.com/mupif/mupifDB/issues/14
         # explicitly use forking (instead of spawning) so that there are no leftover monitoring processes
@@ -678,34 +589,35 @@ def main():
         # default to spawn, therefore it was used here as well. So better to be explicit (and also
         # fix the — perhaps unnecessary now? — global setting in simplejobmanager)
         pool = multiprocessing.get_context('fork').Pool(processes=poolsize, initializer=procInit)
-        atexit.register(stop, pool)
+        atexit.register(stopPool, pool)
         try:
             with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
                 log.info("Starting MupifDB Workflow Scheduler")
 
+                sys.excepthook = Pyro5.errors.excepthook
+
                 try:
                     log.info("Importing already scheduled executions…")
-                    scheduler_startup_execute_scheduled(pool,statusLock,schedulerStat)
+                    scheduler_startup_execute_scheduled(pool)
                     log.info("Done")
 
                     log.info("Entering main loop to check for Pending executions")
                     # add new execution (Pending)
                     while stopFlag is not True:
-                        scheduler_schedule_pending(pool,statusLock,schedulerStat)
+                        scheduler_schedule_pending(pool)
                         # lazy update of persistent statistics, done in main thread thus thread safe
-                        with statusLock: updateStatPersistent(schedulerStat)
+                        _mon.persistStat()
                         # log.info("waiting..")
                         time.sleep(LOOP_SLEEP_SEC)
 
                 except Exception as err:
                     log.exception("Error in workflow execution")
-                    stop(pool)
+                    stopPool(pool)
                 except:
                     log.exception("Unknown error encountered?!")
-                    stop(pool)
+                    stopPool(pool)
         except pidfile.AlreadyRunningError:
             log.error('Already running.')
-
     log.info("Exiting MupifDB Workflow Scheduler\n")
 
 if __name__ == '__main__':

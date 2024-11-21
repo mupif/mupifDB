@@ -564,22 +564,20 @@ def addWorkflow(usecaseid):
                                 sys.path.append(tempDir)
                                 moduleImport = importlib.import_module(modulename)
 
-                                classes = []
-                                for name, obj in inspect.getmembers(moduleImport):
-                                    if inspect.isclass(obj):
-                                        if obj.__module__ == modulename:
-                                            classes.append(obj.__name__)
+                                classes = [obj.__name__ for name,obj in inspect.getmembers(moduleImport) if inspect.isclass(obj) and obj.__module__ == modulename]
 
                                 if len(classes) == 1:
                                     classname = classes[0]
                                     workflowClass = getattr(moduleImport, classname)
                                     workflow_instance = workflowClass()
                                     wid = workflow_instance.getMetadata('ID')
-                                    workflowInputs = workflow_instance.getMetadata('Inputs')
-                                    workflowOutputs = workflow_instance.getMetadata('Outputs')
-                                    description = workflow_instance.getMetadata('Description')
-                                    models_md = workflow_instance.getMetadata('Models')
-                                    EDM_Mapping = workflow_instance.getMetadata('EDMMapping', [])
+                                    # FIXME: here we rely on mupif.meta models being dump-compatible with mupifDB.models models
+                                    meta = workflow_instance.getAllMetadata()
+                                    workflowInputs = meta['Inputs']
+                                    workflowOutputs = meta['Outputs']
+                                    description = meta['Description']
+                                    models_md = meta['Models']
+                                    EDM_Mapping = meta.get('EDMMapping', [])
                                 else:
                                     log.error(f"File {file.filename} contains {len(classes)} classes (must be one). {classes=}")
                     else:
@@ -600,6 +598,7 @@ def addWorkflow(usecaseid):
                     models_md=models_md,
                     EDM_Mapping=EDM_Mapping
                 )
+            else: log.error('Workflow not being added??')
 
     if new_workflow_id is not None:
         # redirect to the new workflow page; this allows us to get the new wid via redirected URL in curl

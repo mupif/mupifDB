@@ -5,8 +5,8 @@ TASKS=ns mongo rest web browse scheduler
 run: $(TASKS)
 
 
-# if any task fails, use kill -TERM $(MAKPID) to teminate everything immediately
-DIE := kill -TERM $(shell echo $$PPID)
+# if any task fails, use kill -INT $(MAKPID) to teminate everything immediately
+DIE := kill -INT $(shell echo $$PPID)
 
 
 ns:
@@ -22,3 +22,7 @@ browse:
 	sleep 9 # && xdg-open http://127.0.0.1:11004
 scheduler:
 	sleep 7 && MUPIF_LOG_LEVEL=DEBUG MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIF_NS=localhost:11001 PYTHONPATH=.. python3 -c 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' || $(DIE)
+
+kill:
+	# fuser -k 11001/tcp; fuser -k 11002/tcp; fuser -k 11003/tcp; fuser -k 11004/tcp || true
+	fuser --verbose -k 11001/tcp 11002/tcp 11003/tcp 11004/tcp
