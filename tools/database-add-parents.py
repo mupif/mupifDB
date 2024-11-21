@@ -1,8 +1,9 @@
 
-dbPort=27001
+dbPort=27017
 
 from pymongo import MongoClient
 import pymongo
+import pymongo.errors
 from bson import ObjectId
 import bson, bson.objectid
 from rich import print_json
@@ -105,7 +106,7 @@ if 1:
         progress.update(doc_task,description=' ↳[cyan]…',start=False,visible=False)
         progress.update(chi_task,description='  ↳[yellow]…',start=False,visible=False)
 
-        client = MongoClient(f'mongodb://localhost:27017')
+        client = MongoClient(f'mongodb://localhost:{dbPort}')
         db = client.MuPIF
         progress.reset(col_task,start=True)
         progress.update(col_task,description='↳[green]…',total=len(coll2model),completed=0,visible=True)
@@ -125,10 +126,11 @@ if 1:
                 try:
                     obj=Model.model_validate(rec)
                     thisRef=models.DbRef_Model(where=coll,id=obj.dbID)
-                    for i,cref in enumerate(obj.TEMP_getChildren()):
+                    for i,(attr,cref) in enumerate(obj.TEMP_getChildren()):
                             child=resolve_DbRef(db,cref)
                             if child is None:
-                                log.error(f'Unresolvable child {cref=} (setting to null not yet implemented)')
+                                log.error(f'Unresolvable child {cref=}; setting {attr=} to null!')
+                                set_attr_null(dbColl,obj,attr)
                                 print_mongo(rec)
                                 continue
                             if child.parent is None:

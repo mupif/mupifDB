@@ -41,7 +41,7 @@ class DbRef_Model(StrictBase):
 class TEMP_DbLookup_Model(StrictBase):
     where: str
     attrs: List[str]
-    values: List[str]
+    values: List[str|int]
 
 class MongoObjBase_Model(StrictBase):
     dbID: Optional[DatabaseID]=Field(None,alias='_id') # type: ignore[arg-type]
@@ -53,7 +53,7 @@ class MongoObjBase_Model(StrictBase):
         ret=self.model_dump(mode='json')
         if '_id' in ret and ret['_id'] is None: del ret['_id']
         return ret
-    def TEMP_getChildren(self) -> List[DbRef_Model]: return []
+    def TEMP_getChildren(self) -> List[Tuple[str,DbRef_Model]]: return []
     def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return []
 
 import abc
@@ -148,8 +148,8 @@ class IODataRecordItem_Model(InputOutputBase_Model):
     FileID: Optional[str]=None
     Compulsory: Optional[bool]=False # deema: allow None
     Object: dict[str,Any]
-    def TEMP_getChildren(self) -> List[DbRef_Model]:
-        return [DbRef_Model(where=where,id=id) for where,id in [('fs.files',self.FileID)] if id is not None and id!='']
+    def TEMP_getChildren(self) -> List[Tuple[str,DbRef_Model]]:
+        return [('FileID',DbRef_Model(where=where,id=id)) for where,id in [('fs.files',self.FileID)] if id is not None and id!='']
 
 class IODataRecord_Model(MongoObj_Model):
     DataSet: List[IODataRecordItem_Model]=[]
@@ -188,8 +188,7 @@ class Workflow_Model(MongoObj_Model):
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
 
-    # TODO: WorkflowID==self.wid and WorkflowVersion==self.Version
-    def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID'],values=[self.wid])]
+    def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID','WorkflowVersion'],values=[self.wid,self.Version])]
 
 
 class WorkflowExecution_Model(MongoObj_Model):
@@ -213,8 +212,8 @@ class WorkflowExecution_Model(MongoObj_Model):
     Inputs: str
     Outputs: str
 
-    def TEMP_getChildren(self) -> List[DbRef_Model]:
-        return [DbRef_Model(where=where,id=id) for where,id in [('IOData',self.Inputs),('IOData',self.Outputs),('fs.files',self.ExecutionLog)] if id is not None and id!='']
+    def TEMP_getChildren(self) -> List[Tuple[str,DbRef_Model]]:
+        return [(attr,DbRef_Model(where=where,id=id)) for where,id,attr in [('IOData',self.Inputs,'Inputs'),('IOData',self.Outputs,'Outputs'),('fs.files',self.ExecutionLog,'ExecutionLog')] if id is not None and id!='']
 
 
 
