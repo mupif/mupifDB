@@ -11,6 +11,8 @@ DatabaseID=Annotated[str,BeforeValidator(lambda x: str(x) if isinstance(x,bson.o
 Str_EmptyFromNone=Annotated[str,BeforeValidator(lambda x: '' if x is None else x)]
 # opposite: saved as empty string, but should be loaded as None if empty
 None_FromEmptyStr=Annotated[None,BeforeValidator(lambda x: None if x=='' else x)]
+# bool which can be loaded from None (and becomes False)
+Bool_FalseFromNone=Annotated[bool,BeforeValidator(lambda x: False if x is None else x)]
 
 
 ExecutionStatus_Literal=Literal['Created','Pending','Scheduled','Running','Finished','Failed']
@@ -172,7 +174,7 @@ class Workflow_Model(MongoObj_Model):
             Compulsory: bool = Field(...,validation_alias='Required')
             Set_at: Literal['timestep','initialization']='timestep'
         class Output_Model(InputOutputBase_Model):
-            EDMList: bool=False # XXX: document
+            EDMList: Bool_FalseFromNone=False # XXX: document
         Inputs: List[Input_Model]
         Outputs: List[Output_Model]
     wid: str
