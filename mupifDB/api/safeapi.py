@@ -27,6 +27,8 @@ def get_status2():
     except:
         nameserverStatus = 'Failed'
 
+    assert ns is not None # pyright happy
+
     # get Scheduler status
     schedulerStatus = 'Failed'
     query = ns.yplookup(meta_any={"type:scheduler"})

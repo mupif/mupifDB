@@ -23,7 +23,7 @@ from pathlib import Path
 import shutil
 import datetime
 
-import Pyro5
+import Pyro5.api
 import mupif as mp
 
 import logging
@@ -335,153 +335,153 @@ def executeWorkflow(lock, schedulerStat, we_id: str) -> None:
         log.exception("Execution of workflow %s failed." % we_id)
 
 def executeWorkflow_inner1(lock, schedulerStat, we_id: str) -> None:
-        we_rec = restApiControl.getExecutionRecord(we_id)
-        if we_rec is None:
-            log.error("Workflow Execution record %s not found" % we_id)
-            raise KeyError("Workflow Execution record %s not found" % we_id)
-        else:
-            log.info("Workflow Execution record %s found" % we_id)
+    we_rec = restApiControl.getExecutionRecord(we_id)
+    if we_rec is None:
+        log.error("Workflow Execution record %s not found" % we_id)
+        raise KeyError("Workflow Execution record %s not found" % we_id)
+    else:
+        log.info("Workflow Execution record %s found" % we_id)
 
-        workflowVersion = we_rec.WorkflowVersion
-        wid = we_rec.WorkflowID
-        workflow_record = restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
-        if workflow_record is None:
-            log.error("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
-            raise KeyError("Workflow document with ID %s, version %s not found" % (wid, workflowVersion))
-        else:
-            log.info("Workflow document with wid %s, id %s, version %s found" % (wid, we_rec.dbID, workflowVersion))
+    workflowVersion = we_rec.WorkflowVersion
+    wid = we_rec.WorkflowID
+    workflow_record = restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
+    if workflow_record is None:
+        log.error("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
+        raise KeyError("Workflow document with ID %s, version %s not found" % (wid, workflowVersion))
+    else:
+        log.info("Workflow document with wid %s, id %s, version %s found" % (wid, we_rec.dbID, workflowVersion))
 
-        # check if status is "Scheduled"
-        if we_rec.Status == 'Scheduled' or api_type == 'granta':  # todo remove granta
-            return executeWorkflow_inner2(lock,schedulerStat,we_id,we_rec,workflow_record)
-        else:
-            log.error("WEID %s not scheduled for execution" % we_id)
-            raise KeyError("WEID %s not scheduled for execution" % we_id)
+    # check if status is "Scheduled"
+    if we_rec.Status == 'Scheduled' or api_type == 'granta':  # todo remove granta
+        return executeWorkflow_inner2(lock,schedulerStat,we_id,we_rec,workflow_record)
+    else:
+        log.error("WEID %s not scheduled for execution" % we_id)
+        raise KeyError("WEID %s not scheduled for execution" % we_id)
 
 def executeWorkflow_inner2(lock, schedulerStat, we_id: str, we_rec, workflow_record) -> None:
-            '''Process workflow which is already scheduled'''
-            wid = we_rec.WorkflowID
-            completed = 1  # todo check
-            log.info("we_rec status is Scheduled, processing")
-            # execute the selected workflow
-            # take workflow source and run python interpreter on it in a temporary directory
-            tempRoot = '/tmp'
-            log.info("Creating temp dir")
-            with tempfile.TemporaryDirectory(dir=tempRoot, prefix='mupifDB') as tempDir:
-                # if (1):  # uncomment this to keep temdDir
-                #     tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
-                log.info("temp dir %s created" % (tempDir,))
-                workflowLogName = tempDir+'/workflow.log'
-                execScript = Path(tempDir+'/workflow_execution_script.py')
-                # copy workflow source to tempDir
-                try:
-                    executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript)
-                except Exception as e:
-                    log.exception('Error in executeWorkflow_inner2')
-                    # set execution code to failed ...yes or no?
-                    restApiControl.setExecutionStatus(we_id,'Failed')
-                    my_email.sendEmailAboutExecutionStatus(we_id)
-                    return None
-                # execute
-                log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
-                # update status
-                updateStatRunning(lock, schedulerStat, we_id, wid)
-                #runningJobs[we_id]=wid # for runtime monitoring
-                restApiControl.setExecutionStatus(we_id,'Running')
-                restApiControl.setExecutionAttemptsCount(we_id, we_rec.Attempts+1)
-                # uses the same python interpreter as the current process
-                cmd = [sys.executable, execScript, '-eid', str(we_id)]
-                # log.info(cmd)
-                with open(workflowLogName, 'w') as workflowLog:
-                    ll = 10*'='
-                    workflowLog.write(textwrap.dedent(f'''
-                        {ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
-                        {ll} command is {cmd} {ll}'''))
-                    env = os.environ.copy()
-                    if 'PYTHONPATH' in env:
-                        env['PYTHONPATH'] += f'{os.pathsep}{mupifDBSrcDir}'
-                    else:
-                        env['PYTHONPATH'] = mupifDBSrcDir
-                    env['MUPIF_NS'] = ns_uri
-                    env['MUPIFDB_REST_SERVER_TYPE'] = api_type
-
-                    completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
-                    workflowLog.write(textwrap.dedent(f'''
-                        {ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
-                        {ll} duration: {str((dt:=(t1-t0))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
-                        {ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS'}) {ll}'''))
-
-                # log.info(tempDir)
-                log.info('command:' + str(cmd) + ' Return Code:'+str(completed))
-
-                # store execution log
-                logID = None
-
-                p = Path(tempDir)
-                for it in p.iterdir():
-                    log.info(it)
-
-                try:
-                    copyLogToDB(we_id, workflowLogName)
-                except:
-                    log.info("Copying log files was not successful")
-
-                # update status
-                updateStatFinished(lock, schedulerStat, completed, we_id)
-                # del runningJobs[we_id] # remove we_id from running jobs; for monitoring
-            log.info("Updating we_id %s status to %s" % (we_id, completed))
-            # set execution code to completed
-            if completed == 0:
-                log.warning("Workflow execution %s Finished" % we_id)
-                restApiControl.setExecutionStatus(we_id,'Finished')
-                my_email.sendEmailAboutExecutionStatus(we_id)
-                return we_id, ExecutionResult.Finished # XXX ??
-            elif completed == 1:
-                log.warning("Workflow execution %s Failed" % we_id)
-                restApiControl.setExecutionStatus(we_id,'Failed')
-                my_email.sendEmailAboutExecutionStatus(we_id)
-                return we_id, ExecutionResult.Failed # XXX ??
-            elif completed == 2:
-                log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
-                restApiControl.setExecutionStatus(we_id, 'Pending', revertPending=True)
+    '''Process workflow which is already scheduled'''
+    wid = we_rec.WorkflowID
+    completed = 1  # todo check
+    log.info("we_rec status is Scheduled, processing")
+    # execute the selected workflow
+    # take workflow source and run python interpreter on it in a temporary directory
+    tempRoot = '/tmp'
+    log.info("Creating temp dir")
+    with tempfile.TemporaryDirectory(dir=tempRoot, prefix='mupifDB') as tempDir:
+        # if (1):  # uncomment this to keep temdDir
+        #     tempDir = tempfile.mkdtemp(dir=tempRoot, prefix='mupifDB_')
+        log.info("temp dir %s created" % (tempDir,))
+        workflowLogName = tempDir+'/workflow.log'
+        execScript = Path(tempDir+'/workflow_execution_script.py')
+        # copy workflow source to tempDir
+        try:
+            executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript)
+        except Exception as e:
+            log.exception('Error in executeWorkflow_inner2')
+            # set execution code to failed ...yes or no?
+            restApiControl.setExecutionStatus(we_id,'Failed')
+            my_email.sendEmailAboutExecutionStatus(we_id)
+            return None
+        # execute
+        log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
+        # update status
+        updateStatRunning(lock, schedulerStat, we_id, wid)
+        #runningJobs[we_id]=wid # for runtime monitoring
+        restApiControl.setExecutionStatus(we_id,'Running')
+        restApiControl.setExecutionAttemptsCount(we_id, we_rec.Attempts+1)
+        # uses the same python interpreter as the current process
+        cmd = [sys.executable, execScript, '-eid', str(we_id)]
+        # log.info(cmd)
+        with open(workflowLogName, 'w') as workflowLog:
+            ll = 10*'='
+            workflowLog.write(textwrap.dedent(f'''
+                {ll} WORKFLOW STARTING at {(t0:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+                {ll} command is {cmd} {ll}'''))
+            env = os.environ.copy()
+            if 'PYTHONPATH' in env:
+                env['PYTHONPATH'] += f'{os.pathsep}{mupifDBSrcDir}'
             else:
-                pass
+                env['PYTHONPATH'] = mupifDBSrcDir
+            env['MUPIF_NS'] = ns_uri
+            env['MUPIFDB_REST_SERVER_TYPE'] = api_type
+
+            completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
+            workflowLog.write(textwrap.dedent(f'''
+                {ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
+                {ll} duration: {str((dt:=(t1-t0))-datetime.timedelta(microseconds=dt.microseconds))} {ll}
+                {ll} exit status of {cmd}: {completed} ({'ERROR' if completed!=0 else 'SUCCESS'}) {ll}'''))
+
+        # log.info(tempDir)
+        log.info('command:' + str(cmd) + ' Return Code:'+str(completed))
+
+        # store execution log
+        logID = None
+
+        p = Path(tempDir)
+        for it in p.iterdir():
+            log.info(it)
+
+        try:
+            copyLogToDB(we_id, workflowLogName)
+        except:
+            log.info("Copying log files was not successful")
+
+        # update status
+        updateStatFinished(lock, schedulerStat, completed, we_id)
+        # del runningJobs[we_id] # remove we_id from running jobs; for monitoring
+    log.info("Updating we_id %s status to %s" % (we_id, completed))
+    # set execution code to completed
+    if completed == 0:
+        log.warning("Workflow execution %s Finished" % we_id)
+        restApiControl.setExecutionStatus(we_id,'Finished')
+        my_email.sendEmailAboutExecutionStatus(we_id)
+        # return we_id, ExecutionResult.Finished # XXX ??
+    elif completed == 1:
+        log.warning("Workflow execution %s Failed" % we_id)
+        restApiControl.setExecutionStatus(we_id,'Failed')
+        my_email.sendEmailAboutExecutionStatus(we_id)
+        # return we_id, ExecutionResult.Failed # XXX ??
+    elif completed == 2:
+        log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
+        restApiControl.setExecutionStatus(we_id, 'Pending', revertPending=True)
+    else:
+        pass
 
 
 def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> None:
-                    python_script_filename = workflow_record.modulename + ".py"
+    python_script_filename = workflow_record.modulename + ".py"
 
-                    fc, fn = restApiControl.getBinaryFileByID(workflow_record.GridFSID)
-                    with open(tempDir + '/' + fn, "wb") as f:
-                        f.write(fc)
-                        f.close()
+    fc, fn = restApiControl.getBinaryFileByID(workflow_record.GridFSID)
+    with open(tempDir + '/' + fn, "wb") as f:
+        f.write(fc)
+        f.close()
 
-                    if fn.split('.')[-1] == 'py':
-                        log.info("downloaded .py file..")
-                        if fn == python_script_filename:
-                            log.info("Filename check OK")
-                        else:
-                            log.info("Filename check FAILED")
+    if fn.split('.')[-1] == 'py':
+        log.info("downloaded .py file..")
+        if fn == python_script_filename:
+            log.info("Filename check OK")
+        else:
+            log.info("Filename check FAILED")
 
-                    elif fn.split('.')[-1] == 'zip':
-                        log.info("downloaded .zip file, extracting..")
-                        log.info(fn)
-                        zf = zipfile.ZipFile(tempDir + '/' + fn, mode='r')
-                        filenames = zipfile.ZipFile.namelist(zf)
-                        log.info("Zipped files:")
-                        log.info(filenames)
-                        zf.extractall(path=tempDir)
-                        if python_script_filename in filenames:
-                            log.info("Filename check OK")
-                        else:
-                            log.error("Filename check FAILED")
+    elif fn.split('.')[-1] == 'zip':
+        log.info("downloaded .zip file, extracting..")
+        log.info(fn)
+        zf = zipfile.ZipFile(tempDir + '/' + fn, mode='r')
+        filenames = zipfile.ZipFile.namelist(zf)
+        log.info("Zipped files:")
+        log.info(filenames)
+        zf.extractall(path=tempDir)
+        if python_script_filename in filenames:
+            log.info("Filename check OK")
+        else:
+            log.error("Filename check FAILED")
 
-                    else:
-                        log.error("Unsupported file extension")
+    else:
+        log.error("Unsupported file extension")
 
-                    log.info("Copying executor script.")
+    log.info("Copying executor script.")
 
-                    shutil.copy(mupifDBModDir+'/workflow_execution_script.py', execScript)
+    shutil.copy(mupifDBModDir+'/workflow_execution_script.py', execScript)
 
 
 
@@ -522,6 +522,108 @@ def checkExecutionResources(eid):
     except Exception as e:
         log.exception('Error in checkExecutionResources')
         return False
+
+
+
+def scheduler_startup_execute_scheduled(pool,statusLock,schedulerStat):
+    # import first already scheduled executions
+
+    try:
+        scheduled_executions = restApiControl.getScheduledExecutions()
+    except Exception as e:
+        log.exception('Error getting scheduled execution:')
+        scheduled_executions = []
+
+    for wed in scheduled_executions:
+        log.info(f'{wed.dbID} found as Scheduled')
+        # add the correspoding weid to the pool, change status to scheduled
+        weid = wed.dbID
+        assert weid is not None # make pyright happy
+        # result1 = pool.apply_async(test)
+        # log.info(result1.get())
+        if checkExecutionResources(weid):
+            result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat,weid), callback=procFinish, error_callback=procError)
+            log.info(result)
+            log.info("WEID %s added to the execution pool" % weid)
+        else:
+            log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+            try:
+                we_rec = restApiControl.getExecutionRecord(weid)
+                restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
+            except Exception as e:
+                log.exception('Error running scheduled execution:')
+
+
+def scheduler_schedule_pending(pool,statusLock,schedulerStat):
+    # retrieve weids with status "Scheduled" from DB
+    try:
+        pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*10)
+        # if schedulerStat['scheduledTasks'] < 200:
+        #     pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
+        # else:
+        #     pending_executions = []
+    except Exception as e:
+        log.exception('Error checking pending executions')
+        pending_executions = []
+
+    updateStatScheduled(statusLock, schedulerStat, len(pending_executions))  # update status
+    for wed in pending_executions:
+        weid = wed.dbID
+        assert weid is not None # make pyright happy
+        log.info(f'{weid} found as pending')
+
+        # check number of attempts for execution
+        if int(wed.Attempts) > 10:
+            try:
+                restApiControl.setExecutionStatus(weid,'Created')
+                if api_type != 'granta':
+                    my_email.sendEmailAboutExecutionStatus(weid)
+            except Exception as e:
+                log.exception('')
+
+        else:
+            time.sleep(2)
+            if checkExecutionResources(weid):
+                # add the correspoding weid to the pool, change status to scheduled
+                res = False
+                try:
+                    res = restApiControl.setExecutionStatus(weid,'Scheduled')
+                except Exception as e:
+                    log.exception('')
+
+                if not res:
+                    log.info("Could not update execution status")
+                else:
+                    log.info("Updated status of execution")
+
+                result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat, weid), callback=procFinish, error_callback=procError)
+                # log.info(result.get())
+                log.info(f"WEID {weid} added to the execution pool")
+            else:
+                log.info(f"WEID {weid} cannot be scheduled due to unavailable resources")
+                if api_type != 'granta':
+                    try:
+                        we_rec = restApiControl.getExecutionRecord(weid)
+                        restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
+                    except Exception as e:
+                        log.exception('Failure getting execution record (for execution with resources unavailable)')
+
+    # ok, no more jobs to schedule for now, wait
+    l = int(100*int(schedulerStat['runningTasks'])/poolsize)
+    with statusLock:
+            restApiControl.setStatScheduler(load=l)
+            historyUpdateLoad(schedulerStat, time.time(), l)
+
+    # display progress (consider use of tqdm)
+    lt = time.localtime(time.time())
+    if api_type != 'granta':
+        try:
+            #stats = restApiControl.getStatScheduler()
+            # bp HUHUHUHUHUHUUH
+            log.info(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
+                str(schedulerStat['scheduledTasks'])+"/"+str(schedulerStat['runningTasks'])+"/"+str(schedulerStat['load']))
+        except Exception as e:
+            log.exception('')
 
 
 def main():
@@ -591,114 +693,22 @@ def main():
         atexit.register(stop, pool)
         try:
             with pidfile.PIDFile(filename='mupifDB_scheduler_pidfile'):
-                log.info("Starting MupifDB Workflow Scheduler\n")
+                log.info("Starting MupifDB Workflow Scheduler")
 
                 try:
-                    # import first already scheduled executions
-                    log.info("Importing already scheduled executions")
-                    try:
-                        scheduled_executions = restApiControl.getScheduledExecutions()
-                    except Exception as e:
-                        log.exception('Error getting scheduled execution:')
-                        scheduled_executions = []
-
-                    for wed in scheduled_executions:
-                        log.info(wed.dbId + " found as Scheduled")
-                        # add the correspoding weid to the pool, change status to scheduled
-                        weid = wed.dbId
-                        # result1 = pool.apply_async(test)
-                        # log.info(result1.get())
-                        if checkExecutionResources(weid):
-                            result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat,weid), callback=procFinish, error_callback=procError)
-                            log.info(result)
-                            log.info("WEID %s added to the execution pool" % weid)
-                        else:
-                            log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
-                            try:
-                                we_rec = restApiControl.getExecutionRecord(weid)
-                                restApiControl.setExecutionAttemptsCount(weid, int(we_rec['Attempts']) + 1)
-                            except Exception as e:
-                                log.exception('Error running scheduled execution:')
-
-                    log.info("Done\n")
+                    log.info("Importing already scheduled executions…")
+                    scheduler_startup_execute_scheduled(pool,statusLock,schedulerStat)
+                    log.info("Done")
 
                     log.info("Entering main loop to check for Pending executions")
                     # add new execution (Pending)
                     while stopFlag is not True:
-                        # retrieve weids with status "Scheduled" from DB
-                        try:
-                            pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*10)
-                            # if schedulerStat['scheduledTasks'] < 200:
-                            #     pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*4)
-                            # else:
-                            #     pending_executions = []
-                        except Exception as e:
-                            log.exception('Error checking pending executions')
-                            pending_executions = []
-
-                        updateStatScheduled(statusLock, schedulerStat, len(pending_executions))  # update status
-                        for wed in pending_executions:
-                            weid = wed.dbID
-                            log.info(f'{weid} found as pending')
-
-                            # check number of attempts for execution
-                            if int(wed.Attempts) > 10:
-                                try:
-                                    restApiControl.setExecutionStatus(weid,'Created')
-                                    if api_type != 'granta':
-                                        my_email.sendEmailAboutExecutionStatus(weid)
-                                except Exception as e:
-                                    log.exception()
-
-                            else:
-                                time.sleep(2)
-                                if checkExecutionResources(weid):
-                                    # add the correspoding weid to the pool, change status to scheduled
-                                    res = False
-                                    try:
-                                        res = restApiControl.setExecutionStatus(weid,'Scheduled')
-                                    except Exception as e:
-                                        log.exception()
-
-                                    if not res:
-                                        log.info("Could not update execution status")
-                                    else:
-                                        log.info("Updated status of execution")
-                                    
-                                    result = pool.apply_async(executeWorkflow, args=(statusLock, schedulerStat, weid), callback=procFinish, error_callback=procError)
-                                    # log.info(result.get())
-                                    log.info(f"WEID {weid} added to the execution pool")
-                                else:
-                                    log.info(f"WEID {weid} cannot be scheduled due to unavailable resources")
-                                    if api_type != 'granta':
-                                        try:
-                                            we_rec = restApiControl.getExecutionRecord(weid)
-                                            restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
-                                        except Exception as e:
-                                            log.exception()
-
-                        # ok, no more jobs to schedule for now, wait
-                        l = int(100*int(schedulerStat['runningTasks'])/poolsize)
-                        with statusLock:
-                             restApiControl.setStatScheduler(load=l)
-                             historyUpdateLoad(schedulerStat, time.time(), l)
-
-                        # display progress (consider use of tqdm)
-                        lt = time.localtime(time.time())
-                        if api_type != 'granta':
-                            try:
-                                #stats = restApiControl.getStatScheduler()
-                                # bp HUHUHUHUHUHUUH
-                                log.info(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                                    str(schedulerStat['scheduledTasks'])+"/"+str(schedulerStat['runningTasks'])+"/"+str(schedulerStat['load']))
-                            except Exception as e:
-                                log.exception()
-
+                        scheduler_schedule_pending(pool,statusLock,schedulerStat)
                         # lazy update of persistent statistics, done in main thread thus thread safe
-                        with statusLock:
-                            updateStatPersistent(schedulerStat)
-                        log.info("waiting..")
+                        with statusLock: updateStatPersistent(schedulerStat)
+                        # log.info("waiting..")
                         time.sleep(LOOP_SLEEP_SEC)
+
                 except Exception as err:
                     log.exception("Error in workflow execution")
                     stop(pool)

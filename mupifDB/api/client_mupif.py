@@ -53,7 +53,6 @@ def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
 @pydantic.validate_call
 def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
     workflow_newest = getWorkflowRecord(wid)
-    # print(f'WWW {workflow_newest=}')
     if workflow_newest is not None:
         if workflow_newest.Version == version or version == -1:
             return workflow_newest
@@ -93,10 +92,10 @@ def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
     response = rGet(f"executions/{weid}")
     return models.WorkflowExecution_Model.model_validate(response.json())
 
-def getScheduledExecutions(num_limit: int=None):
+def getScheduledExecutions(num_limit: int|None=None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-def getPendingExecutions(num_limit: int=None):
+def getPendingExecutions(num_limit: int|None=None):
     return getExecutionRecords(status="Pending", num_limit=num_limit)
 
 def scheduleExecution(execution_id: str):
@@ -154,17 +153,11 @@ def insertExecution(m: models.WorkflowExecution_Model):
 
 def getExecutionInputRecord(weid) -> List[models.IODataRecordItem_Model]:
     response = rGet(f"executions/{weid}/inputs/")
-    # if response.json() is None: return []
-    #print(200*'#')
-    #print_json(data=response.json())
-    # return models.IODataRecord_Model.model_validate(response.json())
     return [models.IODataRecordItem_Model.model_validate(record) for record in response.json()]
 
 def getExecutionOutputRecord(weid) -> List[models.IODataRecordItem_Model]:
     response = rGet(f"executions/{weid}/outputs/")
-    # if response.json() == []: return None
     return [models.IODataRecordItem_Model.model_validate(record) for record in response.json()]
-    # return models.IODataRecord_Model.model_validate(response.json())
 
 def getExecutionInputRecordItem(weid, name, obj_id):
     io_data = getExecutionInputRecord(weid)
@@ -186,8 +179,6 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 @pydantic.validate_call
 def getIODataRecord(iod_id: str):
     response = rGet(f"iodata/{iod_id}")
-    #print(200*'#')
-    #print_json(data=response.json())
     return models.IODataRecord_Model.model_validate(response.json())
 
 @pydantic.validate_call
@@ -243,7 +234,7 @@ def getStatScheduler():
 # session is the requests module by default (one-off session for each request) but can be passed 
 # a custom requests.Session() object with config such as retries and timeouts.
 # This feature is implemented only for setStatsScheduler to cleanly handle scheduler startup.
-def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session=requests):
+def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session: Any=requests):
     if runningTasks is not None:
         response = rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
     if scheduledTasks is not None:
