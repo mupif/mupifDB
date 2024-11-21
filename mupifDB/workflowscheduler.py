@@ -152,32 +152,20 @@ class SchedulerMonitor (object):
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata={"type:scheduler"})
     def getStatistics(self):
         with self.lock:
-            runningTasks=self.stat['runningTasks']
-            scheduledTasks=self.stat['scheduledTasks']
-            processedTasks = self.stat['processedTasks']
-            finishedTasks=self.stat['finishedTasks']
-            failedTasks=self.stat['failedTasks']
-            lastJobs=self.stat['lastJobs']
-            load = self.stat['load']
-            pooledTasks48 = self.stat['s1_pooledTasks'][:]
-            processedTasks48 = self.stat['s1_processedTasks'][:]
-            finishedTasks48 = self.stat['s1_finishedTasks'][:]
-            failedTasks48 = self.stat['s1_failedTasks'][:]
-            load48 = self.stat['s1_load'][:]
-        return {
-            'runningTasks':runningTasks, 
-            'scheduledTasks':scheduledTasks,
-            'processedTasks': processedTasks,
-            'finishedTasks': finishedTasks,
-            'failedTasks': failedTasks,
-            'lastJobs': lastJobs,
-            'currentLoad': load,
-            'processedTasks48': processedTasks48,
-            'pooledTasks48': pooledTasks48,
-            'finishedTasks48': finishedTasks48,
-            'failedTasks48': failedTasks48,
-            'load48': load48
-        }
+            return {
+                'runningTasks': self.stat['runningTasks'],
+                'scheduledTasks': self.stat['scheduledTasks'],
+                'processedTasks': self.stat['processedTasks'],
+                'finishedTasks': self.stat['finishedTasks'],
+                'failedTasks': self.stat['failedTasks'],
+                'lastJobs': self.stat['lastJobs'],
+                'currentLoad': self.stat['load'],
+                'processedTasks48': self.stat['s1_processedTasks'][:],
+                'pooledTasks48': self.stat['s1_pooledTasks'][:],
+                'finishedTasks48': self.stat['s1_finishedTasks'][:],
+                'failedTasks48': self.stat['s1_failedTasks'][:],
+                'load48': self.stat['s1_load'][:]
+            }
 
     @staticmethod
     def getExecutions(status='Running'):
