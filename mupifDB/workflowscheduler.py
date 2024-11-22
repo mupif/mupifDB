@@ -70,9 +70,8 @@ import threading
 import multiprocessing
 
 
-class SchedulerStat(pydantic.BaseModel,extra='forbid'):
-    _lock: threading.RLock=pydantic.PrivateAttr(default_factory=threading.RLock)
-    class Tasks(pydantic.BaseModel,extra='forbid'):
+class SchedulerStat(mp.BareData):
+    class Tasks(mp.BareData):
         running: int=0
         scheduled: int=0
         processed: int=0
@@ -80,13 +79,13 @@ class SchedulerStat(pydantic.BaseModel,extra='forbid'):
         failed: int=0
     tasks: Tasks=Tasks()
     load: float=0.
-    class JobInfo(pydantic.BaseModel,extra='forbid'):
+    class JobInfo(mp.BareData):
         we_id: str
         wid: str
         status: Literal['Running','Finished','Failed']
         time: datetime.datetime
     lastJobs: List[JobInfo]=[]
-    class Hist(pydantic.BaseModel,extra='forbid'):
+    class Hist(mp.BareData):
         interval: int=60*60
         count: int=48
         headPeriod: int=0
@@ -140,15 +139,36 @@ class SchedulerStat(pydantic.BaseModel,extra='forbid'):
     def save_to_file(self,f):
         open(f,'w').write(self.model_dump_json())
 
+import functools
+
+def pyro_only(no_remote=False):
+    def deco(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            import Pyro5.callcontext
+            if not Pyro5.callcontext.current_context.client: raise PermissionError('Must only be called via Pyro')
+            if no_remote:
+                import ipaddress
+                addr=ipaddress.ip_address(Pyro5.callcontext.current_context.client_sock_addr[0]) # type: ignore
+                if not addr.is_loopback: raise PermissionError(f'Must only be called locally (not from {addr})')
+            return fn(*args,**kwargs)
+        return inner
+    return deco
+
 
 @Pyro5.api.expose
 class SchedulerMonitor(object):
+    """
+    Communication point about scheduler statistics. No locking necessary, since all access is done through Pyro which serializes the calls.
+    """
+
     # class attribute, holding the URI of the instance once exposed over Pyro
     URI: str|None=None
 
     def __init__(self, ns): # , schedulerStat,lock):
         self.ns = ns
         self.stat = SchedulerStat()
+        self.lock = threading.RLock()
         global schedulerStatFile
         if (Path(schedulerStatFile).is_file()):
             try:
@@ -161,28 +181,29 @@ class SchedulerMonitor(object):
         return mp.pyroutil.runServer(ns=self.ns, appName="mupif.scheduler", app=self, metadata={"type:scheduler"})
 
     def advanceTime(self):
-        with self.stat._lock: self.stat.advanceTime()
+        with self.lock: self.stat.advanceTime()
+
+    @pyro_only()
     def getStatistics(self,raw=False):
-        # the default raw=False will return data translated to the old format
         # raw=True makes it suitable for reconstructing the model on the other side
+        # the default raw=False will return data translated to the old format
         self.advanceTime()
         s=self.stat
-        with s._lock:
-            if raw: return s.model_dump(mode='json')
-            return dict(
-                runningTasks     = s.tasks.running,
-                scheduledTasks   = s.tasks.scheduled,
-                processedTasks   = s.tasks.processed,
-                finishedTasks    = s.tasks.finished,
-                failedTasks      = s.tasks.failed,
-                lastJobs         = [list(j.model_dump(mode='json').values()) for j in s.lastJobs],
-                currentLoad      = s.load,
-                processedTasks48 = s.hist48h.processed,
-                pooledTasks48    = s.hist48h.pooled,
-                finishedTasks48  = s.hist48h.finished,
-                failedTasks48    = s.hist48h.failed,
-                load48           = s.hist48h.load,
-            )
+        if raw: return s
+        return dict(
+            runningTasks     = s.tasks.running,
+            scheduledTasks   = s.tasks.scheduled,
+            processedTasks   = s.tasks.processed,
+            finishedTasks    = s.tasks.finished,
+            failedTasks      = s.tasks.failed,
+            lastJobs         = [list(j.model_dump(mode='json').values()) for j in s.lastJobs],
+            currentLoad      = s.load,
+            processedTasks48 = s.hist48h.processed,
+            pooledTasks48    = s.hist48h.pooled,
+            finishedTasks48  = s.hist48h.finished,
+            failedTasks48    = s.hist48h.failed,
+            load48           = s.hist48h.load,
+        )
 
     @staticmethod
     def getExecutions(status='Running'):
@@ -198,55 +219,42 @@ class SchedulerMonitor(object):
     def registerPyro(self,*,daemon,ns,uri,appName,exclusiveDaemon): 
         pass
 
-    def ensureLocalAccess(self) -> None:
-        if not hasattr(Pyro5,'current_context'): return
-        import ipaddress
-        addr=ipaddress.ip_address(Pyro5.current_context.client_sock_addr[0]) # type: ignore
-        if not addr.is_loopback: raise PermissionError(f'SchedulerMonitor: only local access is allowed (not from {addr})')
-
+    @pyro_only(no_remote=True)
     def updateRunning(self,we_id,wid):
-        self.ensureLocalAccess()
         self.advanceTime()
-        with self.stat._lock:
-            self.stat.tasks.scheduled-=1
-            self.stat.tasks.running+=1
-            self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',time=datetime.datetime.now()))
-            self.stat.sync()
+        self.stat.tasks.scheduled-=1
+        self.stat.tasks.running+=1
+        self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',time=datetime.datetime.now()))
+        self.stat.sync()
+
+    @pyro_only(no_remote=True)
     def updateScheduled(self,numPending: int):
-        self.ensureLocalAccess()
         self.advanceTime()
-        with self.stat._lock:
-            self.stat.tasks.scheduled=numPending
-            self.stat.hist48h.pooled[-1]+=numPending
-            self.stat.sync()
+        self.stat.tasks.scheduled=numPending
+        self.stat.hist48h.pooled[-1]+=numPending
+        self.stat.sync()
+
+    @pyro_only(no_remote=True)
     def updateFinished(self,retCode,we_id):
-        self.ensureLocalAccess()
         self.advanceTime()
-        with self.stat._lock:
-            self.stat.tasks.running-=1
-            self.stat.tasks.processed+=1
-            self.stat.hist48h.processed[-1]+=1
-            if retCode==0:
-                self.stat.tasks.finished+=1
-                self.stat.hist48h.finished[-1]+=1
-            else:
-                self.stat.tasks.failed+=1
-                self.stat.hist48h.failed[-1]+=1
-            # wid is not passed in here, use "?" in case the job is not found anymore
-            self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid='?',status=('Finished' if retCode==0 else 'Failed'),time=datetime.datetime.now()))
-            self.stat.sync()
+        self.stat.tasks.running-=1
+        self.stat.tasks.processed+=1
+        self.stat.hist48h.processed[-1]+=1
+        if retCode==0:
+            self.stat.tasks.finished+=1
+            self.stat.hist48h.finished[-1]+=1
+        else:
+            self.stat.tasks.failed+=1
+            self.stat.hist48h.failed[-1]+=1
+        # wid is not passed in here, use "?" in case the job is not found anymore
+        self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid='?',status=('Finished' if retCode==0 else 'Failed'),time=datetime.datetime.now()))
+        self.stat.sync()
+
+    @pyro_only(no_remote=True)
     def persistStat(self):
-        self.ensureLocalAccess()
         self.advanceTime()
-        with self.stat._lock: self.stat.save_to_file(schedulerStatFile)
+        self.stat.save_to_file(schedulerStatFile)
 
-
-def procInit():
-    log.info("procInit called")
-def procFinish(r):
-   log.info("procFinish called")
-def procError(r):
-   log.info("procError called:"+str(r))
 
 
 
@@ -499,8 +507,8 @@ def scheduler_schedule_pending(pool):
         log.exception('Error checking pending executions')
         pending_executions = []
 
-    _mon=Pyro5.api.Proxy(SchedulerMonitor.URI)
-    _mon.updateScheduled(len(pending_executions))
+    monitor=Pyro5.api.Proxy(SchedulerMonitor.URI)
+    monitor.updateScheduled(len(pending_executions))
 
     for wed in pending_executions:
         weid = wed.dbID
@@ -541,23 +549,22 @@ def scheduler_schedule_pending(pool):
                     except Exception as e:
                         log.exception('Failure getting execution record (for execution with resources unavailable)')
 
-    ## ok, no more jobs to schedule for now, wait
-    #l = int(100*int(schedulerStat['runningTasks'])/poolsize)
-    #with statusLock:
-    #        restApiControl.setStatScheduler(load=l)
-    #        historyUpdateLoad(schedulerStat, time.time(), l)
 
     # display progress (consider use of tqdm)
     lt = time.localtime(time.time())
     if api_type != 'granta':
         try:
-            #stats = restApiControl.getStatScheduler()
-            # bp HUHUHUHUHUHUUH
-            stat=SchedulerStat.model_validate(_mon.getStatistics(raw=True))
+            stat=SchedulerStat.model_validate(monitor.getStatistics(raw=True))
             log.info(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
                 str(stat.tasks.scheduled)+"/"+str(stat.tasks.running)+"/"+str(stat.load))
         except Exception as e:
             log.exception('')
+
+
+# callbacks for the task pool
+def procInit():     pass
+def procFinish(r):  pass
+def procError(e):   log.error('Error running pool task:',exc_info=e)
 
 
 def main():
@@ -577,9 +584,11 @@ def main():
         log.error(repr(e))
 
     if 1:
-        monitor = SchedulerMonitor(ns)
-        SchedulerMonitor.URI=monitor.runServer()
-        _mon=Pyro5.api.Proxy(SchedulerMonitor.URI)
+        _monitor = SchedulerMonitor(ns)
+        SchedulerMonitor.URI=_monitor.runServer()
+        monitor=Pyro5.api.Proxy(SchedulerMonitor.URI)
+
+
 
         # https://github.com/mupif/mupifDB/issues/14
         # explicitly use forking (instead of spawning) so that there are no leftover monitoring processes
@@ -606,7 +615,7 @@ def main():
                     while stopFlag is not True:
                         scheduler_schedule_pending(pool)
                         # lazy update of persistent statistics, done in main thread thus thread safe
-                        _mon.persistStat()
+                        monitor.persistStat()
                         # log.info("waiting..")
                         time.sleep(LOOP_SLEEP_SEC)
 

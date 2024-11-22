@@ -33,11 +33,12 @@ class NotFoundResponse(Exception):
     """
     pass
 
-def _check(resp: Response) -> Response:
+def _check(resp: Response):
     msg=f'{resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}'
     (log.info if (200<=resp.status_code<300 and resp.status_code!=404) else log.error)(msg)
     if 200 <= resp.status_code <= 299: return resp
-    if resp.status_code==422: # Unprocessable entity
+    elif resp.status_code==404: raise NotFoundResponse(msg)
+    elif resp.status_code==422: # Unprocessable entity
         log.error(100*'*'+'\nUnprocessable entity\n'+100*'*')
         txt=json.loads(resp.text)
         print(txt['message'])
@@ -45,33 +46,28 @@ def _check(resp: Response) -> Response:
             import ast
             print_json(data=ast.literal_eval(txt['message']))
         except: print('(not renderable as JSON)')
-        return resp
-    elif resp.status_code==404: raise NotFoundResponse(msg)
-    else: raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
+        # print error to log, continue to raise exception below
+    raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
 
 _defaultTimeout=4
 
-OStr=Optional[str]
 
-def rGet(path, *, headers=None, auth=None, timeout=_defaultTimeout, params={}, allow_redirects=True) -> requests.Response:  # type: ignore
+def rGetRaw(path, *, headers=None, auth=None, timeout=_defaultTimeout, params={}, allow_redirects=True):  # type: ignore
     return _check(requests.get(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, params=params, allow_redirects=allow_redirects))
-
-def rPost(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout, files={}, allow_redirects=True): # type: ignore
+def rPostRaw(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout, files={}, allow_redirects=True): # type: ignore
     return _check(requests.post(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data, files=files, allow_redirects=allow_redirects))
-
-def rPatch(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout):
+def rPatchRaw(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout):
     return _check(requests.patch(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data))
-
-def rPut(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout): # type: ignore
+def rPutRaw(path, *, headers=None, auth=None, data=None, timeout=_defaultTimeout): # type: ignore
     return _check(requests.put(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth, data=data))
-
-def rDelete(path, *, headers=None, auth=None, timeout=_defaultTimeout): # type: ignore
+def rDeleteRaw(path, *, headers=None, auth=None, timeout=_defaultTimeout): # type: ignore
     return _check(requests.delete(url=RESTserver+path, timeout=timeout, headers=headers, auth=auth))
 
-
-
-
-
+def rGet(*args,**kw): return rGetRaw(*args,**kw).json()
+def rPost(*args,**kw): return rPostRaw(*args,**kw).json()
+def rPatch(*args,**kw): return rPatchRaw(*args,**kw).json()
+def rPut(*args,**kw): return rPutRaw(*args,**kw).json()
+def rDelete(*args,**kw): return rDeleteRaw(*args,**kw).json()
 
 def logMessage(*,name,levelno,pathname,lineno,created,**kw):
     '''

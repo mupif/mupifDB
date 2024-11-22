@@ -12,7 +12,7 @@ from oauthlib.oauth2 import BackendApplicationClient
 from requests_oauthlib import OAuth2Session
 from requests.auth import HTTPBasicAuth
 
-from .client_util import rGet, rPost, rPatch, rPut, rDelete, api_type
+from .client_util import rGet, rPost, rPatch, rPut, rDelete, rGetRaw, rPostRaw, rPatchRaw, rPutRaw, rDeleteRaw, api_type
 from .. import table_structures, models
 
 granta_credentials = {'username': '', 'password': ''}
@@ -108,19 +108,18 @@ def fix_json(val: str) -> str:
 def _getGrantaBinaryFileByID(fid):
     assert api_type == 'granta'
     # this is .../filestore instead of ..../api, so the ../filestore should do the trick
-    response = rGet(f"../filestore/{fid}", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, allow_redirects=True)
+    response = rGetRaw(f"../filestore/{fid}", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, allow_redirects=True)
     return response.content, response.headers['content-disposition'].split('filename=')[1].replace('"', '')
 
 def _uploadGrantaBinaryFile(binary_data):
     assert api_type == 'granta'
     response = rPost("../filestore", headers={'Authorization': f'Bearer {getAuthToken()["access_token"]}'}, files={"file": binary_data})
-    return response.json()['guid']
+    return response['guid']
 
 
 
 def _getGrantaWorkflowRecordGeneral(wid, version: int):
-    r = rGet(f"templates/{wid}", headers=getGrantaHeaders())
-    r_json = r.json()
+    r_json = rGet(f"templates/{wid}", headers=getGrantaHeaders())
     # workflow = table_structures.extendRecord({}, table_structures.tableWorkflow)
     workflow = models.Workflow_Model(
         dbID = r_json['guid'],
@@ -334,13 +333,12 @@ def _getGrantaExecutionRecords(workflow_id=None, workflow_version=None, label=No
            Status = {'Ready':'Pending','On-going':'Running','Completed':'Finished','Completed, to be reviewed':'Finished','Completed & reviewed':'Finished','Cancelled':'Failed'}.get(ex['status'],ex['status']),
            Task_ID = '',
         )
-    for ex in r.json()]
+    for ex in r]
 
 
 def _getGrantaExecutionRecord(weid: str):
     assert api_type == 'granta'
-    r = rGet(f"executions/{weid}", headers=getGrantaHeaders())
-    r_json = r.json()
+    r_json = rGet(f"executions/{weid}", headers=getGrantaHeaders())
     execution = table_structures.extendRecord({}, table_structures.tableExecution)
     execution['_id'] = r_json['guid']
     execution['WorkflowID'] = r_json['template_guid']
@@ -358,7 +356,7 @@ def _setGrantaExecutionParameter(execution_id, param, value, val_type="str"):
         token = getAuthToken()
         headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
         newdata = {"logs": {"url": "https://musicode.grantami.com/musicode/filestore/%s" % str(value), "description": None}}
-        r = rPatch(f"executions/{execution_id}", headers=headers, data=json.dumps(newdata))
+        r = rPatchRaw(f"executions/{execution_id}", headers=headers, data=json.dumps(newdata))
         if r.status_code == 200:
             return True
     return None
@@ -368,7 +366,7 @@ def _getGrantaPendingExecutions(num_limit=None):
     assert api_type == 'granta'
     r = rGet("executions/?status=Ready", headers=getGrantaHeaders())
     res = []
-    for ex in r.json():
+    for ex in r:
         execution = table_structures.extendRecord({}, table_structures.tableExecution)
         execution['_id'] = ex['guid']
         execution['WorkflowID'] = ex['template_guid']
@@ -381,7 +379,7 @@ def _getGrantaPendingExecutions(num_limit=None):
 
 def _setGrantaExecutionResults(eid, val_list):
     newdata = {"results": val_list}
-    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(set=True), data=json.dumps(newdata))
+    r = rPatchRaw(f"executions/{eid}", headers=getGrantaHeaders(set=True), data=json.dumps(newdata))
     if r.status_code == 200:
         return True
     return False
@@ -391,7 +389,7 @@ def _setGrantaExecutionStatus(eid, val):
     token = getAuthToken()
     headers = {'content-type': 'application/json', 'charset': 'UTF-8', 'accept': 'application/json', 'Accept-Charset': 'UTF-8', 'Authorization': f'Bearer {token["access_token"]}'}
     newdata = {"status": str(val)}
-    r = rPatch(f"executions/{eid}", headers=getGrantaHeaders(set=True), data=json.dumps(newdata))
+    r = rPatchRaw(f"executions/{eid}", headers=getGrantaHeaders(set=True), data=json.dumps(newdata))
     if r.status_code == 200:
         return True
     return False
