@@ -44,7 +44,8 @@ from rich import print_json
 from rich.pretty import pprint
 
 # shorthands for common exceptions
-def NotFoundError(detail): return HTTPException(status_code=404,detail=detail)
+def NotFoundError(detail):
+    return HTTPException(status_code=404, detail=detail)
 
 
 from mupifDB import models
@@ -114,7 +115,8 @@ if 1:
     # when imported at readthedocs, don't try to connect to the DB (no DB running there)
     if 'MUPIFDB_DRY_RUN' not in os.environ and not cmdline_opts.export_openapi:
         edm.initializeEdm(client)
-    else: log.info('MUPIFDB_DRY_RUN / --generate-openapi active, not initializing EDM DB connection.')
+    else:
+        log.info('MUPIFDB_DRY_RUN / --generate-openapi active, not initializing EDM DB connection.')
     app.include_router(edm.dms3.router)
 
 
@@ -640,7 +642,7 @@ def set_scheduler_statistics(data: M_ModifyStatistics):
 def get_status2():
     ns = None
     try:
-        ns = mupif.pyroutil.connectNameserver()
+        ns = mp.pyroutil.connectNameserver()
         nameserverStatus = 'OK'
     except:
         nameserverStatus = 'Failed'
@@ -654,32 +656,36 @@ def get_status2():
             schedulerStatus = 'OK'
     except Exception as e:
         print(str(e))
-    
+
     # get DMS status
     if (client):
         DMSStatus = 'OK'
     else:
         DMSStatus = 'Failed'
-    
+
     return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name':os.environ["MUPIF_VPN_NAME"]}
+
 
 @app.get("/scheduler-status2/", tags=["Stats"])
 def get_scheduler_status2():
-    ns = mupif.pyroutil.connectNameserver();
+    ns = mp.pyroutil.connectNameserver()
     return mp.monitor.schedulerInfo(ns)
+
 
 @app.get("/ns-status2/", tags=["Stats"])
 def get_ns_status2():
-    ns = mupif.pyroutil.connectNameserver();
+    ns = mp.pyroutil.connectNameserver()
     return mp.monitor.nsInfo(ns)
+
 
 @app.get("/vpn-status2/", tags=["Stats"])
 def get_vpn_status2():
-    return mupif.monitor.vpnInfo(hidePriv=False)
+    return mp.monitor.vpnInfo(hidePriv=False)
+
 
 @app.get("/jobmans-status2/", tags=["Stats"])
 def get_jobmans_status2():
-    ns = mupif.pyroutil.connectNameserver();
+    ns = mp.pyroutil.connectNameserver()
     return mp.monitor.jobmanInfo(ns)
 
 
