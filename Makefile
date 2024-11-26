@@ -1,5 +1,5 @@
-MAKEFLAGS+=-j6
-TASKS=ns mongo rest web browse scheduler
+MAKEFLAGS+=-j7
+TASKS=ns mongo mongo-setup rest web browse scheduler
 
 .PHONY: $(TASKS)
 run: $(TASKS)
@@ -12,7 +12,9 @@ DIE := kill -INT $(shell echo $$PPID)
 ns:
 	python3 -m Pyro5.nameserver --port 11001 || $(DIE)
 mongo:
-	mkdir -p mongodb-tmp~ && /usr/bin/mongod --port 11002 --noauth --dbpath=./mongodb-tmp~ --logpath=/dev/null --logappend || $(DIE)
+	mkdir -p mongodb-tmp~ && /usr/bin/mongod --port 11002 --noauth --replSet=rs0  --enableMajorityReadConcern --dbpath=./mongodb-tmp~ --logpath=/dev/null --logappend || $(DIE)
+mongo-setup:
+	sleep 2; mongosh --port 11002 --quiet --eval "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'127.0.0.1:11002'}]}) }"
 rest:
 	# MUPIFDB_DRY_RUN=1
 	sleep 2 && cd mupifDB/api && MUPIFDB_MONGODB_PORT=11002 MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIFDB_LOG_LEVEL=DEBUG MUPIFDB_RESTAPI_HOST=localhost MUPIFDB_RESTAPI_PORT=11003 PYTHONPATH=../.. python3 main.py || $(DIE)
