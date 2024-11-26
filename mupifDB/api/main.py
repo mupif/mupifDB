@@ -93,8 +93,9 @@ class Perms(object):
         return True
     def ensure(self, obj: T, perm:_PermWhat='read', on: _PermOn='self',diag: str|None=None) -> T:
         'Check permissions on the object (read on obj by default) and return it. Raise ForbiddenError if the check fails.'
+        # if obj.parent is None: raise ForbiddenError(f'{obj.__class__.__name__}(dbID={obj.dbID}).parent is None!')
         if not self.has(obj=obj,perm=perm, on=on):
-            raise ForbiddenError('Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(dbID={obj.dbID}){": "+diag if diag else ""}.')
+            raise ForbiddenError(f'Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(dbID={obj.dbID}){": "+diag if diag else ""}.')
         return obj
     def TODO(*args,**kw): pass
     def filterSelfRead(self,objs: List[T]) -> List[T]: return [obj for obj in objs if self.has(obj,perm='read',on='self')]
