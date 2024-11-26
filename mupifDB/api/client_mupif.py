@@ -165,7 +165,7 @@ def setExecutionInputObject(weid, name, obj_id, object_dict):
 
 # TODO: validate input
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
-    return rPatch(f"executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}))
+    return rPatch(f"executions/{weid}/output_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}))
 
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
     return rGet(f"property_array_data/{file_id}/{i_start}/{i_count}/")
