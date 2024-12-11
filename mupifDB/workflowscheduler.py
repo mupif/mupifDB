@@ -118,7 +118,7 @@ class SchedulerStat(mp.BareData):
         self.lastJobs.append(job)
         self.lastJobs=self.lastJobs[-max:]
     def lastJobDone(self, we_id, status: Literal['Finished','Failed'], finished: datetime.datetime):
-        match=[j for j in self.lastJobs if j.we_id==job.we_id]
+        match=[j for j in self.lastJobs if j.we_id==we_id]
         if not match: return # job already gone
         if len(match)>1:
             log.error('Multiple lastJobs with {we_id=}??')
