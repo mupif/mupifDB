@@ -35,6 +35,7 @@ rotate-backups
 pydantic>2.6
 # for some reason not installed from mupif's deps??
 numpydantic
+colorlog
 typing_extensions
 oauthlib
 requests_oauthlib
