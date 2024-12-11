@@ -45,11 +45,11 @@ def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
 
 @pydantic.validate_call
 def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
-    workflow_newest = getWorkflowRecord(wid)
-    if workflow_newest is not None:
-        if workflow_newest.Version == version or version == -1:
-            return workflow_newest
-    return getWorkflowRecordFromHistory(wid, version)
+    try:
+        workflow_newest = getWorkflowRecord(wid)
+        if workflow_newest.Version == version or version == -1: return workflow_newest
+    except NotFoundResponse:
+        return getWorkflowRecordFromHistory(wid, version)
 
 
 # --------------------------------------------------

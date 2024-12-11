@@ -101,39 +101,24 @@ def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:
         @param version workflow version, version == -1 means return the most recent version    
     """
     wdoclatest = client.getWorkflowRecord(wid)
-    # print(f'QQQ {wdoclatest=}')
-    if wdoclatest is None:
-        raise KeyError("Workflow document with WID" + wid + " not found")
-    lastversion = int(wdoclatest.Version)
+    lastversion = wdoclatest.Version
     if version == -1 or version == lastversion:  # get the latest one
         return wdoclatest
     elif version < lastversion:
-        wdoc = client.getWorkflowRecordFromHistory(wid, version)
-        if wdoc is None:
-            raise KeyError("Workflow document with WID" + wid + "Version" + str(version) + " not found")
-        return wdoc
-    else:
-        raise KeyError("Workflow document with WID" + wid + "Version" + str(version) + ": bad version")
-
+        return client.getWorkflowRecordFromHistory(wid, version)
+    else: raise KeyError(f"Workflow document with {wid=}, {version=}: bad version (latest is {lastversion}).")
 
 class WorkflowExecutionIODataSet:
     def __init__(self, wec, IOid, weid):
         self.wec = wec
         self.IOid = IOid
         self.weid = weid
-    
+
     @staticmethod
     @pydantic.validate_call
     def create(workflowID: str, type: Literal['Inputs','Outputs'], workflowVer=-1, no_onto=False):
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
-        if wdoc is None:
-            raise KeyError("Workflow document with ID" + workflowID + " not found")
         IOCard = wdoc.IOCard
-
-        #
-        # TODO: convert to model
-        #
-        #rec: dict[str,Any] = {}
         data: list[models.IODataRecordItem_Model] = []
         # loop over workflow inputs or outputs
         for io in {'Inputs':IOCard.Inputs,'Outputs':IOCard.Outputs}[type]:  # type: ignore 
@@ -161,10 +146,7 @@ class WorkflowExecutionIODataSet:
         """
         Returns workflowExection document corresponding to self.executionID
         """
-        iod_record = client.getIODataRecord(self.IOid)
-        if iod_record is None:
-            raise KeyError("Document with ID" + self.IOid + " not found")
-        return iod_record
+        return client.getIODataRecord(self.IOid)
 
     def getRec(self, name, obj_id=""):
         """
@@ -215,49 +197,25 @@ class WorkflowExecutionContext:
         """
         # first query for workflow document
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
-        if wdoc is not None:
-            # IOCard = wdoc['IOCard']
-            ex=models.WorkflowExecution_Model(
-                WorkflowID=workflowID,
-                WorkflowVersion=wdoc.Version,
-                RequestedBy=requestedBy,
-                UserIP=ip,
-                CreatedDate=datetime.datetime.now(),
-                Inputs=WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto),
-                Outputs=WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto),
-                EDMMapping=([] if no_onto else [models.EDMMapping_Model()]),
+        ex=models.WorkflowExecution_Model(
+            WorkflowID=workflowID,
+            WorkflowVersion=wdoc.Version,
+            RequestedBy=requestedBy,
+            UserIP=ip,
+            CreatedDate=datetime.datetime.now(),
+            Inputs=WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto),
+            Outputs=WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto),
+            EDMMapping=([] if no_onto else [models.EDMMapping_Model()]),
 
-            )
-            #rec['WorkflowID'] = workflowID
-            #rec['WorkflowVersion'] = wdoc.Version
-            #rec['RequestedBy'] = requestedBy
-            #rec['UserIP'] = ip
-            #rec['CreatedDate'] = str(datetime.datetime.now())
-            #rec['Inputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto)
-            #rec['Outputs'] = WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto)
-            #if no_onto:
-            #    rec['EDMMapping'] = []
-            #else:
-            #    OBO = []
-            #    for obo in wdoc.EDMMapping:
-            #        obo.id = None
-            #        obo.ids = []
-            #        OBO.append(obo)
-            #    rec['EDMMapping'] = OBO
-            new_id = client.insertExecution(ex)
-            return WorkflowExecutionContext(new_id)
-
-        else:
-            raise KeyError("Workflow record " + workflowID + ", Version " + str(workflowVer) + " not found")
+        )
+        new_id = client.insertExecution(ex)
+        return WorkflowExecutionContext(new_id)
 
     def _getWorkflowExecutionDocument(self):
         """
         Returns workflowExection document corresponding to self.executionID
         """
-        we_rec = client.getExecutionRecord(self.executionID)
-        if we_rec is None:
-            raise KeyError("Record with id=" + self.executionID + " not found")
-        return we_rec
+        return client.getExecutionRecord(self.executionID)
 
     def _getWorkflowDocument(self):
         """
@@ -267,8 +225,6 @@ class WorkflowExecutionContext:
         wid = doc.WorkflowID
         version = doc.WorkflowVersion
         wdoc = getWorkflowDoc(wid, version=version)
-        if wdoc is None:
-            raise KeyError("Workflow document with ID" + str(wid) + " not found")
         return wdoc
 
     def set(self, name, value):
@@ -287,7 +243,7 @@ class WorkflowExecutionContext:
         return getattr(doc,name)
 
     def getIODataDoc(self, type='Inputs'):
-        doc = self._getWorkflowExecutionDocument()    
+        # doc = self._getWorkflowExecutionDocument()
         return WorkflowExecutionIODataSet(self, self.get(type), self.executionID)
 
     def getStatus(self):
