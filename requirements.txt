@@ -33,6 +33,8 @@ pympler
 rotate-backups
 # XXX: this must be synchronized with mupif's requirements.txt
 pydantic>2.6
+# for some reason not installed from mupif's deps??
+numpydantic
 typing_extensions
 oauthlib
 requests_oauthlib
