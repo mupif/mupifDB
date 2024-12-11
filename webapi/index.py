@@ -730,7 +730,7 @@ def executionStatus(weid):
     if data.Status == 'Created':
         if workflowmanager.checkInputs(weid):
             _workflow = restApiControl.getWorkflowRecordGeneral(data.WorkflowID, data.WorkflowVersion)
-            if mp.Workflow.checkModelRemoteResourcesByMetadata(_workflow.Models):
+            if True or mp.Workflow.checkModelRemoteResourcesByMetadata(_workflow.Models): # TODO
                 html += f'<li> <a href="{BASE_URL}/executeworkflow/' + weid + '">Schedule execution</a></li>'
             else:
                 html += '<li>Some resources are not available. Cannot be scheduled.</li>'
