@@ -32,8 +32,8 @@ import logging
 # show remote traceback when remote calls fail
 sys.excepthook = Pyro5.errors.excepthook
 
-
-log=logging.getLogger('workflow-scheduler') 
+log=logging.getLogger('scheduler') 
+log.setLevel(logging.INFO)
 log.addHandler(restLogger.RestLogHandler())
 
 # logging.getLogger().setLevel(logging.DEBUG)
@@ -497,14 +497,14 @@ def scheduler_startup_execute_scheduled(pool):
         if checkExecutionResources(weid):
             result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
             log.info(result)
-            log.info("WEID %s added to the execution pool" % weid)
+            log.info(f"WEID {weid} added to the execution pool")
         else:
-            log.info("WEID %s cannot be scheduled due to unavailable resources" % weid)
+            log.info(f"WEID {weid} cannot be scheduled due to unavailable resources")
             try:
                 we_rec = restApiControl.getExecutionRecord(weid)
                 restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
             except Exception as e:
-                log.exception('Error running scheduled execution:')
+                log.exception('Error running scheduled execution {weid=}:')
 
 
 def scheduler_schedule_pending(pool):
@@ -521,7 +521,7 @@ def scheduler_schedule_pending(pool):
     for wed in pending_executions:
         weid = wed.dbID
         assert weid is not None # make pyright happy
-        log.info(f'{weid} found as pending')
+        log.info(f'{weid} found as pending ({wed.Attempts=})')
         # check number of attempts for execution
         if int(wed.Attempts) > 10:
             try:
@@ -563,7 +563,7 @@ def scheduler_schedule_pending(pool):
     if api_type != 'granta':
         try:
             stat=SchedulerStat.model_validate(monitor.getStatistics(raw=True))
-            log.warning(f'Scheduled/Running/Load: {stat.tasks.scheduled}/{stat.tasks.running}/{stat.load}')
+            log.info(f'Scheduled/Running/Load: {stat.tasks.scheduled}/{stat.tasks.running}/{stat.load}')
         except Exception as e:
             log.exception('')
 
