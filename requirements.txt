@@ -16,7 +16,8 @@ Werkzeug==2.2.2
 psutil
 fastapi
 uvicorn[standard]
-fastapi-cache2
+# FIXME: the fastapi-cache2 upstream is broken, use this fork
+fastapi-cache2-fork
 python-multipart
 networkx
 astropy
