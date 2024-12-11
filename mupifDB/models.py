@@ -147,7 +147,7 @@ class IODataRecordItem_Model(InputOutputBase_Model):
     # links to fs.files
     FileID: Optional[str]=None
     Compulsory: Optional[bool]=False # deema: allow None
-    Object: dict[str,Any]
+    Object: dict[str,Any]={}
     def TEMP_getChildren(self) -> List[Tuple[str,DbRef_Model]]:
         return [('FileID',DbRef_Model(where=where,id=id)) for where,id in [('fs.files',self.FileID)] if id is not None and id!='']
 

@@ -65,7 +65,7 @@ stopFlag = False # set to tru to end main scheduler loop
 
 
 import pydantic
-from typing import Literal,List
+from typing import Literal,List,Optional
 import threading
 import multiprocessing
 
@@ -83,7 +83,8 @@ class SchedulerStat(mp.BareData):
         we_id: str
         wid: str
         status: Literal['Running','Finished','Failed']
-        time: datetime.datetime
+        started: datetime.datetime
+        finished: Optional[datetime.datetime]
     lastJobs: List[JobInfo]=[]
     class Hist(mp.BareData):
         interval: int=60*60
@@ -113,15 +114,18 @@ class SchedulerStat(mp.BareData):
 
     def advanceTime(self):
         self.hist48h.advance()
-    def updateLastJobs(self, job: JobInfo, max=5) -> None:
+    def lastJobNew(self, job: JobInfo, max=5) -> None:
+        self.lastJobs.append(job)
+        self.lastJobs=self.lastJobs[-max:]
+    def lastJobDone(self, we_id, status: Literal['Finished','Failed'], finished: datetime.datetime):
         match=[j for j in self.lastJobs if j.we_id==job.we_id]
-        if len(match)==0:
-            self.lastJobs.append(job)
-            self.lastJobs=self.lastJobs[-max:]
-        elif len(match)==1:
-            match[0].status=job.status
-            match[0].time=job.time
-        else: log.error('Multiple lastJobs with {we_id=}??')
+        if not match: return # job already gone
+        if len(match)>1:
+            log.error('Multiple lastJobs with {we_id=}??')
+            return
+        match[0].finished=finished
+        match[0].status=status
+
     def updateLoad(self) -> None:
         self.load=int(100*self.tasks.running*1./poolsize)
         self.hist48h.load[-1]=self.load
@@ -149,8 +153,13 @@ def pyro_only(no_remote=False):
             if not Pyro5.callcontext.current_context.client: raise PermissionError('Must only be called via Pyro')
             if no_remote:
                 import ipaddress
+                import psutil
+                import socket
                 addr=ipaddress.ip_address(Pyro5.callcontext.current_context.client_sock_addr[0]) # type: ignore
-                if not addr.is_loopback: raise PermissionError(f'Must only be called locally (not from {addr})')
+                if addr.is_loopback: pass
+                else:
+                    ips=set([ipaddress.ip_address(rec.address) for rec in sum(psutil.net_if_addrs().values(),[]) if rec.family in (socket.AF_INET,socket,socket.AF_INET6)])
+                    if addr not in ips: raise PermissionError(f'Must only be called locally (not from {addr})')
             return fn(*args,**kwargs)
         return inner
     return deco
@@ -189,7 +198,7 @@ class SchedulerMonitor(object):
         # the default raw=False will return data translated to the old format
         self.advanceTime()
         s=self.stat
-        if raw: return s
+        if raw: return s.model_dump(mode='json')
         return dict(
             runningTasks     = s.tasks.running,
             scheduledTasks   = s.tasks.scheduled,
@@ -224,7 +233,7 @@ class SchedulerMonitor(object):
         self.advanceTime()
         self.stat.tasks.scheduled-=1
         self.stat.tasks.running+=1
-        self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',time=datetime.datetime.now()))
+        self.stat.lastJobNew(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',started=datetime.datetime.now(),finished=None))
         self.stat.sync()
 
     @pyro_only(no_remote=True)
@@ -246,8 +255,7 @@ class SchedulerMonitor(object):
         else:
             self.stat.tasks.failed+=1
             self.stat.hist48h.failed[-1]+=1
-        # wid is not passed in here, use "?" in case the job is not found anymore
-        self.stat.updateLastJobs(SchedulerStat.JobInfo(we_id=we_id,wid='?',status=('Finished' if retCode==0 else 'Failed'),time=datetime.datetime.now()))
+        self.stat.lastJobDone(we_id=we_id,status=('Finished' if retCode==0 else 'Failed'),finished=datetime.datetime.now())
         self.stat.sync()
 
     @pyro_only(no_remote=True)
@@ -555,8 +563,7 @@ def scheduler_schedule_pending(pool):
     if api_type != 'granta':
         try:
             stat=SchedulerStat.model_validate(monitor.getStatistics(raw=True))
-            log.info(str(lt.tm_mday)+"."+str(lt.tm_mon)+"."+str(lt.tm_year)+" "+str(lt.tm_hour)+":"+str(lt.tm_min)+":"+str(lt.tm_sec)+" Scheduled/Running/Load:" +
-                str(stat.tasks.scheduled)+"/"+str(stat.tasks.running)+"/"+str(stat.load))
+            log.warning(f'Scheduled/Running/Load: {stat.tasks.scheduled}/{stat.tasks.running}/{stat.load}')
         except Exception as e:
             log.exception('')
 

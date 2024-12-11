@@ -574,7 +574,7 @@ def get_status():
             schedulerStatus = 'Failed'
 
     # get some scheduler stats
-    stat = mupifDB.schedulerstat.getGlobalStat()
+    stat = mupifDB.schedulerstat.getGlobalStat().model_dump(mode='json')
     schedulerstat = mongo.db.Stat.find_one()['scheduler']
     output = {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
     return jsonify({'result': output})

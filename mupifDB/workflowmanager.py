@@ -127,7 +127,7 @@ class WorkflowExecutionIODataSet:
                 data.append(
                     models.IODataRecordItem_Model.model_validate(
                         # upcast to common base class (InputOutputBase_Model), filtering only inherited keys
-                        dict([(k,v) for k,v in io.model_dump() if k in models.InputOutputBase_Model.model_fields.keys()])
+                        dict([(k,v) for k,v in io.model_dump().items() if k in models.InputOutputBase_Model.model_fields.keys()])
                         |
                         dict(Compulsory=io.Compulsory if type=='Inputs' else False)
                     )
@@ -307,7 +307,8 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
             else:
                 # check value from database record
                 if object_type == 'mupif.Property':
-                    file_id = inp_record.Object['FileID']
+                    # FIXME: mismatch between mupif and mupifDBs models here?
+                    file_id = inp_record.Object.get('FileID',None)
                     if file_id is None:
                         # property from dict
                         try:
