@@ -29,6 +29,8 @@ import mupif as mp
 
 import logging
 
+multiprocessing.current_process().name='mupifDB-scheduler'
+
 # show remote traceback when remote calls fail
 sys.excepthook = Pyro5.errors.excepthook
 

@@ -2,11 +2,12 @@ import logging
 logging.basicConfig()
 log=logging.getLogger('mupifDB.api.server')
 import argparse, sys
+import multiprocessing
+multiprocessing.current_process().name='mupifDB-API'
 _parser=argparse.ArgumentParser()
 _parser.add_argument('--export-openapi',default='',metavar='FILE')
 cmdline_opts,_=_parser.parse_known_args() # don't error on other args, such as --log-level, consumed by uvicorn.run
 if __name__ == '__main__' and not cmdline_opts.export_openapi:
-    print('SERVING')
     import uvicorn
     import os
     host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')

@@ -1,6 +1,6 @@
+mupif
 pygal
 python-pidfile
-mupif
 pymongo
 flask_pymongo
 flask_cors
@@ -16,8 +16,8 @@ Werkzeug==2.2.2
 psutil
 fastapi
 uvicorn[standard]
-# FIXME: the fastapi-cache2 upstream is broken, use this fork
-fastapi-cache2-fork
+# pin version until 0.2.2 is fixed (?) https://github.com/long2ice/fastapi-cache/issues/489
+fastapi-cache2==0.2.1
 python-multipart
 networkx
 astropy
