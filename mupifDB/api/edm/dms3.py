@@ -659,12 +659,6 @@ def dms_api_object_post(db: str, type:str, data:dict) -> str:
     return _new_object(type,data,path=[],tracker=_ObjectTracker())
 
 
-async def get_temp_dir():
-    tdir = tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB')
-    try:
-        yield tdir.name
-    finally:
-        del tdir
 
 
 @router.post('/{db}/blob/upload')
@@ -674,23 +668,35 @@ def dms_api_blob_upload(db: str, blob: fastapi.UploadFile) -> str:
     return str(fs.put(blob.file, filename=blob.filename))
 
 
-@router.get('/{db}/blob/{uid}')
-def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir)):
-    fs = gridfs.GridFS(GG.db_get(db))
-    foundfile = fs.get(bson.objectid.ObjectId(uid))
-    wfile = io.BytesIO(foundfile.read())
-    fn = foundfile.filename
-    fullpath = tdir + '/' + fn
-    with open(fullpath, "wb") as f:
-        f.write(wfile.read())
-        f.close()
-        return fastapi.responses.FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
-
-    # 'Streaming blob download'
-    # fs=gridfs.GridFS(GG.db_get(db))
-    # def iterfile():
-    #     yield from fs.get(bson.objectid.ObjectId(id))
-    # return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
+if 0:
+    # newer Stanislav's implementation, which is failing in unit tests
+    # I assume the tempdir gets destroyed when FileResponse is being returned, and it cannot find the file when attempting to stream it.
+    async def get_temp_dir():
+        tdir = tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB')
+        try:
+            yield tdir.name
+        finally:
+            del tdir
+    @router.get('/{db}/blob/{uid}')
+    def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir)):
+        fs = gridfs.GridFS(GG.db_get(db))
+        foundfile = fs.get(bson.objectid.ObjectId(uid))
+        wfile = io.BytesIO(foundfile.read())
+        fn = foundfile.filename
+        fullpath = tdir + '/' + fn
+        with open(fullpath, "wb") as f:
+            f.write(wfile.read())
+            f.close()
+            return fastapi.responses.FileResponse(path=fullpath, headers={"Content-Disposition": "attachment; filename=" + fn})
+else:
+    # this is the old implementation which passes the tests
+    @router.get('/{db}/blob/{uid}')
+    def dms_api_blob_get(db: str, uid: str):
+        'Streaming blob download'
+        fs=gridfs.GridFS(GG.db_get(db))
+        def iterfile():
+            yield from fs.get(bson.objectid.ObjectId(uid))
+        return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
 
 
 #
