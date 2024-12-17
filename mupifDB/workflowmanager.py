@@ -65,7 +65,7 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
         )
     )
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workflow_Model):
     with open(source, 'rb') as f:
         rec.GridFSID=client.uploadBinaryFile(f)
@@ -94,7 +94,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
 
     return None
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:
     """ 
         Returns workflow document with given wid and version
@@ -115,7 +115,7 @@ class WorkflowExecutionIODataSet:
         self.weid = weid
 
     @staticmethod
-    @pydantic.validate_call
+    @pydantic.validate_call(validate_return=True)
     def create(workflowID: str, type: Literal['Inputs','Outputs'], workflowVer=-1, no_onto=False):
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
         IOCard = wdoc.IOCard
@@ -191,7 +191,7 @@ class WorkflowExecutionContext:
         self.executionID = executionID
 
     @staticmethod
-    @pydantic.validate_call
+    @pydantic.validate_call(validate_return=True)
     def create(workflowID: str, requestedBy: str='', workflowVer: int=-1, ip: str='', no_onto=False):
         """
         """

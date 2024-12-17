@@ -183,6 +183,14 @@ def statusColor(val):
 
 # server (that is, our URL) is obtained within request handlers as flask.request.host_url+'/'
 
+@app.errorhandler(500)
+def internal_server_error(e):
+    # return "<h1>500: Internal Server Error.</h1>"
+    import traceback
+    # return f'<html><heaad><title>500: Internal server error</title></head><body><h1>500 Internal server error</h1><pre>{"".join(traceback.format_exception(e))}</pre></body></html>'
+    # return traceback.format_exception(e)
+    return "<h1>500: Internal server Error</h1><pre>"+"<br/>".join(traceback.format_exception(e.original_exception))+"</pre>"
+
 
 @app.after_request
 def add_header(r):

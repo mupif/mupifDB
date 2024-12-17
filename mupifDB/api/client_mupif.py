@@ -30,36 +30,36 @@ def getWorkflowRecords() -> List[models.Workflow_Model]:
 def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
     return [models.Workflow_Model.model_validate(record) for record in rGet(f"usecases/{usecase}/workflows")]
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getWorkflowRecord(wid: str) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}"))
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def insertWorkflow(wf: models.Workflow_Model):
     return rPost("workflows/", data=wf.model_dump_json())
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json()))
 
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
     try:
         workflow_newest = getWorkflowRecord(wid)
         if workflow_newest.Version == version or version == -1: return workflow_newest
-    except NotFoundResponse:
-        return getWorkflowRecordFromHistory(wid, version)
+    except NotFoundResponse: pass
+    return getWorkflowRecordFromHistory(wid, version)
 
 
 # --------------------------------------------------
 # Workflows history
 # --------------------------------------------------
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rGet(f"workflows_history/{wid}/{version}"))
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def insertWorkflowHistory(wf: models.Workflow_Model):
     return rPost("workflows_history/", data=wf.model_dump_json())
 
@@ -69,7 +69,7 @@ def insertWorkflowHistory(wf: models.Workflow_Model):
 # Executions
 # --------------------------------------------------
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecution_Model]:
     query = "executions/?noparam"
     if workflow_version is not None and workflow_version<0: workflow_version=None
@@ -78,7 +78,7 @@ def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=N
     return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query)]
 
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
     return models.WorkflowExecution_Model.model_validate(rGet(f"executions/{weid}"))
 
@@ -121,7 +121,7 @@ def createExecution(wid: str, version: int, ip: str, no_onto=False):
     wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)
     return rPost("executions/create/", data=wec.model_dump_json())
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def insertExecution(m: models.WorkflowExecution_Model):
     return rPost("executions/", data=m.model_dump_json())
 
@@ -148,11 +148,11 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 # --------------------------------------------------
 # IO Data
 # --------------------------------------------------
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def getIODataRecord(iod_id: str):
     return models.IODataRecord_Model.model_validate(rGet(f"iodata/{iod_id}"))
 
-@pydantic.validate_call
+pydantic.validate_call(validate_return=True)
 def insertIODataRecord(data: models.IODataRecord_Model):
     return rPost("iodata/", data=data.model_dump_json())
 
