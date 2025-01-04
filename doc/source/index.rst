@@ -15,7 +15,7 @@ This is a preliminary MupifDB documentation.
    :caption: Contents
    :numbered:
 
-   infrastructure.rst
+   infrastructure.md
    rest-api.rst
 
 
