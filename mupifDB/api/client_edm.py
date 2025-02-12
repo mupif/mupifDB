@@ -9,8 +9,7 @@ def getEDMDataArray(DBName, Type):
 def getEDMData(DBName, Type, ID, path):
     if ID == '' or ID is None:
         return None
-    response = rGet(f"EDM/{DBName}/{Type}/{ID}/?path={path}")
-    return response.json()
+    return rGet(f"EDM/{DBName}/{Type}/{ID}/?path={path}")
 
 
 def setEDMData(DBName, Type, ID, path, data):
