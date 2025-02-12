@@ -105,6 +105,7 @@ from mupifDB import restApiControl, workflowmanager
 settings = restApiControl.getSettings(maybe_init_db=True)
 PROJECT_NAME = settings.get('projectName', '')
 PROJECT_LOGO_URL = settings.get('projectLogoUrl', '/static/images/project-logo.png')
+PROJECT_ABOUT_CONTENT = settings.get('projectAbout', '')
 
 app = Flask(__name__)
 app.secret_key = AUTH_APP_SECRET_KEY
@@ -322,7 +323,7 @@ def about():
     msg = """
         <h3>Welcome to MuPIFDB web interface</h3>
         <p><a href=\"http://www.mupif.org\">MuPIF</a> is open-source, modular, object-oriented simulation platform allowing to create complex, distributed, multiphysics simulation workflows across the scales and processing chains by combining existing simulation tools. Its data management system allows to build digital twin representations of physical systems, enhanced with predictive simulations to explore virtual paths in a secure distributed environment with full data traceability.</p> 
-    """
+    """ + PROJECT_ABOUT_CONTENT
     return my_render_template('basic.html', body=Markup(msg), login=login_header_html())
 
 
