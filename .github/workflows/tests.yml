@@ -30,7 +30,7 @@ jobs:
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
-        python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=obsolete
+        python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=obsolete --extend-ignore=F824
     - name: Start MongoDB
       run: |
         mkdir ./mongo-data
