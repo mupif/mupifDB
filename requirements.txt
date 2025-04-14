@@ -32,7 +32,8 @@ asteval
 pympler
 rotate-backups
 # XXX: this must be synchronized with mupif's requirements.txt
-pydantic>2.6
+# pydantic > 2.6
+pydantic==2.9.2
 # for some reason not installed from mupif's deps??
 numpydantic
 colorlog
