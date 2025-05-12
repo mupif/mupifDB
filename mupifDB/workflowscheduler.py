@@ -29,6 +29,8 @@ import mupif as mp
 
 import logging
 
+time.sleep(5)
+
 multiprocessing.current_process().name='mupifDB-scheduler'
 
 # show remote traceback when remote calls fail
