@@ -462,7 +462,7 @@ def workflow(wid, version: int):
     html += '<tr><td>Description:</td><td>'+str(wdata.Description)+'</td></tr>'
     html += '</table>'
 
-    html += '<br><a href="/workflowexecutions/init/'+str(wid)+'/'+str(wdata.Version)+'">Initialize new execution record</a>'
+    html += f'<br><a href="{BASE_URL}/workflowexecutions/init/'+str(wid)+'/'+str(wdata.Version)+'">Initialize new execution record</a>'
     if len(wdata.EDMMapping):
         html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata.Version) + '?no_onto">Optionally without EDM objects</a>'
     html += '<br><br>Inputs'
