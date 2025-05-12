@@ -29,6 +29,9 @@ from flask_login import (
     UserMixin
 )
 import logging
+import time
+
+time.sleep(5)
 
 # must run with --debug for logs to appear
 log=logging.getLogger(__name__)
