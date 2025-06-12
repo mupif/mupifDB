@@ -16,13 +16,15 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
 
 import time
 
-from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
 from pymongo import MongoClient
 import tempfile
+import zipfile
+import importlib
+import inspect
 import gridfs
 import typing
 import io
@@ -236,11 +238,264 @@ def get_workflows() -> List[models.Workflow_Model]:
     res = db.Workflows.find()
     return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
 
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in {'py', 'zip', 'txt', 'json', 'xml'}
+
+
+def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[]):
+    """
+    Inserts new workflow definition into DB.
+    Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
+    The old versions (with the same wid but different version) are stored in workflowsHistory.
+    @param wid unique workflow id
+    @param description Description
+    @param source source URL
+    @param useCase useCase ID the workflow belongs to
+    @param workflowInputs workflow input metadata (list of dicts)
+    @param workflowOutputs workflow output metadata (list of dicts)
+    @param modulename
+    @param classname
+    """
+    return insertWorkflowDefinition_model(
+        source=source,
+        rec=models.Workflow_Model(
+            # dbID=None, # this should not be necessary, but pyright warns about it?
+            wid=wid,
+            Description=description,
+            UseCase=useCase,
+            IOCard=models.Workflow_Model.IOCard_Model(
+                Inputs=workflowInputs,
+                Outputs=workflowOutputs
+            ),
+            modulename=modulename,
+            classname=classname,
+            Models=models_md,
+            EDMMapping=EDM_Mapping
+        )
+    )
+
+pydantic.validate_call(validate_return=True)
+def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workflow_Model):
+    with open(source, 'rb') as f:
+        file_content = f.read()
+        filename = os.path.basename(source)
+        file_extension = os.path.splitext(filename)[1].lower()
+        if file_extension == ".txt":
+            content_type = "text/plain"
+        elif file_extension == ".json":
+            content_type = "application/json"
+        elif file_extension == ".pdf":
+            content_type = "application/pdf"
+        elif file_extension == ".xml":
+            content_type = "application/xml"
+        else:
+            content_type = "application/octet-stream"
+
+        file_like_object = io.BytesIO(file_content)
+
+        mock_upload_file = UploadFile(
+            filename=filename,
+            file=file_like_object,
+            # content_type=content_type
+        )
+
+        # Call the original upload_file function
+        gridfs_id = upload_file(mock_upload_file)
+        rec.GridFSID = gridfs_id
+
+        # Ensure the BytesIO object is closed
+        mock_upload_file.file.close()
+
+    # first check if workflow with wid already exist in workflows
+    try:
+        w_rec = get_workflow_by_version(rec.wid, -1)
+        # the workflow already exists, need to make a new version
+        # clone latest version to History
+        log.debug(f'{w_rec=}')
+        w_rec.dbID=None  # remove original document id
+        # w_rec._id=None
+        insert_workflow_history(w_rec)
+        # update the latest document
+        w_rec.Version=w_rec.Version+1
+        res_id = update_workflow(w_rec).dbID
+        if res_id:
+            return res_id
+        else:
+            print("Update failed")
+    except client.NotFoundResponse:
+        version = 1
+        rec.Version = version
+        new_id = insert_workflow(rec)
+        return new_id
+
+    return None
+
+
+@app.post("/usecases/{usecaseid}/workflows", tags=["Usecases"])
+async def upload_workflow_and_dependencies(
+    usecaseid: str,
+    workflow_file: UploadFile = File(..., description="The main workflow Python file."),
+    additional_files: List[UploadFile] = File([], description="Additional dependency files.")
+):
+    """
+    Endpoint to upload a main workflow file and multiple additional dependency files.
+
+    Args:
+        usecaseid: The ID of the use case associated with the workflow.
+        workflow_file: The main workflow Python file (e.g., your_workflow.py).
+        additional_files: A list of additional files that are dependencies for the workflow.
+
+    Returns:
+        A dictionary containing details of the uploaded files, or a redirect
+        to the new workflow's detail page on successful registration.
+    """
+    admin_rights = True
+
+    if not admin_rights:
+        raise HTTPException(status_code=403, detail="You don't have permission to perform this action.")
+
+    log.info(f"Uploading workflow for usecase: {usecaseid}")
+
+    new_workflow_id = None
+    wid = None
+    workflowInputs = None
+    workflowOutputs = None
+    description = None
+    classname = None
+    models_md = None
+    EDM_Mapping = []
+    modulename = ""
+    zip_filename = "files.zip"
+
+    try:
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB_fastapi') as tempDir:
+            zip_full_path = os.path.join(tempDir, zip_filename)
+            # Ensure the directory exists if tempfile doesn't fully create it (it should)
+            os.makedirs(os.path.dirname(zip_full_path), exist_ok=True)
+
+            with zipfile.ZipFile(zip_full_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+
+                # Process the main workflow file
+                log.debug(f"Processing main workflow file: {workflow_file.filename}")
+                if workflow_file.filename == '':
+                    raise HTTPException(status_code=400, detail="Main workflow file cannot be empty.")
+
+                if not allowed_file(workflow_file.filename) and not workflow_file.filename.endswith('.py'):
+                    # You might want to be more strict here, e.g., only .py for main workflow
+                    raise HTTPException(status_code=400, detail=f"File type not allowed for workflow_file: {workflow_file.filename}")
+
+                main_file_path = os.path.join(tempDir, workflow_file.filename)
+                with open(main_file_path, "wb") as f:
+                    f.write(await workflow_file.read())
+                zf.write(main_file_path, arcname=workflow_file.filename)
+
+                log.debug(f"Analyzing workflow file {workflow_file.filename}")
+                modulename = workflow_file.filename.replace(".py", "")
+                sys.path.append(tempDir) # Add tempDir to sys.path to import the module
+
+                try:
+                    moduleImport = importlib.import_module(modulename)
+
+                    classes = [obj.__name__ for name,obj in inspect.getmembers(moduleImport) if inspect.isclass(obj) and obj.__module__ == modulename]
+
+                    if len(classes) == 1:
+                        classname = classes[0]
+                        workflowClass = getattr(moduleImport, classname)
+                        workflow_instance = workflowClass()
+                        wid = workflow_instance.getMetadata('ID')
+                        meta = workflow_instance.getAllMetadata()
+                        workflowInputs = meta.get('Inputs', [])
+                        workflowOutputs = meta.get('Outputs', [])
+                        description = meta.get('Description', '')
+                        models_md = meta.get('Models', [])
+                        EDM_Mapping = meta.get('EDMMapping', [])
+                    else:
+                        log.error(f"File {workflow_file.filename} contains {len(classes)} classes (must be one). Classes: {classes}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Workflow file '{workflow_file.filename}' must contain exactly one class. Found {len(classes)}."
+                        )
+                except (ImportError, AttributeError, Exception) as e:
+                    log.error(f"Error importing or analyzing workflow file {workflow_file.filename}: {e}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Error processing workflow file '{workflow_file.filename}': {e}"
+                    )
+                finally:
+                    # Clean up sys.path to prevent conflicts with subsequent imports
+                    if tempDir in sys.path:
+                        sys.path.remove(tempDir)
+
+
+                # Process additional files
+                for file in additional_files:
+                    log.debug(f"Processing additional file: {file.filename}")
+                    if file.filename == '':
+                        log.debug(f"Skipping empty additional file upload.")
+                        continue # Skip empty uploads
+
+                    # You might want different allowed_file rules for additional files
+                    if not allowed_file(file.filename):
+                        log.warning(f"Skipping potentially disallowed file type for additional file: {file.filename}")
+                        continue # Or raise an error, depending on your policy
+
+                    additional_file_path = os.path.join(tempDir, file.filename)
+                    with open(additional_file_path, "wb") as f:
+                        f.write(await file.read())
+                    zf.write(additional_file_path, arcname=file.filename)
+
+
+            # After all files are written and zipped, proceed with workflow registration
+            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None and classname is not None:
+                log.info('Adding workflow to database.')
+                new_workflow_id = insertWorkflowDefinition(
+                    wid=wid,
+                    description=description,
+                    source=zip_full_path,
+                    useCase=usecaseid,
+                    workflowInputs=workflowInputs,
+                    workflowOutputs=workflowOutputs,
+                    modulename=modulename,
+                    classname=classname,
+                    models_md=models_md,
+                    EDM_Mapping=EDM_Mapping
+                )
+            else:
+                log.error('Workflow data incomplete. Not adding workflow.')
+                raise HTTPException(status_code=400, detail="Incomplete workflow metadata. Cannot register workflow.")
+
+        if new_workflow_id is not None:
+            return new_workflow_id
+
+        else:
+            raise HTTPException(status_code=500, detail="Failed to register workflow, no ID returned.")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"An unhandled error occurred during workflow upload: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error during workflow upload: {e}")
+
+
 @app.get("/workflows/{workflow_id}", tags=["Workflows"])
 def get_workflow(workflow_id: str) -> models.Workflow_Model:
+    return get_workflow_by_version(workflow_id, -1)
+
+
+@app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"])
+def get_workflow_by_version(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
     res = db.Workflows.find_one({"wid": workflow_id})
-    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id}.')
+    if res is None:
+        raise NotFoundError(f'Database reports no workflow with wid={workflow_id}.')
+    if workflow_version == -1 or res['Version'] == workflow_version:
+        return perms.ensure(models.Workflow_Model.model_validate(res))
+
+    res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
+    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
     return perms.ensure(models.Workflow_Model.model_validate(res))
+
 
 @app.patch("/workflows/", tags=["Workflows"])
 def update_workflow(wf: models.Workflow_Model) -> models.Workflow_Model:
@@ -265,16 +520,6 @@ def insert_workflow_history(wf: models.Workflow_Model) -> str:
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
-
-# --------------------------------------------------
-# Workflows history
-# --------------------------------------------------
-
-@app.get("/workflows_history/{workflow_id}/{workflow_version}", tags=["Workflows"])
-def get_workflow_history(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
-    res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
-    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
-    return perms.ensure(models.Workflow_Model.model_validate(res))
 
 # --------------------------------------------------
 # Executions

@@ -31,35 +31,18 @@ def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
     return [models.Workflow_Model.model_validate(record) for record in rGet(f"usecases/{usecase}/workflows")]
 
 pydantic.validate_call(validate_return=True)
-def getWorkflowRecord(wid: str) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}"))
+def getWorkflowRecord(wid, version: int) -> models.Workflow_Model:
+    return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}/version/{version}"))
 
-pydantic.validate_call(validate_return=True)
+pydantic.validate_call(validate_return=True)  # todo delete
 def insertWorkflow(wf: models.Workflow_Model):
     return rPost("workflows/", data=wf.model_dump_json())
 
-pydantic.validate_call(validate_return=True)
+pydantic.validate_call(validate_return=True)  # todo delete
 def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json()))
 
-
-pydantic.validate_call(validate_return=True)
-def getWorkflowRecordGeneral(wid, version: int) -> models.Workflow_Model:
-    try:
-        workflow_newest = getWorkflowRecord(wid)
-        if workflow_newest.Version == version or version == -1: return workflow_newest
-    except NotFoundResponse: pass
-    return getWorkflowRecordFromHistory(wid, version)
-
-
-# --------------------------------------------------
-# Workflows history
-# --------------------------------------------------
-pydantic.validate_call(validate_return=True)
-def getWorkflowRecordFromHistory(wid: str, version: int) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rGet(f"workflows_history/{wid}/{version}"))
-
-pydantic.validate_call(validate_return=True)
+pydantic.validate_call(validate_return=True)  # todo delete
 def insertWorkflowHistory(wf: models.Workflow_Model):
     return rPost("workflows_history/", data=wf.model_dump_json())
 

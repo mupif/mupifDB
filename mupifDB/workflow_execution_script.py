@@ -16,7 +16,7 @@ def downloadWorkflowFiles(eid):
     we_rec = mupifDB.restApiControl.getExecutionRecord(eid)
     workflowVersion = int(we_rec['WorkflowVersion'])
     wid = we_rec['WorkflowID']
-    workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
+    workflow_record = mupifDB.restApiControl.getWorkflowRecord(wid=wid, version=workflowVersion)
 
     python_script_filename = workflow_record['modulename'] + ".py"
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             log.error("Execution not found")
             sys.exit(1)
 
-        workflow_record = mupifDB.restApiControl.getWorkflowRecordGeneral(execution_record.WorkflowID, execution_record.WorkflowVersion)
+        workflow_record = mupifDB.restApiControl.getWorkflowRecord(execution_record.WorkflowID, execution_record.WorkflowVersion)
         if workflow_record is None:
             log.error("Workflow not found")
             mupifDB.restApiControl.setExecutionStatus(weid,'Failed')

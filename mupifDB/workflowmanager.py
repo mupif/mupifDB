@@ -72,7 +72,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         f.close()
     # first check if workflow with wid already exist in workflows
     try:
-        w_rec = client.getWorkflowRecord(rec.wid)
+        w_rec = client.getWorkflowRecord(rec.wid, -1)
         # the workflow already exists, need to make a new version
         # clone latest version to History
         log.debug(f'{w_rec=}')
@@ -100,13 +100,7 @@ def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:
         Returns workflow document with given wid and version
         @param version workflow version, version == -1 means return the most recent version    
     """
-    wdoclatest = client.getWorkflowRecord(wid)
-    lastversion = wdoclatest.Version
-    if version == -1 or version == lastversion:  # get the latest one
-        return wdoclatest
-    elif version < lastversion:
-        return client.getWorkflowRecordFromHistory(wid, version)
-    else: raise KeyError(f"Workflow document with {wid=}, {version=}: bad version (latest is {lastversion}).")
+    return client.getWorkflowRecord(wid, version)
 
 class WorkflowExecutionIODataSet:
     def __init__(self, wec, IOid, weid):
@@ -358,7 +352,7 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
 
 def checkInputs(eid):
     execution = client.getExecutionRecord(eid)
-    workflow = client.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    workflow = client.getWorkflowRecord(execution.WorkflowID, execution.WorkflowVersion)
     if workflow is None: raise RuntimeError('XXX')
     workflow_input_templates = workflow.IOCard.Inputs
     execution_inputs = client.getIODataRecord(execution.Inputs)
@@ -690,7 +684,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
 
 def mapInputs(app, eid):
     execution = client.getExecutionRecord(eid)
-    workflow = client.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    workflow = client.getWorkflowRecord(execution.WorkflowID, execution.WorkflowVersion)
     workflow_input_templates = workflow.IOCard.Inputs
     #if api_type == 'granta':
     #    workflow_input_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Inputs)
@@ -1070,7 +1064,7 @@ def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
 
 def mapOutputs(app, eid, time):
     execution = client.getExecutionRecord(eid)
-    workflow = client.getWorkflowRecordGeneral(execution.WorkflowID, execution.WorkflowVersion)
+    workflow = client.getWorkflowRecord(execution.WorkflowID, execution.WorkflowVersion)
     workflow_output_templates = workflow.IOCard.Outputs
     #if api_type == 'granta':
     #    workflow_output_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Outputs)

@@ -301,7 +301,7 @@ def executeWorkflow_inner1(we_id: str) -> None:
 
     workflowVersion = we_rec.WorkflowVersion
     wid = we_rec.WorkflowID
-    workflow_record = restApiControl.getWorkflowRecordGeneral(wid=wid, version=workflowVersion)
+    workflow_record = restApiControl.getWorkflowRecord(wid=wid, version=workflowVersion)
     if workflow_record is None:
         log.error("Workflow document with wid %s, verison %s not found" % (wid, workflowVersion))
         raise KeyError("Workflow document with ID %s, version %s not found" % (wid, workflowVersion))
@@ -458,7 +458,7 @@ def stopPool(var_pool):
 
 def checkWorkflowResources(wid, version):
     try:
-        workflow = restApiControl.getWorkflowRecordGeneral(wid, int(version))
+        workflow = restApiControl.getWorkflowRecord(wid, int(version))
         models_md = workflow.Models
         try:
             res = mp.Workflow.checkModelRemoteResourcesByMetadata(models_md=models_md)

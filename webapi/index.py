@@ -457,7 +457,7 @@ def workflowNoVersion(wid: int):
 @app.route('/workflows/<wid>/<version>')
 @login_required
 def workflow(wid, version: int):
-    wdata = restApiControl.getWorkflowRecordGeneral(wid=wid, version=int(version))
+    wdata = restApiControl.getWorkflowRecord(wid=wid, version=int(version))
     html = '<table class=\"tableType1\">'
     html += '<tr><td>WorkflowID:</td><td>'+str(wdata.wid)+'</td></tr>'
     html += '<tr><td>Version:</td><td>'+str(wdata.Version)+'</td></tr>'
@@ -703,7 +703,7 @@ def executions():
 @login_required
 def initexecution(wid, version, methods=('GET')):
     disable_onto = 'no_onto' in request.args
-    we_record = restApiControl.getWorkflowRecordGeneral(wid, int(version))
+    we_record = restApiControl.getWorkflowRecord(wid, int(version))
     if we_record is not None:
         weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)
         return redirect(f'{BASE_URL}/workflowexecutions/{weid}')
@@ -741,7 +741,7 @@ def executionStatus(weid):
     html += f'<li> <a href="{BASE_URL}/workflowexecutions/{weid}/inputs">' + ('Set inputs and Task_ID' if data.Status == 'Created' else 'Inputs') + '</a></li>'
     if data.Status == 'Created':
         if workflowmanager.checkInputs(weid):
-            _workflow = restApiControl.getWorkflowRecordGeneral(data.WorkflowID, data.WorkflowVersion)
+            _workflow = restApiControl.getWorkflowRecord(data.WorkflowID, data.WorkflowVersion)
             if True or mp.Workflow.checkModelRemoteResourcesByMetadata(_workflow.Models): # TODO
                 html += f'<li> <a href="{BASE_URL}/executeworkflow/' + weid + '">Schedule execution</a></li>'
             else:
@@ -772,7 +772,7 @@ def setExecutionInputs(weid):
     execution_record = restApiControl.getExecutionRecord(weid)
     wid = execution_record.WorkflowID
     execution_inputs = restApiControl.getExecutionInputRecord(weid)
-    workflow_record = restApiControl.getWorkflowRecord(wid)
+    workflow_record = restApiControl.getWorkflowRecord(wid, execution_record.WorkflowVersion)
     winprec = workflow_record.IOCard.Inputs
     if request.form:
         if execution_record.Status == "Created":
@@ -847,7 +847,7 @@ def setExecutionInputs(weid):
     execution_record = restApiControl.getExecutionRecord(weid)
     wid = execution_record.WorkflowID
     execution_inputs = restApiControl.getExecutionInputRecord(weid)
-    workflow_record = restApiControl.getWorkflowRecord(wid)
+    workflow_record = restApiControl.getWorkflowRecord(wid, execution_record.WorkflowVersion)
     winprec = workflow_record.IOCard.Inputs
     # generate input form
     form = f"<a href=\"{BASE_URL}/workflowexecutions/"+weid+"\">Back to Execution detail</a><br>"
@@ -1106,7 +1106,7 @@ def getExecutionOutputs(weid):
     execution_record = restApiControl.getExecutionRecord(weid)
     wid = execution_record.WorkflowID
     execution_outputs = restApiControl.getExecutionOutputRecord(weid)
-    workflow_record = restApiControl.getWorkflowRecord(wid)
+    workflow_record = restApiControl.getWorkflowRecord(wid, execution_record.WorkflowVersion)
     # winprec = workflow_record["IOCard"]["Outputs"]
 
     # generate result table form
