@@ -47,6 +47,11 @@ def insertWorkflowHistory(wf: models.Workflow_Model):
     return rPost("workflows_history/", data=wf.model_dump_json())
 
 
+pydantic.validate_call(validate_return=True)
+def insertWorkflowRecord(wf: models.Workflow_Model):
+    return rPost("workflows_record/", data=wf.model_dump_json())
+
+
 
 # --------------------------------------------------
 # Executions

@@ -70,29 +70,9 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
     with open(source, 'rb') as f:
         rec.GridFSID=client.uploadBinaryFile(f)
         f.close()
-    # first check if workflow with wid already exist in workflows
-    try:
-        w_rec = client.getWorkflowRecord(rec.wid, -1)
-        # the workflow already exists, need to make a new version
-        # clone latest version to History
-        log.debug(f'{w_rec=}')
-        w_rec.dbID=None  # remove original document id
-        # w_rec._id=None
-        client.insertWorkflowHistory(w_rec)
-        # update the latest document
-        w_rec.Version=w_rec.Version+1
-        res_id = client.updateWorkflow(w_rec).dbID
-        if res_id:
-            return res_id
-        else:
-            print("Update failed")
-    except client.NotFoundResponse:
-        version = 1
-        rec.Version = version
-        new_id = client.insertWorkflow(rec)
-        return new_id
 
-    return None
+    return client.insertWorkflowRecord(rec)
+
 
 pydantic.validate_call(validate_return=True)
 def getWorkflowDoc(wid: str, version: int=-1) -> models.Workflow_Model:

@@ -281,24 +281,12 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
     with open(source, 'rb') as f:
         file_content = f.read()
         filename = os.path.basename(source)
-        file_extension = os.path.splitext(filename)[1].lower()
-        if file_extension == ".txt":
-            content_type = "text/plain"
-        elif file_extension == ".json":
-            content_type = "application/json"
-        elif file_extension == ".pdf":
-            content_type = "application/pdf"
-        elif file_extension == ".xml":
-            content_type = "application/xml"
-        else:
-            content_type = "application/octet-stream"
 
         file_like_object = io.BytesIO(file_content)
 
         mock_upload_file = UploadFile(
             filename=filename,
             file=file_like_object,
-            # content_type=content_type
         )
 
         # Call the original upload_file function
@@ -314,12 +302,12 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         # the workflow already exists, need to make a new version
         # clone latest version to History
         log.debug(f'{w_rec=}')
-        w_rec.dbID=None  # remove original document id
+        w_rec.dbID = None  # remove original document id
         # w_rec._id=None
         insert_workflow_history(w_rec)
         # update the latest document
-        w_rec.Version=w_rec.Version+1
-        res_id = update_workflow(w_rec).dbID
+        rec.Version = w_rec.Version+1
+        res_id = update_workflow(rec).dbID
         if res_id:
             return res_id
         else:
@@ -519,6 +507,30 @@ def insert_workflow_history(wf: models.Workflow_Model) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
+
+
+@app.post("/workflows_record/", tags=["Workflows"])
+def insert_workflow(wf: models.Workflow_Model) -> str:
+    try:
+        w_rec = get_workflow_by_version(wf.wid, -1)
+        # the workflow already exists, need to make a new version
+        # clone latest version to History
+        log.debug(f'{w_rec=}')
+        w_rec.dbID=None  # remove original document id
+        # w_rec._id=None
+        insert_workflow_history(w_rec)
+        # update the latest document
+        w_rec.Version = w_rec.Version + 1
+        res_id = update_workflow(w_rec).dbID
+        if res_id:
+            return res_id
+        else:
+            print("Update failed")
+    except client.NotFoundResponse:
+        version = 1
+        rec.Version = version
+        new_id = insert_workflow(rec)
+        return new_id
 
 
 # --------------------------------------------------
