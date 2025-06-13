@@ -159,7 +159,11 @@ class TestFoo:
         md=wf.metadata
         mdd=md.model_dump()
         wid=wf.metadata.ID
-        id=mupifDB.workflowmanager.insertWorkflowDefinition(wid=wid,description=md.Description,source=wfmini01.__file__,useCase='useCase1',workflowInputs=mdd['Inputs'],workflowOutputs=mdd['Outputs'],modulename=wf.__module__.split('.')[-1],classname=wf.__class__.__name__,models_md=md.Models)
+        id = mupifDB.restApiControl.postWorkflowFiles(
+            'useCase1',
+            wfmini01.__file__,
+            []
+        )
         print(f'Workflow inserted, {id=}')
         wrec=restApiControl.getWorkflowRecord(wid, -1)
         assert wrec.wid==wid

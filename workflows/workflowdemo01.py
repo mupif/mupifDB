@@ -71,8 +71,11 @@ if __name__ == "__main__":
 
     id = db.Workflows.find_one({"_id":wid})
     if (id is None):
-        id = mupifDB.workflowmanager.insertWorkflowDefinition(db,wid,'Demo','1.0','file://localhost/home/bp/devel/mupifDB/workflows/workflowdemo01.py', 
-                                                    'DemoUseCase', workflow.getMetadata('Inputs'), workflow.getMetadata('Outputs'))
+        id = mupifDB.restApiControl.postWorkflowFiles(
+            'Demo',
+            'file://localhost/home/bp/devel/mupifDB/workflows/workflowdemo01.py',
+            []
+        )
         print("workflow registered")
         exit
 

@@ -52,7 +52,6 @@ def getWorkflowRecords(): return[]
 def getWorkflowRecordsWithUsecase(usecase): return[]
 def updateWorkflow(wf: models.Workflow_Model): return None
 def getWorkflowRecord(wid, version: int): return _getGrantaWorkflowRecordGeneral(wid,version)
-def insertWorkflowRecord(wf: models.Workflow_Model): return None
 def postWorkflowFiles(usecaseid, path_workflow, paths_additional): return None
 # execution
 def getExecutionRecords(*args, **kw): return _getGrantaExecutionRecords(*args,**kw)

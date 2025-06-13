@@ -22,7 +22,7 @@ from typing import Literal,Any,List
 
 from mupifDB.api.client_util import api_type
 
-log=logging.getLogger()
+log = logging.getLogger()
 
 daemon = None
 def getDaemon():
@@ -31,46 +31,6 @@ def getDaemon():
         ns = mupif.pyroutil.connectNameServer()
         daemon = mupif.pyroutil.getDaemon(ns)
     return daemon
-
-# todo remove
-def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[]):
-    """
-    Inserts new workflow definition into DB. 
-    Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
-    The old versions (with the same wid but different version) are stored in workflowsHistory.
-    @param wid unique workflow id
-    @param description Description
-    @param source source URL
-    @param useCase useCase ID the workflow belongs to
-    @param workflowInputs workflow input metadata (list of dicts)
-    @param workflowOutputs workflow output metadata (list of dicts)
-    @param modulename
-    @param classname
-    """
-    return insertWorkflowDefinition_model(
-        source=source,
-        rec=models.Workflow_Model(
-            # dbID=None, # this should not be necessary, but pyright warns about it?
-            wid=wid,
-            Description=description,
-            UseCase=useCase,
-            IOCard=models.Workflow_Model.IOCard_Model(
-                Inputs=workflowInputs,
-                Outputs=workflowOutputs
-            ),
-            modulename=modulename,
-            classname=classname,
-            Models=models_md,
-            EDMMapping=EDM_Mapping
-        )
-    )
-
-pydantic.validate_call(validate_return=True)
-def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workflow_Model):
-    with open(source, 'rb') as f:
-        rec.GridFSID=client.uploadBinaryFile(f)
-        f.close()
-    return client.insertWorkflowRecord(rec)
 
 
 pydantic.validate_call(validate_return=True)

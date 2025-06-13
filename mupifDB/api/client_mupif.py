@@ -38,10 +38,6 @@ pydantic.validate_call(validate_return=True)  # todo delete
 def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json()))
 
-pydantic.validate_call(validate_return=True)
-def insertWorkflowRecord(wf: models.Workflow_Model):
-    return rPost("workflows_record/", data=wf.model_dump_json())
-
 def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
     files = {}
     if path_workflow is None or not os.path.exists(path_workflow):

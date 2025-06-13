@@ -316,7 +316,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         version = 1
         rec.Version = version
         new_id = insert_workflow(rec)
-        return {"id": res_id, "wid": rec.wid}
+        return {"id": new_id, "wid": rec.wid}
 
     return None
 
@@ -507,30 +507,6 @@ def insert_workflow_history(wf: models.Workflow_Model) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
-
-
-@app.post("/workflows_record/", tags=["Workflows"])
-def insert_workflow(wf: models.Workflow_Model) -> str:
-    try:
-        w_rec = get_workflow_by_version(wf.wid, -1)
-        # the workflow already exists, need to make a new version
-        # clone latest version to History
-        log.debug(f'{w_rec=}')
-        w_rec.dbID=None  # remove original document id
-        # w_rec._id=None
-        insert_workflow_history(w_rec)
-        # update the latest document
-        w_rec.Version = w_rec.Version + 1
-        res_id = update_workflow(w_rec).dbID
-        if res_id:
-            return res_id
-        else:
-            print("Update failed")
-    except client.NotFoundResponse:
-        version = 1
-        rec.Version = version
-        new_id = insert_workflow(rec)
-        return new_id
 
 
 # --------------------------------------------------

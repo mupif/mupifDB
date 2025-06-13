@@ -51,14 +51,6 @@ print(moduleImport)
 workflowClass = getattr(moduleImport, classname)
 workflow = workflowClass()
 
-rid = mupifDB.workflowmanager.insertWorkflowDefinition(
-    wid=args.wid,
-    description=args.description,
-    source=moduleurl,
-    useCase=args.usercase,
-    workflowInputs=workflow.getMetadata('Inputs'),
-    workflowOutputs=workflow.getMetadata('Outputs'),
-    modulename=modulename,
-    classname=classname
-)
+rid = mupifDB.restApiControl.postWorkflowFiles(args.usercase, moduleurl, [])
+
 print("workflow "+str(rid)+" registered")
