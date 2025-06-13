@@ -309,14 +309,14 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         rec.Version = w_rec.Version+1
         res_id = update_workflow(rec).dbID
         if res_id:
-            return res_id
+            return {"id": res_id, "wid": rec.wid}
         else:
             print("Update failed")
     except client.NotFoundResponse:
         version = 1
         rec.Version = version
         new_id = insert_workflow(rec)
-        return new_id
+        return {"id": res_id, "wid": rec.wid}
 
     return None
 

@@ -32,7 +32,7 @@ def getDaemon():
         daemon = mupif.pyroutil.getDaemon(ns)
     return daemon
 
-
+# todo remove
 def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[]):
     """
     Inserts new workflow definition into DB. 
@@ -70,7 +70,6 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
     with open(source, 'rb') as f:
         rec.GridFSID=client.uploadBinaryFile(f)
         f.close()
-
     return client.insertWorkflowRecord(rec)
 
 

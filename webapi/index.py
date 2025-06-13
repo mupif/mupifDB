@@ -545,79 +545,30 @@ def addWorkflow(usecaseid):
     log.info(f"ADDING USECASE (maybe) {request.files=} {request.form=} {admin_rights=}")
     # request.form is okay from browser, but fails from CURL; so use files which are uploaded instead to detect
     if (request.form or request.files) and admin_rights:
-        print(request.files)
-        workflowInputs = None
-        workflowOutputs = None
-        description = None
-        classname = None
-        models_md = None
-        EDM_Mapping = None
-        zip_filename = "files.zip"
-        modulename = ""
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-            zip_full_path = tempDir + "/" + zip_filename
-            zf = zipfile.ZipFile(zip_full_path, mode="w", compression=zipfile.ZIP_DEFLATED)
+            path_wf = None
+            paths_additional = []
+
             filenames = ['file_add_1', 'file_add_2', 'file_add_3', 'file_add_4', 'file_add_5', 'file_workflow']
-            for filename in filenames:
-                log.debug(f"checking file {filename} ({request.files=})")
-                if filename in request.files:
-                    file = request.files[filename]
+            for fn in filenames:
+                if fn in request.files:
+                    file = request.files[fn]
                     if file.filename != '':
-                        log.debug(f'{filename}: posted')
-                        if file and (allowed_file(file.filename) or filename != 'file_workflow'):
-                            myfile = open(tempDir + "/" + file.filename, mode="wb")
+                        if file and (allowed_file(file.filename) or fn != 'file_workflow'):
+                            fpath = tempDir + "/" + file.filename
+                            myfile = open(fpath, mode="wb")
                             myfile.write(file.read())
                             myfile.close()
-                            zf.write(tempDir + "/" + file.filename, arcname=file.filename)
+                            if fn == 'file_workflow':
+                                path_wf = fpath
+                            else:
+                                paths_additional.append(fpath)
 
-                            if filename == 'file_workflow':
-                                log.debug(f"Analyzing workflow file {file.filename}")
-                                modulename = file.filename.replace(".py", "")
-                                sys.path.append(tempDir)
-                                moduleImport = importlib.import_module(modulename)
+            wid = restApiControl.postWorkflowFiles(usecaseid=usecaseid, path_workflow=path_wf, paths_additional=paths_additional)
 
-                                classes = [obj.__name__ for name,obj in inspect.getmembers(moduleImport) if inspect.isclass(obj) and obj.__module__ == modulename]
-
-                                if len(classes) == 1:
-                                    classname = classes[0]
-                                    workflowClass = getattr(moduleImport, classname)
-                                    workflow_instance = workflowClass()
-                                    wid = workflow_instance.getMetadata('ID')
-                                    # FIXME: here we rely on mupif.meta models being dump-compatible with mupifDB.models models
-                                    meta = workflow_instance.getAllMetadata()
-                                    workflowInputs = meta['Inputs']
-                                    workflowOutputs = meta['Outputs']
-                                    description = meta['Description']
-                                    models_md = meta['Models']
-                                    EDM_Mapping = meta.get('EDMMapping', [])
-                                else:
-                                    log.error(f"File {file.filename} contains {len(classes)} classes (must be one). {classes=}")
-                    else:
-                        log.debug(f"{filename}: empty")
-            zf.close()
-            # log.debug(f'{wid=} {workflowInputs=} {workflowOutputs=} {description=} {classname=}')
-            if wid is not None and workflowInputs is not None and workflowOutputs is not None and description is not None and classname is not None:
-                log.info('adding workflow')
-                new_workflow_id = workflowmanager.insertWorkflowDefinition(
-                    wid=wid,
-                    description=description,
-                    source=zip_full_path,
-                    useCase=useCase,
-                    workflowInputs=workflowInputs,
-                    workflowOutputs=workflowOutputs,
-                    modulename=modulename,
-                    classname=classname,
-                    models_md=models_md,
-                    EDM_Mapping=EDM_Mapping
-                )
-            else: log.error('Workflow not being added??')
-
-    if new_workflow_id is not None:
-        # redirect to the new workflow page; this allows us to get the new wid via redirected URL in curl
+    if wid is not None:
         return redirect(f'{BASE_URL}/workflows/{wid}')
-        #html = '<h3>Workflow has been registered</h3>'
-        #html += f'<a href="{BASE_URL}/workflows/'+str(wid)+'">Go to workflow detail</a>'
-        #return my_render_template('basic.html', body=Markup(html), login=login_header_html())
+
     else:
         # generate input form
         html = message

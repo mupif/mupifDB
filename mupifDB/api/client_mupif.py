@@ -7,7 +7,7 @@ from .. import models
 from .client_util import *
 from rich import print_json
 from rich.pretty import pprint
-from typing import List,Optional,Tuple
+from typing import List, Optional, Tuple
 
 
 def getUsecaseRecords():
@@ -35,21 +35,56 @@ def getWorkflowRecord(wid, version: int) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}/version/{version}"))
 
 pydantic.validate_call(validate_return=True)  # todo delete
-def insertWorkflow(wf: models.Workflow_Model):
-    return rPost("workflows/", data=wf.model_dump_json())
-
-pydantic.validate_call(validate_return=True)  # todo delete
 def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json()))
-
-pydantic.validate_call(validate_return=True)  # todo delete
-def insertWorkflowHistory(wf: models.Workflow_Model):
-    return rPost("workflows_history/", data=wf.model_dump_json())
-
 
 pydantic.validate_call(validate_return=True)
 def insertWorkflowRecord(wf: models.Workflow_Model):
     return rPost("workflows_record/", data=wf.model_dump_json())
+
+def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
+    files = {}
+    if path_workflow is None or not os.path.exists(path_workflow):
+        print(f"Error: Workflow file not found at {path_workflow}")
+        return None
+    files['workflow_file'] = (
+        os.path.basename(path_workflow),
+        open(path_workflow, 'rb'),
+        'application/octet-stream'  # You can be more specific, e.g., 'text/x-python'
+    )
+
+    additional_files_for_request = []
+    for i, file_path in enumerate(paths_additional):
+        if file_path and os.path.exists(file_path):
+            filename = os.path.basename(file_path)
+            mime_type = 'application/octet-stream'  # Default, or detect based on extension
+            if filename.endswith('.txt'):
+                mime_type = 'text/plain'
+            elif filename.endswith('.json'):
+                mime_type = 'application/json'
+            elif filename.endswith('.py'):
+                mime_type = 'text/x-python'
+            elif filename.endswith('.md'):
+                mime_type = 'text/markdown'
+
+            additional_files_for_request.append(
+                (filename, open(file_path, 'rb'), mime_type)
+            )
+        elif file_path:  # If path is provided but file doesn't exist
+            print(f"Warning: Additional file {file_path} not found, skipping.")
+
+    # Add the collected additional files to the main 'files' dictionary under the 'additional_files' key
+    if additional_files_for_request:
+        files['additional_files'] = additional_files_for_request
+
+    try:
+        response = rPost(f"usecases/{usecaseid}/workflows", files=files)
+        return response['wid']
+
+    except requests.exceptions.ConnectionError as e:
+        print(f"Error: Could not connect to FastAPI server. {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 
 
