@@ -1,17 +1,11 @@
-#!/usr/bin/python3
-from pymongo import MongoClient
 import mupifDB
-from bson import ObjectId
-from datetime import datetime
-import mupif
-import mupif.physics.physicalquantities as PQ
+import mupif as mp
 import argparse
-import sys
 import logging
 log=logging.getLogger()
 
-class Workflow02 (mupif.workflow.Workflow):
-    def __init__(self, metaData={}):
+class Workflow02 (mp.Workflow):
+    def __init__(self, metadata=None):
         """
         Initializes the workflow.
         """
@@ -21,66 +15,61 @@ class Workflow02 (mupif.workflow.Workflow):
             'Description': 'Computes the deflection of a cantilever beam',
             'Model_refs_ID': [],
             'Inputs': [
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.PropertyID.PID_EModulus', 'Name': 'YoungModulus',
-                 'Description': 'Young modulus', 'Units': 'Pa', 'Required': True},
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.PropertyID.PID_Dimension', 'Name': 'Dimension','Obj_ID': [0,1,2],
-                 'Description': 'Beam Dimensions (LxWxH)', 'Units': 'm', 'Required': True},
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.PropertyID.PID_Force', 'Name': 'Force',
-                 'Description': 'End point force', 'Units': 'N', 'Required': True}
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_EModulus', 'Name': 'YoungModulus', 'Description': 'Young modulus', 'Units': 'Pa', 'Required': True, 'ValueType': 'Scalar', 'Obj_ID': '', "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Dimension', 'Obj_ID': 'length', 'Description': 'Beam length', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Dimension', 'Obj_ID': 'width', 'Description': 'Beam width', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Dimension', 'Obj_ID': 'height', 'Description': 'Beam height', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Force', 'Name': 'Force', 'Description': 'End point force', 'Units': 'N', 'Required': True, 'ValueType': 'Scalar', 'Obj_ID': '', "Set_at": "timestep"}
             ],
             'Outputs': [
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.PropertyID.PID_maxDisplacement', 'Name': 'End displacement',
-                 'Description': 'End of beam displacement', 'Units': 'm'}
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_maxDisplacement', 'Name': 'End displacement', 'Description': 'End of beam displacement', 'Units': 'm', 'ValueType': 'Scalar', 'Obj_ID': ''}
             ]
         }
-        super(Workflow02, self).__init__(metaData=MD)
-        self.updateMetadata(metaData)
-    
+        super().__init__(metadata=MD)
+        self.updateMetadata(metadata)
 
-    def initialize(self, file='', workdir='', targetTime=PQ.PhysicalQuantity(0., 's'), metaData={}, validateMetaData=True, **kwargs):
-        super(Workflow02, self).initialize(file, workdir, targetTime, metaData, validateMetaData, **kwargs)
+        self.E = None
+        self.F = None
+        self.l = None
+        self.b = None
+        self.h = None
+
+    def initialize(self, workdir='', metadata=None, validateMetaData=True, **kwargs):
+        super().initialize(workdir=workdir, metadata=metadata, validateMetaData=validateMetaData, **kwargs)
 
     def solveStep(self, istep, stageID=0, runInBackground=False):
         self.I = (self.b*self.h*self.h*self.h/12.0)
         self.w = self.F*self.l*self.l*self.l/(3.0*self.E*self.I)
         print ('Workflow02 solveStep finished')
 
-    def setProperty(self, property, objectID =0):
-        id = property.getPropertyID()
-        if (id == mupif.PropertyID.PID_EModulus):
-            self.E = property.inUnitsOf('Pa').getValue()
-        elif (id == mupif.PropertyID.PID_Force):
-            self.F = property.inUnitsOf('N').getValue()
-        elif (id == mupif.PropertyID.PID_Dimension):
-            val = property.inUnitsOf('m').getValue()
-            if (objectID==0):
-                self.l = val;
-            elif (objectID == 1):
+    def set(self, obj, objectID=''):
+        pid = obj.getDataID()
+        if pid == mp.DataID.PID_EModulus:
+            self.E = obj.inUnitsOf('Pa').getValue()
+        elif pid == mp.DataID.PID_Force:
+            self.F = obj.inUnitsOf('N').getValue()
+        elif pid == mp.DataID.PID_Dimension:
+            val = obj.inUnitsOf('m').getValue()
+            if objectID == 'length':
+                self.l = val
+            elif objectID == 'width':
                 self.b = val
-            elif (objectID == 2):
+            elif objectID == 'height':
                 self.h = val
         
-    def getProperty (self, propID, time, objectID=0):
-        md = {
-            'Execution': {
-                'ID': self.getMetadata('Execution.ID'),
-                'Use_case_ID': self.getMetadata('Execution.Use_case_ID'),
-                'Task_ID': self.getMetadata('Execution.Task_ID')
-            }
-        }
-        if (propID  == mupif.PropertyID.PID_maxDisplacement):
-            return mupif.property.ConstantProperty(
-                    self.w, mupif.PropertyID.PID_maxDisplacement, mupif.ValueType.Scalar, 'm', time, 0,metaData=md)
-
-
-    def getField(self, fieldID, time, objectID=0):
-        pass
+    def get(self, objectTypeID, time=None, objectID=''):
+        if objectTypeID == mp.DataID.PID_maxDisplacement:
+            return mp.ConstantProperty(
+                value=self.w,
+                unit='m',
+                propID=mp.DataID.PID_maxDisplacement,
+                valueType=mp.ValueType.Scalar,
+                time=None
+            )
+        return None
 
     def getCriticalTimeStep(self):
-        return PQ.PhysicalQuantity(1.0, 's')
-
-    def terminate(self):
-         super(Workflow02, self).terminate()
+        return 1*mp.U.s
 
     def getApplicationSignature(self):
         return "Workflow02 1.0"
@@ -89,50 +78,21 @@ class Workflow02 (mupif.workflow.Workflow):
         return "1.0"
 
 
-
-
 if __name__ == "__main__":
-    client = MongoClient()
-    db = client.MuPIF
 
-    workflow = Workflow02()
-    wid = 'Workflow98'
+    w = Workflow02()
 
-    id = db.Workflows.find_one({"_id":wid})
-    if (id is None):
-        id = mupifDB.restApiControl.postWorkflowFiles(
-            'Demo',
-            'file://localhost/home/bp/devel/mupifDB/workflows/workflowdemo02.py',
-            []
-        )
-        print("workflow registered")
-        exit
-    try:
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-eid', '--executionID', required=True, dest="id")
-        args = parser.parse_args()
-        weid = args.id
-        print ('WEID:', weid)
-        wec = mupifDB.workflowmanager.WorkflowExecutionContext(db, ObjectId(args.id))
-        inp = wec.getIODataDoc('Inputs')
-        # print (inp)
+    w.initialize(metadata={'Execution': {'ID': '', 'Use_case_ID': '', 'Task_ID': ''}})
 
-        app = Workflow02()
-        app.initialize(metaData={'Execution': {'ID': weid,'Use_case_ID': '1_1','Task_ID': '1'}})
-        mupifDB.workflowmanager.mapInputs(app, db, args.id)
+    w.set(mp.ConstantProperty(value=10000000000, propID=mp.DataID.PID_EModulus, valueType=mp.ValueType.Scalar, unit=mp.U.Pa, time=None), '')
+    w.set(mp.ConstantProperty(value=10000, propID=mp.DataID.PID_Force, valueType=mp.ValueType.Scalar, unit=mp.U.N, time=None), '')
+    w.set(mp.ConstantProperty(value=10, propID=mp.DataID.PID_Dimension, valueType=mp.ValueType.Scalar, unit=mp.U.m, time=None), 'length')
+    w.set(mp.ConstantProperty(value=1, propID=mp.DataID.PID_Dimension, valueType=mp.ValueType.Scalar, unit=mp.U.m, time=None), 'width')
+    w.set(mp.ConstantProperty(value=0.4, propID=mp.DataID.PID_Dimension, valueType=mp.ValueType.Scalar, unit=mp.U.m, time=None), 'height')
 
-        tstep = mupif.timestep.TimeStep(1.,1.,10,'s')
-        print("Solving....")
-        app.solveStep(tstep)
-        mupifDB.workflowmanager.mapOutputs(app, db, args.id, tstep)
-    
-        app.terminate()
-    except Exception as err:
-        log.info("Error:" + repr(err))
-        app.terminate()
-        sys.exit(1)
-    except:
-        log.info("Unknown error")
-        app.terminate()
-        sys.exit(1)
+    w.solve()
+
+    print(w.get(mp.DataID.PID_maxDisplacement))
+
+    w.terminate()
 
