@@ -407,7 +407,11 @@ def addUseCase():
         usecase_id = request.form['usecase_id']
         usecase_description = request.form['usecase_description']
         if usecase_id is not None and usecase_description is not None:
-            found_usecase = restApiControl.getUsecaseRecord(usecase_id)
+            found_usecase = None
+            try:
+                found_usecase = restApiControl.getUsecaseRecord(usecase_id)
+            except Exception:
+                pass
             if found_usecase is None:
                 new_usecase_id = restApiControl.insertUsecaseRecord(ucid=usecase_id, description=usecase_description)
             else:

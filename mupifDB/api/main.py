@@ -203,7 +203,7 @@ def read_root():
 # Usecases
 # --------------------------------------------------
 
-@app.get("/usecases/", tags=["Usecases"])
+@app.get("/usecases", tags=["Usecases"])
 def get_usecases() -> List[models.UseCase_Model]:
     res = db.UseCases.find()
     return perms.filterSelfRead([m:=models.UseCase_Model.model_validate(r) for r in res])
@@ -222,7 +222,7 @@ def get_usecase_workflows(uid: str) -> List[models.Workflow_Model]:
     return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
 
 
-@app.post("/usecases/", tags=["Usecases"])
+@app.post("/usecases", tags=["Usecases"])
 def post_usecase(uc: models.UseCase_Model) -> str:
     perms.ensure(uc,perm='child',on='parent')
     res = db.UseCases.insert_one(uc.model_dump_db())
@@ -233,8 +233,8 @@ def post_usecase(uc: models.UseCase_Model) -> str:
 # Workflows
 # --------------------------------------------------
 
-@app.get("/workflows/", tags=["Workflows"])
-def get_workflows() -> List[models.Workflow_Model]:
+@app.get("/workflows", tags=["Workflows"])
+def get_workflows() -> List[models.Workflow_Model]:  # current_user: UserInfo = Depends(get_google_user)
     res = db.Workflows.find()
     return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
 
@@ -906,7 +906,7 @@ def db_init():
     if 'Settings' in db.list_collection_names(): return False
     for coll,rec in [
         ('Settings',{'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
-        ('UseCases',models.UseCase_Model(projectName='TEST',projectLogo='https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png',ucid='1',Description='Test usecase').model_dump()),
+        ('UseCases',models.UseCase_Model(ucid='1',Description='Test usecase').model_dump()),
         ('Stat',models.MupifDBStatus_Model.Stat_Model().model_dump(mode="json")),
         ('Workflows',None),
         ('WorkflowsHistory',None),

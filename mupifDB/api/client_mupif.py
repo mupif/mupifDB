@@ -11,13 +11,13 @@ from typing import List, Optional, Tuple
 
 
 def getUsecaseRecords():
-    return [models.UseCase_Model.model_validate(rec) for rec in rGet("usecases/")]
+    return [models.UseCase_Model.model_validate(rec) for rec in rGet("usecases")]
 
 def getUsecaseRecord(ucid):
     return rGet(f"usecases/{ucid}")
 
 def insertUsecaseRecord(ucid, description):
-    return rPost("usecases/", data=json.dumps({"ucid": ucid, "description": description}))
+    return rPost("usecases/", data=json.dumps({"ucid": ucid, "Description": description}))
 
 
 # --------------------------------------------------
@@ -25,7 +25,7 @@ def insertUsecaseRecord(ucid, description):
 # --------------------------------------------------
 
 def getWorkflowRecords() -> List[models.Workflow_Model]:
-    return [models.Workflow_Model.model_validate(record) for record in rGet("workflows/")]
+    return [models.Workflow_Model.model_validate(record) for record in rGet("workflows")]
 
 def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
     return [models.Workflow_Model.model_validate(record) for record in rGet(f"usecases/{usecase}/workflows")]

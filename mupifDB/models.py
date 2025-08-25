@@ -101,8 +101,6 @@ class MongoObj_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
 
 class UseCase_Model(MongoObj_Model):
     ucid: str
-    projectName: str=''
-    projectLogo: str=''
     Description: str=''
     def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where=where,attrs=['UseCase'],values=[self.ucid]) for where in ('Workflows','WorkflowsHistory')]
 
