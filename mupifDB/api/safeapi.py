@@ -16,7 +16,7 @@ async def lifespan(_: fastapi.FastAPI) -> AsyncIterator[None]:
     FastAPICache.init(InMemoryBackend())
     yield
 
-app = fastapi.FastAPI(openapi_tags=[{'name':'Stats'}],lifespan=lifespan)
+app = fastapi.FastAPI(openapi_tags=[{'name':'Stats'}], lifespan=lifespan, root_path="/safe-api")
 
 
 

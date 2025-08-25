@@ -147,7 +147,7 @@ tags_metadata = [
 ]
 
 
-app = FastAPI(openapi_tags=tags_metadata)
+app = FastAPI(openapi_tags=tags_metadata, root_path="/api")
 
 
 @app.exception_handler(fastapi.exceptions.RequestValidationError)
