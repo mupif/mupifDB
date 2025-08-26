@@ -297,26 +297,28 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
         mock_upload_file.file.close()
 
     # first check if workflow with wid already exist in workflows
-    try:
-        w_rec = get_workflow_by_version(rec.wid, -1)
-        # the workflow already exists, need to make a new version
-        # clone latest version to History
-        log.debug(f'{w_rec=}')
-        w_rec.dbID = None  # remove original document id
-        # w_rec._id=None
-        insert_workflow_history(w_rec)
-        # update the latest document
-        rec.Version = w_rec.Version+1
-        res_id = update_workflow(rec).dbID
-        if res_id:
-            return {"id": res_id, "wid": rec.wid}
-        else:
-            print("Update failed")
-    except client.NotFoundResponse:
+
+    w_rec = get_workflow_by_version_inside(rec.wid, -1)
+
+    if w_rec is None:
         version = 1
         rec.Version = version
         new_id = insert_workflow(rec)
         return {"id": new_id, "wid": rec.wid}
+
+    # the workflow already exists, need to make a new version
+    # clone latest version to History
+    log.debug(f'{w_rec=}')
+    w_rec.dbID = None  # remove original document id
+    # w_rec._id=None
+    insert_workflow_history(w_rec)
+    # update the latest document
+    rec.Version = w_rec.Version+1
+    res_id = update_workflow(rec).dbID
+    if res_id:
+        return {"id": res_id, "wid": rec.wid}
+    else:
+        print("Update failed")
 
     return None
 
@@ -472,17 +474,24 @@ def get_workflow(workflow_id: str) -> models.Workflow_Model:
     return get_workflow_by_version(workflow_id, -1)
 
 
-@app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"])
-def get_workflow_by_version(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
+def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
     res = db.Workflows.find_one({"wid": workflow_id})
     if res is None:
-        raise NotFoundError(f'Database reports no workflow with wid={workflow_id}.')
+        return None
     if workflow_version == -1 or res['Version'] == workflow_version:
         return perms.ensure(models.Workflow_Model.model_validate(res))
-
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
-    if res is None: raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
+    if res is None:
+        raise None
     return perms.ensure(models.Workflow_Model.model_validate(res))
+
+
+@app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"])
+def get_workflow_by_version(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
+    res = get_workflow_by_version_inside(workflow_id, workflow_version)
+    if res is None:
+        raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
+    return res
 
 
 @app.patch("/workflows/", tags=["Workflows"])
