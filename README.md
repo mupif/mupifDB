@@ -11,7 +11,7 @@ http://www.mupif.org
 * for REST API debugging and development install chrome extension (ARC - Advanced REST client or Postman)
 
 ## Installation
-*git clone https://github.com/mupif/mupifDB.git mupifDB.git*
+*git clone https://github.com/mupif/mupifDB.git*
 
 ## Running
 
