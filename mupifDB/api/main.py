@@ -914,7 +914,7 @@ def db_init():
     # probably initialized already
     if 'Settings' in db.list_collection_names(): return False
     for coll,rec in [
-        ('Settings',{'projectName':'TEST','projectLogo':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
+        ('Settings',{'projectName':'TEST','projectLogoUrl':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
         ('UseCases',models.UseCase_Model(ucid='1',Description='Test usecase').model_dump()),
         ('Stat',models.MupifDBStatus_Model.Stat_Model().model_dump(mode="json")),
         ('Workflows',None),
