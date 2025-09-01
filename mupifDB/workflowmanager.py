@@ -205,20 +205,21 @@ def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, ont
         object_path = splitted[1]
 
         # find base object info
-        info = {}
+        info = None
         for i in onto_base_objects:
-            if i['Name'] == base_object_name:
+            if i.Name == base_object_name:
                 info = i
 
         # get the desired object
-        edm_data = client.getEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path)
-        if edm_data is not None:
-            if object_type == 'mupif.Property':
-                if edm_data.get('value', None) is not None:
-                    return True
-            if object_type == 'mupif.String':
-                if edm_data.get('value', None) is not None:
-                    return True
+        if info is not None:
+            edm_data = client.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
+            if edm_data is not None:
+                if object_type == 'mupif.Property':
+                    if edm_data.get('value', None) is not None:
+                        return True
+                if object_type == 'mupif.String':
+                    if edm_data.get('value', None) is not None:
+                        return True
         return False
 
     else:

@@ -474,7 +474,7 @@ def workflow(wid, version: int):
         html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata.Version) + '?no_onto">Optionally without EDM objects</a>'
     html += '<br><br>Inputs'
     html += '<table class=\"tableType1\">'
-    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>EDMPath</th></thead>'
+    html += '<thead><th>Name</th><th>Type</th><th>DataID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>EDMPath</th></thead>'
     for item in wdata.IOCard.Inputs:
         html += '<tr>'
         html += '<td class="c1">'+str(item.Name)+'</td>'
@@ -491,7 +491,7 @@ def workflow(wid, version: int):
 
     html += '<br>Outputs'
     html += '<table class=\"tableType1\">'
-    html += '<thead><th>Name</th><th>Type</th><th>TypeID</th><th>Description</th><th>Units</th><th>ObjID</th><th>EDMPath</th></thead>'
+    html += '<thead><th>Name</th><th>Type</th><th>DataID</th><th>Description</th><th>Units</th><th>ObjID</th><th>EDMPath</th></thead>'
     for item in wdata.IOCard.Outputs:
         html += '<tr>'
         html += '<td class="c1">' + str(item.Name) + '</td>'
