@@ -117,7 +117,7 @@ class EDMMapping_Model(StrictBase):
     DBName: Str_EmptyFromNone=''
     OptionsFilter: Dict[str,str]={}
     createNew: Optional[EDMMappingIDs_Model]=None
-    createFrom: Any='' ### XXXX what is this??
+    createFrom: Optional[str]=None
     # ioType: Optional[Literal['output','input']]=None
 
 class InputOutputBase_Model(StrictBase):

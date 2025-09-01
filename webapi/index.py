@@ -206,7 +206,7 @@ def add_header(r):
 
 
 def getUserIPAddress():
-    return request.remote_addr
+    return request.remote_addr or ''
 
 
 def getRightsOfCurrentUser():
@@ -1015,8 +1015,8 @@ def setExecutionInputs(weid):
                 obo_id = ''
             if obo_ids is None:
                 obo_ids = []
-            if execution_record.Status == 'Created' and obo.createFrom is None and obo.createNew is None:
-                if obo.EDMList:
+            if execution_record.Status == 'Created' and not obo.createFrom and not obo.createNew:
+                if not obo.EDMList:
                     # form += '<td><input type="text" value="' + obo_id + '" name="obo_id_' + obo.get('Name', '') + '"></td>'
                     form += '<td>'
                     form += '<select name="obo_id_' + obo.Name + '" onchange="this.form.submit()">'

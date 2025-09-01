@@ -130,7 +130,7 @@ class WorkflowExecutionContext:
         """
         # first query for workflow document
         wdoc = getWorkflowDoc(workflowID, version=workflowVer)
-        ex=models.WorkflowExecution_Model(
+        ex = models.WorkflowExecution_Model(
             WorkflowID=workflowID,
             WorkflowVersion=wdoc.Version,
             RequestedBy=requestedBy,
@@ -138,8 +138,7 @@ class WorkflowExecutionContext:
             CreatedDate=datetime.datetime.now(),
             Inputs=WorkflowExecutionIODataSet.create(workflowID, 'Inputs', workflowVer=workflowVer, no_onto=no_onto),
             Outputs=WorkflowExecutionIODataSet.create(workflowID, 'Outputs', workflowVer=workflowVer, no_onto=no_onto),
-            EDMMapping=([] if no_onto else [models.EDMMapping_Model()]),
-
+            EDMMapping=([] if no_onto else wdoc.EDMMapping),
         )
         new_id = client.insertExecution(ex)
         return WorkflowExecutionContext(new_id)
