@@ -935,6 +935,7 @@ def db_init():
     try:
         from mupifDB import restApiControl
         restApiControl.postWorkflowFiles('Demo', os.path.dirname(os.path.abspath(__file__))+'/demo/w13.py', [])
+        restApiControl.postWorkflowFiles('Demo', os.path.dirname(os.path.abspath(__file__))+'/demo/workflowdemo02.py', [])
 
     except Exception as e:
         log.exception(f'Error: {e}.')

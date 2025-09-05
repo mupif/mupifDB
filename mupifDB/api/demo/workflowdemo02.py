@@ -16,9 +16,9 @@ class Workflow02 (mp.Workflow):
             'Model_refs_ID': [],
             'Inputs': [
                 {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_EModulus', 'Name': 'YoungModulus', 'Description': 'Young modulus', 'Units': 'Pa', 'Required': True, 'ValueType': 'Scalar', 'Obj_ID': '', "Set_at": "timestep"},
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Dimension', 'Obj_ID': 'length', 'Description': 'Beam length', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Dimension', 'Obj_ID': 'width', 'Description': 'Beam width', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
-                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Dimension', 'Obj_ID': 'height', 'Description': 'Beam height', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Length', 'Obj_ID': 'length', 'Description': 'Beam length', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Width', 'Obj_ID': 'width', 'Description': 'Beam width', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
+                {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Dimension', 'Name': 'Height', 'Obj_ID': 'height', 'Description': 'Beam height', 'Units': 'm', 'ValueType': 'Scalar', 'Required': True, "Set_at": "timestep"},
                 {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Force', 'Name': 'Force', 'Description': 'End point force', 'Units': 'N', 'Required': True, 'ValueType': 'Scalar', 'Obj_ID': '', "Set_at": "timestep"}
             ],
             'Outputs': [
