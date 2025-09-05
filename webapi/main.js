@@ -18,7 +18,7 @@ function reloadIfExecStatusIsChanged(){
                 console.log('Reload not needed.');
             }
         };
-        xmlhttp.open("GET", "/api/?executions/" + window.execution_id, true);
+        xmlhttp.open("GET", "./../../api/?executions/" + window.execution_id, true);
         xmlhttp.send();
     }
 }
