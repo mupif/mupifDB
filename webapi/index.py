@@ -672,10 +672,13 @@ def executionStatus(weid):
     data = restApiControl.getExecutionRecord(weid)
     logID = data.ExecutionLog
     html = ''
-    html += '<script type="text/javascript">window.execution_id = "' + weid + '";</script>'
-    html += '<script type="text/javascript" src="/main.js"></script>'
-    if data.Status in ('Pending','Running','Scheduled'):
-        html += '<script type="text/javascript">let timer_refresh = setInterval(reloadIfExecStatusIsChanged, 15000);</script>'
+    if data.Status in ('Pending', 'Running', 'Scheduled'):
+        html += '<script type="text/javascript">'
+        html += 'window.execution_id = "' + weid + '";'
+        html += 'window.exec_check_status_sum = 0;'
+        html += 'function reloadIfExecStatusIsChanged(){window.exec_check_status_sum += 1;if(window.exec_check_status_sum < 20){console.log("Checking update of execution");let xmlhttp=new XMLHttpRequest();xmlhttp.onreadystatechange=function() {if (this.readyState===4 && this.status===200) {let jsn = JSON.parse(this.responseText);if("Status" in jsn){if(jsn["Status"] === "Finished" || jsn["Status"] === "Failed"){location.reload();}}console.log("Reload not needed.");}};xmlhttp.open("GET", "'+BASE_URL+'/api/?executions/" + window.execution_id, true);xmlhttp.send();}}'
+        html += 'let timer_refresh = setInterval(reloadIfExecStatusIsChanged, 15000);'
+        html += '</script>'
     html += '<table style="font-size:14px;" class=\"tableType1\">'
     html += '<tr><td>Execution ID:</td><td>' + str(weid) + '</td></tr>'
     html += '<tr><td>Workflow ID:</td><td>' + str(data.WorkflowID) + '</td></tr>'
