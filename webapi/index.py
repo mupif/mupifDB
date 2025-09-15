@@ -228,7 +228,7 @@ def login_header_html():
     html = ''
     if current_user.is_authenticated:
         html += f'<div style="display:flex;flex-direction: column;gap: 2px;align-items: flex-start;"><div style="font-size: 12px;line-height: 14px;">{current_user.name}</div><div style="font-size: 12px;line-height: 14px;">{current_user.email}</div><a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/logout">Logout</a></div>'
-        html = '<div style="display:flex;flex-direction: row; gap: 10px;">' + html + f'<img src="{current_user.profile_pic}" style="height: 54px;border-radius:27px;"></div>'
+        html = '<div style="display:flex;flex-direction: row; gap: 10px;">' + html + (f'<img src="{current_user.profile_pic}" style="height: 54px;border-radius:27px;">' if current_user.profile_pic is not None and current_user.profile_pic != 'Unknown' else '') + '</div>'
     else:
         html += '<a style="font-size: 12px;line-height: 14px;border: 1px solid gray;background-color:silver;color: black;text-decoration: none;border-radius: 3px;padding: 3px 6px;" href="/login">Login'+(' <b>(unavailable)</b> ' if GOOGLE_DISCOVERY_URL is None else '')+'</a>'
     return Markup(html)
