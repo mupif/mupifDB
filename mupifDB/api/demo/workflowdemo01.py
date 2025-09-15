@@ -12,14 +12,14 @@ log = logging.getLogger()
 
 
 @Pyro5.api.expose
-class Workflow13(mp.Workflow):
+class WorkflowDemo01(mp.Workflow):
 
     def __init__(self, metadata=None):
         MD = {
-            "ClassName": "Workflow13",
-            "ModuleName": "main.py",
-            "Name": "Example13 workflow",
-            "ID": "workflow_13_demo",
+            "ClassName": "WorkflowDemo01",
+            "ModuleName": "workflowdemo02",
+            "Name": "Demo multiplication workflow",
+            "ID": "Workflow01",
             "Timeout": 30,
             "Description": "Calculates multiplication of two given values using a simple model",
             "Inputs": [
@@ -28,7 +28,7 @@ class Workflow13(mp.Workflow):
                 {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Time', 'Name': 'Value_2', "Obj_ID": '2',
                  'Description': 'Input value 2', 'Units': 's', 'Required': True, "Set_at": "timestep", "ValueType": "Scalar"},
                 {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Time', 'Name': 'Delay', "Obj_ID": 'delay',
-                 'Description': 'Delay in seconds', 'Units': 's', 'Required': False, "Set_at": "timestep", "ValueType": "Scalar"}
+                 'Description': 'Optional delay in seconds for demonstration purposes', 'Units': 's', 'Required': False, "Set_at": "timestep", "ValueType": "Scalar"}
             ],
             "Outputs": [
                 {'Type': 'mupif.Property', 'Type_ID': 'mupif.DataID.PID_Time', 'Name': 'Multiplication_result',
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     param_2 = mp.ConstantProperty(value=value_2, propID=mp.DataID.PID_Time, valueType=mp.ValueType.Scalar, unit=mp.U.s, time=None)
     param_delay = mp.ConstantProperty(value=delay, propID=mp.DataID.PID_Time, valueType=mp.ValueType.Scalar, unit=mp.U.s, time=None)
 
-    workflow = Workflow13()
+    workflow = WorkflowDemo01()
 
     # these metadata are supposed to be filled before execution
     md = {
