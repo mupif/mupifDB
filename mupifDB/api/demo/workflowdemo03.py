@@ -20,7 +20,7 @@ class MuPIFThermoMechanicalDemo(mupif.Workflow):
             "ClassName": "MuPIFThermoMechanicalDemo",
             "ModuleName": "workflowdemo03",
             "Name": "MuPIF ThermoMechanical demo of a cantilever beam",
-            "ID": "workflowdemo03",
+            "ID": "Workflow03",
             "Description": "Calculates thermal and mechanical response of a cantilever beam using two models",
             "Execution_settings": {
                 "Type": "Local"
