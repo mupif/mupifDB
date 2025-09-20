@@ -517,7 +517,7 @@ def workflow(wid, version: int):
             html += '<td>' + obo.Name + '</td>'
             html += '<td>' + obo.EDMEntity + '</td>'
             html += '<td>' + obo.DBName + '</td>'
-            html += '<td>' + obo.createFrom + '</td>'
+            html += '<td>' + str(obo.createFrom if obo.createFrom is not None else '') + '</td>'
             html += '</tr>'
         html += "</table>"
 
@@ -1039,7 +1039,7 @@ def setExecutionInputs(weid):
                         form += '<td>' + str(obo_ids) + '</td>'
                     else:
                         form += '<td>' + str(obo_ids[0:5]) + ' ...(total ' + str(len(obo_ids)) + ')</td>'
-            form += '<td>' + obo.createFrom + '</td>'
+            form += '<td>' + str(obo.createFrom if obo.createFrom is not None else '') + '</td>'
             form += '<td>'
             if obo_id != '':
                 form += f'<a href="{BASE_URL}/entity_browser/' + obo.DBName + '/' + obo.EDMEntity + '/' + obo_id + '/" target="_blank">inspect</a>'
