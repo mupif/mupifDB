@@ -1176,7 +1176,7 @@ def getExecutionOutputs(weid):
             # if obo_id is None:
             #     obo_id = ''
             form += '<td>' + str(obo_id) + '</td>'
-            form += '<td>' + obo.createFrom + '</td>'
+            form += '<td>' + str(obo.createFrom if obo.createFrom is not None else '') + '</td>'
             if obo.EDMList:
                 form += '<td></td>'
             else:

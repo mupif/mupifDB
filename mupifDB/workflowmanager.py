@@ -546,7 +546,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
 
 def getOntoBaseObjectByName(objects, name):
     for i in objects:
-        if i['Name'] == name:
+        if i.Name == name:
             return i
     return None
 
@@ -563,21 +563,19 @@ def createOutputEDMMappingObjects(app, eid, outputs):
 
         for obo in OBO:
             # ?? ids are never used
-            if obo.id and obo.ids: #  not obo.get('id', None) and not obo.get('ids', None):
+            if obo.id is None and (obo.ids is None or obo.ids == []): #  not obo.get('id', None) and not obo.get('ids', None):
                 if obo.createFrom is not None:
-                    # TODO
-                    raise NotImplementedError('EDMMapping_Model.createFrom not yet implemeneted')
-                    source_obo = getOntoBaseObjectByName(OBO, obo.get('createFrom'))
+                    source_obo = getOntoBaseObjectByName(OBO, obo.createFrom)
                     if source_obo is not None:
-                        if source_obo.get('id', None) is not None and source_obo.get('id', None) != '':
-                            edm_name = obo.get('Name', '')
+                        if source_obo.id is not None and source_obo.id != '':
+                            edm_name = obo.Name
                             valid_emdpaths = filter(lambda p: p.startswith(edm_name), edmpaths)
-                            valid_emdpaths = [p.replace(obo.get('Name')+'.', '') for p in valid_emdpaths]
+                            valid_emdpaths = [p.replace(obo.Name+'.', '') for p in valid_emdpaths]
 
                             safe_links = client.getSafeLinks(
                                 DBName=source_obo.DBName,
                                 Type=source_obo.EDMEntity,
-                                ID=source_obo.get.id,
+                                ID=source_obo.id,
                                 paths=valid_emdpaths
                             )
 
@@ -594,7 +592,7 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                     new_ids.append(new_id)
                                 client.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
                                 for new_id in new_ids:
-                                    client.setEDMData(DBName=obo.get.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                                    client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
                             else:
                                 new_id = client.cloneEDMData(
                                     DBName=source_obo.DBName,
@@ -646,14 +644,11 @@ def mapInputs(app, eid):
         edmpath = input_template.EDMPath
         edm_base_objects = execution.EDMMapping
         if edmpath is not None:
-            raise NotImplementedError('Model-based input mapping not yet implemented for EDM')
             splitted = edmpath.split('.', 1)
             base_object_name = splitted[0]
-            info = {}
             for i in edm_base_objects:
-                if i['Name'] == base_object_name:
-                    info = i
-                    edmlist = info.get('EDMList', False)
+                if i.Name == base_object_name:
+                    edmlist = i.EDMList if i.EDMList is not None else False
                     break
 
         for oid in objID:
@@ -718,20 +713,19 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
 
         if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
             if onto_path is not None:
-                raise NotImplementedError('Model-based output mapping not yet implemented for EDM')
                 splitted = onto_path.split('.', 1)
                 base_object_name = splitted[0]
                 object_path = splitted[1]
                 # find base object info
                 info = {}
                 for i in onto_base_objects:
-                    if i['Name'] == base_object_name:
+                    if i.Name == base_object_name:
                         info = i
                 data = prop.to_db_dict(dialect='edm')
                 if edm_list is True:
-                    setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
+                    setEDMDataToList(info.DBName, info.EDMEntity, info.ids, object_path, data=data)
                 else:
-                    client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                    client.setEDMData(info.DBName, info.EDMEntity, info.id, object_path, data=data)
             else:
                 client.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
         elif prop.valueType in [mupif.ValueType.ScalarArray, mupif.ValueType.VectorArray, mupif.ValueType.TensorArray]:
