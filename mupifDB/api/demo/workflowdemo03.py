@@ -131,6 +131,8 @@ class MuPIFThermoMechanicalDemo(mupif.Workflow):
         self.getModel('model_2').set(self.getModel('model_1').get(mupif.DataID.FID_Temperature, tstep.getTime(), ''), '')
         self.getModel('model_2').solveStep(tstep=tstep, runInBackground=False)
 
+        # for demonstration purposes
+        time.sleep(30)
 
 if __name__ == '__main__':
     w = MuPIFThermoMechanicalDemo()
