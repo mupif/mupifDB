@@ -73,6 +73,9 @@ class MuPIFThermoMechanicalDemo(mupif.Workflow):
         # __init__ code of constant_property_1 (Property)
         self.constant_property_1 = mupif.property.ConstantProperty(value=0., propID=mupif.DataID.ID_Displacement, valueType=mupif.ValueType.Scalar, unit=mupif.U.m, time=None)
 
+        # for demonstration purposes
+        time.sleep(30)
+
     def initialize(self, workdir='', metadata=None, validateMetaData=True, **kwargs):
         super().initialize(workdir=workdir, metadata=metadata, validateMetaData=validateMetaData, **kwargs)
 
@@ -130,9 +133,6 @@ class MuPIFThermoMechanicalDemo(mupif.Workflow):
         # execution code of model_2 (Plane stress linear elastic)
         self.getModel('model_2').set(self.getModel('model_1').get(mupif.DataID.FID_Temperature, tstep.getTime(), ''), '')
         self.getModel('model_2').solveStep(tstep=tstep, runInBackground=False)
-
-        # for demonstration purposes
-        time.sleep(30)
 
 if __name__ == '__main__':
     w = MuPIFThermoMechanicalDemo()
