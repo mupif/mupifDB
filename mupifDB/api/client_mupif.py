@@ -46,14 +46,14 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
     files['workflow_file'] = (
         os.path.basename(path_workflow),
         open(path_workflow, 'rb'),
-        'application/octet-stream'  # You can be more specific, e.g., 'text/x-python'
+        'application/octet-stream'  # may be 'text/x-python'
     )
 
     additional_files_for_request = []
     for i, file_path in enumerate(paths_additional):
         if file_path and os.path.exists(file_path):
             filename = os.path.basename(file_path)
-            mime_type = 'application/octet-stream'  # Default, or detect based on extension
+            mime_type = 'application/octet-stream'
             if filename.endswith('.txt'):
                 mime_type = 'text/plain'
             elif filename.endswith('.json'):
@@ -66,10 +66,9 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
             additional_files_for_request.append(
                 (filename, open(file_path, 'rb'), mime_type)
             )
-        elif file_path:  # If path is provided but file doesn't exist
+        elif file_path:
             print(f"Warning: Additional file {file_path} not found, skipping.")
 
-    # Add the collected additional files to the main 'files' dictionary under the 'additional_files' key
     if additional_files_for_request:
         files['additional_files'] = additional_files_for_request
 

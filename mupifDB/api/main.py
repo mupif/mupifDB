@@ -20,6 +20,7 @@ from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
+
 from pymongo import MongoClient
 import tempfile
 import zipfile
@@ -86,7 +87,7 @@ def db_transaction() -> Iterator[ClientSession|None]:
 _PermWhat=Literal['read','child','modify']
 _PermOn=Literal['self','parent']
 _PermObj=models.GridFSFile_Model|models.MongoObj_Model
-T=TypeVar('T')
+T = TypeVar('T')
 
 class Perms(object):
     def __init__(self, db: Database):
@@ -98,7 +99,8 @@ class Perms(object):
         'Check permissions on the object (read on obj by default) and return it. Raise ForbiddenError if the check fails.'
         # if obj.parent is None: raise ForbiddenError(f'{obj.__class__.__name__}(dbID={obj.dbID}).parent is None!')
         if not self.has(obj=obj,perm=perm, on=on):
-            raise ForbiddenError(f'Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(dbID={obj.dbID}){": "+diag if diag else ""}.')
+            raise ForbiddenError(f'Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(){": "+diag if diag else ""}.')
+            # raise ForbiddenError(f'Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(dbID={obj.dbID}){": "+diag if diag else ""}.')
         return obj
     def TODO(*args,**kw): pass
     def filterSelfRead(self,objs: List[T]) -> List[T]: return [obj for obj in objs if self.has(obj,perm='read',on='self')]
@@ -188,18 +190,6 @@ def read_root():
 
 
 # --------------------------------------------------
-# Users
-# --------------------------------------------------
-
-# @app.get("/users/{user_ip}", tags=["Users"])
-# def get_user(user_ip: str):
-#     res = db.Users.find_one({'IP': user_ip})
-#     if res:
-#         return fix_id(res)
-#     return None
-
-
-# --------------------------------------------------
 # Usecases
 # --------------------------------------------------
 
@@ -234,7 +224,7 @@ def post_usecase(uc: models.UseCase_Model) -> str:
 # --------------------------------------------------
 
 @app.get("/workflows", tags=["Workflows"])
-def get_workflows() -> List[models.Workflow_Model]:  # current_user: UserInfo = Depends(get_google_user)
+def get_workflows() -> List[models.Workflow_Model]:
     res = db.Workflows.find()
     return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
 
@@ -262,6 +252,7 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
         source=source,
         rec=models.Workflow_Model(
             # dbID=None, # this should not be necessary, but pyright warns about it?
+            _id=None,
             wid=wid,
             Description=description,
             UseCase=useCase,
@@ -369,6 +360,10 @@ async def upload_workflow_and_dependencies(
 
                 # Process the main workflow file
                 log.debug(f"Processing main workflow file: {workflow_file.filename}")
+
+                if workflow_file.filename is None:
+                    raise HTTPException(status_code=400, detail="Workflow file must have a filename.")
+                
                 if workflow_file.filename == '':
                     raise HTTPException(status_code=400, detail="Main workflow file cannot be empty.")
 
@@ -422,6 +417,9 @@ async def upload_workflow_and_dependencies(
                 # Process additional files
                 for file in additional_files:
                     log.debug(f"Processing additional file: {file.filename}")
+                    if file.filename is None:
+                        raise HTTPException(status_code=400, detail="Workflow file must have a filename.")
+                
                     if file.filename == '':
                         log.debug(f"Skipping empty additional file upload.")
                         continue # Skip empty uploads
@@ -474,7 +472,7 @@ def get_workflow(workflow_id: str) -> models.Workflow_Model:
     return get_workflow_by_version(workflow_id, -1)
 
 
-def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
+def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> models.Workflow_Model | None:
     res = db.Workflows.find_one({"wid": workflow_id})
     if res is None:
         return None
@@ -482,7 +480,7 @@ def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> m
         return perms.ensure(models.Workflow_Model.model_validate(res))
     res = db.WorkflowsHistory.find_one({"wid": workflow_id, "Version": workflow_version})
     if res is None:
-        raise None
+        return None
     return perms.ensure(models.Workflow_Model.model_validate(res))
 
 
@@ -914,13 +912,13 @@ def db_init():
     # probably initialized already
     if 'Settings' in db.list_collection_names(): return False
     for coll,rec in [
-        ('Settings',{'projectName':'TEST','projectLogoUrl':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
-        ('UseCases',models.UseCase_Model(ucid='Demo',Description='Demo usecase').model_dump()),
-        ('Stat',models.MupifDBStatus_Model.Stat_Model().model_dump(mode="json")),
-        ('Workflows',None),
-        ('WorkflowsHistory',None),
-        ('WorkflowExecutions',None),
-        ('IOData',None)
+        ('Settings', {'projectName':'TEST','projectLogoUrl':'https://raw.githubusercontent.com/mupif/mupifDB/bd297a4a719336cd9672cfe73f31f7cbe2b4e029/webapi/static/images/mupif-logo.png'}),
+        ('UseCases', models.UseCase_Model(_id=None, ucid='Demo',Description='Demo usecase').model_dump()),
+        ('Stat', models.MupifDBStatus_Model.Stat_Model(_id=None).model_dump(mode="json")),
+        ('Workflows', None),
+        ('WorkflowsHistory', None),
+        ('WorkflowExecutions', None),
+        ('IOData', None)
     ]:
         try:
             c = db.create_collection(coll)
