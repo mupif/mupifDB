@@ -89,11 +89,11 @@ elif os.path.exists(googleConfigPath):
     with open(googleConfigPath) as config_json:
         login_config = json.load(config_json)
 else: log.error("File '{googleConfigPath}' does not exist, login will be broken.")
-GOOGLE_CLIENT_ID = login_config.get("GOOGLE_CLIENT_ID", None)
-GOOGLE_CLIENT_SECRET = login_config.get("GOOGLE_CLIENT_SECRET", None)
-GOOGLE_REDIRECT_URI = login_config.get("GOOGLE_REDIRECT_URI", None)
-GOOGLE_DISCOVERY_URL = login_config.get("GOOGLE_DISCOVERY_URL", None)
-AUTH_APP_SECRET_KEY = login_config.get("AUTH_APP_SECRET_KEY", None) or os.urandom(24)
+GOOGLE_CLIENT_ID = login_config.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = login_config.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = login_config.get("GOOGLE_REDIRECT_URI", "")
+GOOGLE_DISCOVERY_URL = login_config.get("GOOGLE_DISCOVERY_URL", "")
+AUTH_APP_SECRET_KEY = login_config.get("AUTH_APP_SECRET_KEY", "") or os.urandom(24)
 
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
@@ -423,18 +423,17 @@ def addUseCase():
             return my_render_template('basic.html', body=Markup(html), login=login_header_html())
         else:
             message += '<h5 style="color:red;">UseCase was not registered</h5>'
-    if new_usecase_id is None:
-        html = message
-        html += "<h3>Add new UseCase:</h3>"
-        if admin_rights:
-            html += "<table class=\"tableType1\">"
-            html += '<tr><td>UseCase ID (string)</td><td><input type="text" name="usecase_id" value="'+str(usecase_id)+'"></td></tr>'
-            html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
-            html += "</table>"
-            html += "<input type=\"submit\" value=\"Submit\" />"
-        else:
-            html += "<h5>You don't have permission to visit this page.</h5>"
-        return my_render_template('form.html', form=html, login=login_header_html())
+    html = message
+    html += "<h3>Add new UseCase:</h3>"
+    if admin_rights:
+        html += "<table class=\"tableType1\">"
+        html += '<tr><td>UseCase ID (string)</td><td><input type="text" name="usecase_id" value="'+str(usecase_id)+'"></td></tr>'
+        html += '<tr><td>UseCase Description (string)</td><td><input type="text" name="usecase_description" value="'+str(usecase_description)+'"></td></tr>'
+        html += "</table>"
+        html += "<input type=\"submit\" value=\"Submit\" />"
+    else:
+        html += "<h5>You don't have permission to visit this page.</h5>"
+    return my_render_template('form.html', form=html, login=login_header_html())
 
 
 @app.route('/usecases/<ucid>/workflows')
@@ -557,7 +556,7 @@ def addWorkflow(usecaseid):
             for fn in filenames:
                 if fn in request.files:
                     file = request.files[fn]
-                    if file.filename != '':
+                    if file.filename is not None and file.filename != '':
                         if file and (allowed_file(file.filename) or fn != 'file_workflow'):
                             fpath = tempDir + "/" + file.filename
                             myfile = open(fpath, mode="wb")
@@ -592,6 +591,13 @@ def addWorkflow(usecaseid):
         else:
             html += "<h5>You don't have permission to visit this page.</h5>"
         return my_render_template('form.html', form=html, login=login_header_html())
+
+    # thisDir = os.path.dirname(os.path.abspath(__file__))
+    # html = ''
+    # with open(thisDir+'/templates/upload_workflow.html', 'r') as f:
+    #     html = f.read()
+    #     f.close()
+    # return my_render_template('form.html', form=html, login=login_header_html())
 
 
 @app.route('/workflowexecutions')
@@ -734,9 +740,9 @@ def setExecutionInputs(weid):
     winprec = workflow_record.IOCard.Inputs
     if request.form:
         if execution_record.Status == "Created":
-            restApiControl.setExecutionParameter(execution_record.dbID, 'Task_ID', request.form['Task_ID'])
-            restApiControl.setExecutionParameter(execution_record.dbID, 'label', request.form['label'])
-            restApiControl.setExecutionParameter(execution_record.dbID, 'RequestedBy', request.form['RequestedBy'])
+            restApiControl.setExecutionParameter(str(execution_record.dbID), 'Task_ID', request.form['Task_ID'])
+            restApiControl.setExecutionParameter(str(execution_record.dbID), 'label', request.form['label'])
+            restApiControl.setExecutionParameter(str(execution_record.dbID), 'RequestedBy', request.form['RequestedBy'])
 
             # process submitted data
             msg = ""
@@ -1056,6 +1062,7 @@ def setExecutionInputs(weid):
 
 
     return my_render_template('form.html', form=form, login=login_header_html())
+    # return my_render_template('basic.html', body=Markup(form), login=login_header_html())
 
 
 @app.route("/workflowexecutions/<weid>/outputs")
@@ -1325,7 +1332,7 @@ def workflow_check():
                 print("checking file " + filename)
                 if filename in request.files:
                     file = request.files[filename]
-                    if file.filename != '':
+                    if file.filename is not None and file.filename != '':
                         print(filename + " file given")
                         if file and (allowed_file(file.filename) or filename != 'file_workflow'):
                             myfile = open(tempDir + "/" + file.filename, mode="wb")

@@ -2,4 +2,8 @@ doc/build
 __pycache__
 .ipynb_checkpoints
 .pytest_cache
+.idea
 *~
+mupifDB/dev/*
+mupifDB/dev_configs/*
+mupifDB/ui/*
