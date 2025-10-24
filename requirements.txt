@@ -43,3 +43,4 @@ requests_oauthlib
 sphinxcontrib-openapi
 sphinx-rtd-theme
 myst-nb
+python-jose

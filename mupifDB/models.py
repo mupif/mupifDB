@@ -44,7 +44,7 @@ class TEMP_DbLookup_Model(StrictBase):
     values: List[str|int]
 
 class MongoObjBase_Model(StrictBase):
-    dbID: Optional[DatabaseID]=Field(None,alias='_id') # type: ignore[arg-type]
+    dbID: Optional[DatabaseID]=Field(None, alias='_id') # type: ignore[arg-type]
     def model_dump_db(self):
         '''
         MongoDB-specific enhancement: with _id=None (default), mongoDB would use _id:null instead of treating it as unset. Therefore remove it from the dump if None.
@@ -89,15 +89,15 @@ class GridFSFile_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
     def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]:
         assert 'parent' in self.metadata
         DbRef_Model.model_validate(self.metadata['parent'])
-        return {'_id':bson.objectid.ObjectId(self.dbID)},{'$set':{'metadata':self.metadata}}
+        return {'_id': bson.objectid.ObjectId(self.dbID)}, {'$set':{'metadata':self.metadata}}
 
 
-class MongoObj_Model(MongoObjBase_Model,ObjectWithParent_Mixin):
+class MongoObj_Model(MongoObjBase_Model, ObjectWithParent_Mixin):
     # remove Optional to make parent mandatory when validating the model
     parent: Optional[DbRef_Model]=None
     def TEMP_mongoParentQuerySet(self) -> Tuple[Dict,Dict]:
         assert self.parent is not None
-        return {'_id':bson.objectid.ObjectId(self.dbID)},{'$set':{'parent':self.parent.model_dump(mode='json')}}
+        return {'_id': bson.objectid.ObjectId(self.dbID)}, {'$set':{'parent':self.parent.model_dump(mode='json')}}
 
 class UseCase_Model(MongoObj_Model):
     ucid: str
