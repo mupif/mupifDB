@@ -1453,9 +1453,31 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
     return mp.monitor.jobmanInfo(ns)
 
 
+# @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
+# def ui():
+#     f = open('../ui/app.html', 'r')
+#     content = f.read()
+#     f.close()
+#     return HTMLResponse(content=content, status_code=200)
+
+
+# @app.get("/UI/{file_path:path}", tags=["User Interface"])
+# def get_ui_file(file_path: str):
+#     try:
+#         if file_path.find('..') == -1:
+#             f = open('../ui/'+file_path, 'r')
+#             content = f.read()
+#             f.close()
+#             return HTMLResponse(content=content, status_code=200)
+#     except:
+#         pass
+#     print(file_path + " not found")
+#     return None
+
+
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
 def ui():
-    f = open('../ui/app.html', 'r')
+    f = open('../UI/index.html', 'r')
     content = f.read()
     f.close()
     return HTMLResponse(content=content, status_code=200)
@@ -1465,7 +1487,7 @@ def ui():
 def get_ui_file(file_path: str):
     try:
         if file_path.find('..') == -1:
-            f = open('../ui/'+file_path, 'r')
+            f = open('../UI/'+file_path, 'r')
             content = f.read()
             f.close()
             return HTMLResponse(content=content, status_code=200)
