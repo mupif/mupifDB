@@ -11,14 +11,15 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     import uvicorn
     import os
     host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
-    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8008'))
+    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
-from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
+import time
+
+from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
-from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 
 from pymongo import MongoClient
 import tempfile
@@ -29,363 +30,35 @@ import gridfs
 import typing
 import io
 import bson, bson.objectid
-from bson.errors import InvalidId
-from bson.objectid import ObjectId
 import psutil
-from pymongo import ReturnDocument, ASCENDING
-from pydantic import BaseModel, Field
+from pymongo import ReturnDocument
+from pydantic import BaseModel
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/.")
 sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
 import mupifDB
 import mupif as mp
+import mupif.pyroutil
 import Pyro5.api
 import pydantic
 import json
-from typing import Any, List, Literal, Optional, Iterator, TypeVar, Callable
+from typing import Any,List,Literal
 from rich import print_json
 from rich.pretty import pprint
 
-# --- Security Imports ---
-from passlib.context import CryptContext
-from datetime import datetime, timedelta, timezone
-from jose import JWTError, jwt
-import uuid
-import copy
-import contextlib
-from pymongo.client_session import ClientSession
-from pymongo.collection import Collection
-from pymongo.database import Database
-from pydantic_core import CoreSchema, PydanticCustomError, core_schema
-
-# --- Configuration & Environment ---
-DEVELOPMENT = os.environ.get('DEVELOPMENT', False) in ['1','true','True','TRUE']
-this_dir = os.path.dirname(os.path.abspath(__file__))
-APP_SECRET_KEY = os.environ.get('APP_SECRET_KEY', 'secret_jwt_key')
-if not DEVELOPMENT and APP_SECRET_KEY == 'secret_jwt_key':
-    APP_SECRET_KEY = os.urandom(24).hex()
-HTTPS_ENABLED = os.environ.get('HTTPS_ENABLED', False) in ['1','true','True','TRUE']
-SESSION_EXPIRE_MINUTES = 7 * 24 * 60
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-
-# --- MongoDB Connection ---
-client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
-db = client.MuPIF
-
-
-# --- MongoDB Model Definitions for Authentication ---
-
-# FIX: PyObjectId updated for Pydantic V2
-class PyObjectId(ObjectId):
-    """Custom type for MongoDB's ObjectId, compatible with Pydantic V2"""
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Callable[[Any], CoreSchema]) -> CoreSchema:
-        """
-        Pydantic V2 core schema generation for custom types.
-        It defines validation and serialization logic.
-        """
-        # Validator function: Checks if input is a valid ObjectId (or can be converted)
-        def validate_objectid(value: Any) -> ObjectId:
-            if isinstance(value, ObjectId):
-                return value
-            
-            if isinstance(value, str):
-                try:
-                    return ObjectId(value)
-                except InvalidId as e:
-                    # Raise a PydanticCustomError for better error handling
-                    raise PydanticCustomError('invalid_object_id', 'Invalid ObjectId value') from e
-            
-            raise PydanticCustomError('invalid_object_id', 'ObjectId must be a string or ObjectId instance')
-
-
-        # Define the core schema
-        # The schema uses:
-        # 1. `before`: A custom function to validate and convert the input to an ObjectId object.
-        # 2. `serialization`: Converts the ObjectId object back to a string for JSON/response.
-        return core_schema.json_or_python_schema(
-            python_schema=core_schema.no_info_before_validator_function(validate_objectid, core_schema.is_instance_schema(ObjectId)),
-            json_schema=core_schema.str_schema(),
-            serialization=core_schema.to_string_ser_schema(),
-        )
-
-
-class User_Model(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    mail: str
-    name: str
-    surname: str
-    password: str
-    rights_admin: bool = False
-    
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str} # Still works, but V2 handles it via the custom type now
-        
-class Session_Model(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    session_token: str
-    user_id: str # Storing user ID as string (ObjectId converted to string)
-    expires_at: datetime
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str} # Still works, but V2 handles it via the custom type now
-
-# Ensure indexes for performance (especially for unique fields)
-# Note: Ensure these are created only once in a production environment
-db.user.create_index([("mail", ASCENDING)], unique=True)
-db.session.create_index([("session_token", ASCENDING)], unique=True)
-
-
-# --- JWT Security Configuration & Utilities ---
-ALGORITHM = "HS256"
-
-class TokenData(BaseModel):
-    session_id: Optional[str] = None
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """Creates a signed JWT token containing the session_id."""
-    to_encode = data.copy()
-    now = datetime.now(timezone.utc)
-    if expires_delta:
-        expire = now + expires_delta
-    else:
-        expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire, "sub": "access", "iat": now})
-    encoded_jwt = jwt.encode(to_encode, APP_SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def decode_access_token(token: str):
-    """Decodes and validates a JWT token, ensuring the session_id is present."""
-    try:
-        payload = jwt.decode(token, APP_SECRET_KEY, algorithms=[ALGORITHM])
-        session_id: str = str(payload.get("session_id"))
-        if session_id is None:
-            raise JWTError("Invalid session ID in token")
-        token_data = TokenData(session_id=session_id)
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials, token tampered or expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return token_data
-
-
-# --- MongoDB Authentication Functions ---
-
-def db_get_user_by_email(mail: str) -> Optional[User_Model]:
-    user_doc = db.user.find_one({"mail": mail})
-    if user_doc:
-        return User_Model.model_validate(user_doc)
-    return None
-
-def get_user_by_id(user_id_str: str) -> Optional[User_Model]:
-    try:
-        user_doc = db.user.find_one({"_id": ObjectId(user_id_str)})
-        if user_doc:
-            return User_Model.model_validate(user_doc)
-        return None
-    except InvalidId:
-        return None
-
-def create_user(user: OAuth2PasswordRequestForm) -> User_Model:
-    hashed_password = get_password_hash(user.password)
-    user_data = {
-        "mail": user.username, 
-        "password": hashed_password, 
-        "name": user.username, 
-        "surname": "User", 
-        "rights_admin": False
-    }
-    result = db.user.insert_one(user_data)
-    user_doc = db.user.find_one({"_id": result.inserted_id})
-    return User_Model.model_validate(user_doc)
-
-def create_session(user_id_str: str) -> str:
-    """Creates a new session record and returns the unique session_token."""
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=SESSION_EXPIRE_MINUTES)
-    session_token = str(uuid.uuid4())
-    session_data = {
-        "user_id": user_id_str,
-        "session_token": session_token,
-        "expires_at": expires_at
-    }
-    db.session.insert_one(session_data)
-    return session_token
-
-def delete_session(session_token: str):
-    """Deletes a session record based on its token."""
-    db.session.delete_one({"session_token": session_token})
-
-def get_session_by_token(session_token: str) -> Optional[Session_Model]:
-    """Retrieves a valid session record from the database."""
-    now = datetime.now(timezone.utc)
-    session_doc = db.session.find_one({
-        "session_token": session_token,
-        "expires_at": {"$gt": now}
-    })
-    if session_doc:
-        return Session_Model.model_validate(session_doc)
-    return None
-
-# --- Dependency to get the database connection (Placeholder) ---
-
-# def get_db_connection():
-#     """Placeholder for database connection dependency."""
-#     return None 
-
-# ----------------------------------------------------
-# --- Authentication Dependency ---
-# ----------------------------------------------------
-
-bearer_scheme = HTTPBearer(auto_error=False) 
-
-def get_cookie_token(request: Request) -> Optional[str]:
-    return request.cookies.get("access_token")
-
-async def get_current_authenticated_user(
-    response: Response, 
-    # db_conn = Depends(get_db_connection), # Using placeholder
-    header_credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    cookie_token: Optional[str] = Depends(get_cookie_token)
-) -> User_Model:
-    """
-    Unified authentication with conditional cookie renewal.
-    """
-    token = None
-    if header_credentials:
-        token = header_credentials.credentials
-    elif cookie_token:
-        token = cookie_token
-    
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated: Missing access token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    session_id: str
-    payload: dict
-    
-    try:
-        payload = jwt.decode(token, APP_SECRET_KEY, algorithms=[ALGORITHM])
-        session_id = str(payload.get("session_id"))
-        if session_id is None:
-            raise JWTError("Invalid session ID in token")
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials, token tampered or expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    session_record = get_session_by_token(session_id)
-
-    if session_record is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated: Session either does not exist, has expired, or has been revoked.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    # --- COOKIE RENEWAL LOGIC (FOR BROWSER ONLY) ---
-    
-    now = datetime.now(timezone.utc)
-    renewal_threshold = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES / 2)
-    iat_dt = datetime.fromtimestamp(payload.get("iat", 0), tz=timezone.utc) 
-    is_renewal_needed = (now - iat_dt) >= renewal_threshold
-    
-    if is_renewal_needed and cookie_token:
-        access_token_data = {"session_id": session_id}
-        new_access_token = create_access_token(data=access_token_data)
-        cookie_max_age = SESSION_EXPIRE_MINUTES * 60
-        
-        # Use HTTPS_ENABLED flag to set secure=True conditionally
-        response.set_cookie(
-            key="access_token",
-            value=new_access_token,
-            httponly=True,  
-            secure=HTTPS_ENABLED, 
-            max_age=cookie_max_age, 
-            samesite="lax"
-        )
-        
-    user = get_user_by_id(session_record.user_id)
-
-    if user is None:
-        # Critical error: session exists but linked user doesn't. Revoke session.
-        delete_session(session_record.session_token)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated: User linked to session not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    return user
-
-async def get_valid_session_from_header(
-    # db_conn = Depends(get_db_connection),
-    header_credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
-) -> Session_Model:
-    """
-    Validates a Bearer token for the /api/refresh_token endpoint.
-    """
-    token = header_credentials.credentials
-    
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing access token in Authorization header",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    session_id: str
-    try:
-        payload = jwt.decode(token, APP_SECRET_KEY, algorithms=[ALGORITHM])
-        session_id = str(payload.get("session_id"))
-        if session_id is None:
-            raise JWTError("Invalid session ID in token")
-            
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials, token expired, or tampered.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    session_record = get_session_by_token(session_id)
-
-    if session_record is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session either does not exist, has expired, or has been revoked.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    return session_record 
-
-# Shorthands for common exceptions
+# shorthands for common exceptions
 def NotFoundError(detail):
     return HTTPException(status_code=404, detail=detail)
 def ForbiddenError(detail):
     return HTTPException(status_code=403, detail=detail)
 
 from mupifDB import models
+
+
+client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
+db = client.MuPIF
+
 
 # Transaction support for MongoDB, used to re-validate a record after validation,
 # aborting the transaction automatically if it does not validate.
@@ -394,6 +67,11 @@ from mupifDB import models
 # but we might avoid them just as well by setting the schema on the collection (mongo has provisions for that) and then
 # the validation would (hopefully) happen automatically
 #
+import contextlib
+from typing import Iterator,TypeVar
+from pymongo.client_session import ClientSession
+from pymongo.collection import Collection
+from pymongo.database import Database
 
 @contextlib.contextmanager
 def db_transaction() -> Iterator[ClientSession|None]:
@@ -415,12 +93,14 @@ class Perms(object):
     def __init__(self, db: Database):
         self.db=db
     def has(self, obj: Any, perm: _PermWhat='read', on: _PermOn='self') -> bool:
-        'TODO: to be implemented with actual user context'
+        'TODO: to be implemented'
         return True
     def ensure(self, obj: T, perm:_PermWhat='read', on: _PermOn='self',diag: str|None=None) -> T:
         'Check permissions on the object (read on obj by default) and return it. Raise ForbiddenError if the check fails.'
+        # if obj.parent is None: raise ForbiddenError(f'{obj.__class__.__name__}(dbID={obj.dbID}).parent is None!')
         if not self.has(obj=obj,perm=perm, on=on):
             raise ForbiddenError(f'Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(){": "+diag if diag else ""}.')
+            # raise ForbiddenError(f'Forbidden {perm} access to {"the parent of" if on=="parent" else ""} {obj.__class__.__name__}(dbID={obj.dbID}){": "+diag if diag else ""}.')
         return obj
     def TODO(*args,**kw): pass
     def filterSelfRead(self,objs: List[T]) -> List[T]: return [obj for obj in objs if self.has(obj,perm='read',on='self')]
@@ -434,7 +114,7 @@ perms = Perms(db=db)
 
 tags_metadata = [
     {
-        "name": "Authentication",
+        "name": "Users",
     },
     {
         "name": "Usecases",
@@ -462,9 +142,6 @@ tags_metadata = [
     },
     {
         "name": "Settings",
-    },
-    {
-        "name": "User Interface",
     },
 ]
 
@@ -499,103 +176,6 @@ if 1:
     app.include_router(edm.dms3.router)
 
 
-# --------------------------------------------------
-# --- AUTHENTICATION ENDPOINTS ---
-# --------------------------------------------------
-
-@app.post("/login", tags=["Authentication"])
-async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
-    user = db_get_user_by_email(form_data.username)
-    
-    if not user or not verify_password(form_data.password, user.password):
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
-    # MongoDB ObjectId to string
-    user_id_str = str(user.id)
-    
-    session_token = create_session(user_id_str)
-    access_token_data = {"session_id": session_token}
-    access_token = create_access_token(data=access_token_data)
-    cookie_max_age = SESSION_EXPIRE_MINUTES * 60
-    
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,  
-        secure=HTTPS_ENABLED, 
-        max_age=cookie_max_age, 
-        samesite="lax"
-    )
-    
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "message": "Login successful"
-    }
-
-
-@app.post("/refresh_token", tags=["Authentication"])
-async def refresh_token(valid_session: Session_Model = Depends(get_valid_session_from_header)):
-    """
-    Refreshes the short-lived JWT for non-browser clients (Bearer token usage).
-    """
-    session_token = valid_session.session_token
-    access_token_data = {"session_id": session_token}
-    new_access_token = create_access_token(data=access_token_data)
-    
-    return {
-        "access_token": new_access_token,
-        "token_type": "bearer",
-        "message": "Token refreshed successfully"
-    }
-
-
-@app.post("/logout", tags=["Authentication"])
-async def logout(response: Response, request: Request):
-    
-    token = request.cookies.get("access_token") 
-    
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-            
-    if token:
-        try:
-            # options={"verify_exp": False} allows decoding of an expired token to get the session_id
-            payload = jwt.decode(token, APP_SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False}) 
-            session_id = str(payload.get("session_id"))
-            if session_id:
-                delete_session(session_id)
-        except JWTError:
-            pass # Ignore JWT errors on logout attempt
-    
-    # Delete the cookie from the client
-    response.delete_cookie(key="access_token")
-    return {"message": "Logged out and session revoked"}
-
-
-@app.post("/register", tags=["Authentication"])
-async def register_user(user: OAuth2PasswordRequestForm = Depends()):
-    db_user = db_get_user_by_email(mail=user.username)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    # For a new user, password field is required but not directly used in User_Model.
-    # The form_data contains the password needed for create_user.
-    return create_user(user=user)
-
-
-@app.get("/current_user", tags=["Authentication"])
-async def read_current_user(current_user: User_Model = Depends(get_current_authenticated_user)):
-    # Create a dict and remove sensitive data before returning
-    print(current_user)
-    user_dict = current_user.model_dump(by_alias=True)
-    print(user_dict)
-    user_dict['id'] = str(user_dict['_id'])
-    user_dict.pop('password', None)
-    user_dict.pop('_id', None)
-    return user_dict
-
 
 # --------------------------------------------------
 # Default
@@ -603,7 +183,7 @@ async def read_current_user(current_user: User_Model = Depends(get_current_authe
 
 @app.get("/")
 def read_root():
-    return RedirectResponse(url="/api/docs")
+    return {"MuPIF": "API"}
 
 
 # --------------------------------------------------
@@ -611,26 +191,26 @@ def read_root():
 # --------------------------------------------------
 
 @app.get("/usecases", tags=["Usecases"])
-def get_usecases(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.UseCase_Model]:
+def get_usecases() -> List[models.UseCase_Model]:
     res = db.UseCases.find()
     return perms.filterSelfRead([m:=models.UseCase_Model.model_validate(r) for r in res])
 
 
 @app.get("/usecases/{uid}", tags=["Usecases"])
-def get_usecase(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.UseCase_Model:
+def get_usecase(uid: str) -> models.UseCase_Model:
     res = db.UseCases.find_one({"ucid": uid})
     if res is None: raise NotFoundError(f'Database reports no workflow with ucid={uid}.')
     return perms.ensure(models.UseCase_Model.model_validate(res))
 
 
 @app.get("/usecases/{uid}/workflows", tags=["Usecases"])
-def get_usecase_workflows(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.Workflow_Model]:
+def get_usecase_workflows(uid: str) -> List[models.Workflow_Model]:
     res = db.Workflows.find({"UseCase": uid})
     return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
 
 
 @app.post("/usecases", tags=["Usecases"])
-def post_usecase(uc: models.UseCase_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def post_usecase(uc: models.UseCase_Model) -> str:
     perms.ensure(uc,perm='child',on='parent')
     res = db.UseCases.insert_one(uc.model_dump_db())
     return str(res.inserted_id)
@@ -641,7 +221,7 @@ def post_usecase(uc: models.UseCase_Model, current_user: User_Model = Depends(ge
 # --------------------------------------------------
 
 @app.get("/workflows", tags=["Workflows"])
-def get_workflows(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.Workflow_Model]:
+def get_workflows() -> List[models.Workflow_Model]:
     res = db.Workflows.find()
     return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
 
@@ -692,13 +272,6 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
 
         file_like_object = io.BytesIO(file_content)
 
-        # NOTE: upload_file is not fully defined in the provided code, assuming it exists
-        def upload_file(upload_f: UploadFile):
-            # Placeholder for actual GridFS file upload logic
-            fs = gridfs.GridFS(db)
-            file_id = fs.put(upload_f.file, filename=upload_f.filename)
-            return file_id
-
         mock_upload_file = UploadFile(
             filename=filename,
             file=file_like_object,
@@ -706,7 +279,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
 
         # Call the original upload_file function
         gridfs_id = upload_file(mock_upload_file)
-        rec.GridFSID = str(gridfs_id) # Ensure GridFSID is stored as string
+        rec.GridFSID = gridfs_id
 
         # Ensure the BytesIO object is closed
         mock_upload_file.file.close()
@@ -725,12 +298,11 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
     # clone latest version to History
     log.debug(f'{w_rec=}')
     w_rec.dbID = None  # remove original document id
-    # w_rec.id = None # Pydantic model field
+    # w_rec._id=None
     insert_workflow_history(w_rec)
     # update the latest document
     rec.Version = w_rec.Version+1
     res_id = update_workflow(rec).dbID
-    # res_id = update_workflow(rec).id # Changed to use .id
     if res_id:
         return {"id": res_id, "wid": rec.wid}
     else:
@@ -743,17 +315,26 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
 async def upload_workflow_and_dependencies(
     usecaseid: str,
     workflow_file: UploadFile = File(..., description="The main workflow Python file."),
-    additional_files: List[UploadFile] = File([], description="Additional dependency files."),
-    current_user: User_Model = Depends(get_current_authenticated_user) # SECURED
+    additional_files: List[UploadFile] = File([], description="Additional dependency files.")
 ):
     """
     Endpoint to upload a main workflow file and multiple additional dependency files.
+
+    Args:
+        usecaseid: The ID of the use case associated with the workflow.
+        workflow_file: The main workflow Python file (e.g., your_workflow.py).
+        additional_files: A list of additional files that are dependencies for the workflow.
+
+    Returns:
+        A dictionary containing details of the uploaded files, or a redirect
+        to the new workflow's detail page on successful registration.
     """
-    # NOTE: Assuming only admin or specific user can upload, adjust the check below:
-    if not current_user.rights_admin:
+    admin_rights = True
+
+    if not admin_rights:
         raise HTTPException(status_code=403, detail="You don't have permission to perform this action.")
 
-    log.info(f"Uploading workflow for usecase: {usecaseid} by user {current_user.mail}")
+    log.info(f"Uploading workflow for usecase: {usecaseid}")
 
     new_workflow_id = None
     wid = None
@@ -783,7 +364,8 @@ async def upload_workflow_and_dependencies(
                 if workflow_file.filename == '':
                     raise HTTPException(status_code=400, detail="Main workflow file cannot be empty.")
 
-                if not allowed_file(workflow_file.filename) or not workflow_file.filename.endswith('.py'):
+                if not allowed_file(workflow_file.filename) and not workflow_file.filename.endswith('.py'):
+                    # You might want to be more strict here, e.g., only .py for main workflow
                     raise HTTPException(status_code=400, detail=f"File type not allowed for workflow_file: {workflow_file.filename}")
 
                 main_file_path = os.path.join(tempDir, workflow_file.filename)
@@ -883,7 +465,7 @@ async def upload_workflow_and_dependencies(
 
 
 @app.get("/workflows/{workflow_id}", tags=["Workflows"])
-def get_workflow(workflow_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
+def get_workflow(workflow_id: str) -> models.Workflow_Model:
     return get_workflow_by_version(workflow_id, -1)
 
 
@@ -900,7 +482,7 @@ def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> m
 
 
 @app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"])
-def get_workflow_by_version(workflow_id: str, workflow_version: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
+def get_workflow_by_version(workflow_id: str, workflow_version: int) -> models.Workflow_Model:
     res = get_workflow_by_version_inside(workflow_id, workflow_version)
     if res is None:
         raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
@@ -908,25 +490,24 @@ def get_workflow_by_version(workflow_id: str, workflow_version: int, current_use
 
 
 @app.patch("/workflows/", tags=["Workflows"])
-def update_workflow(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
+def update_workflow(wf: models.Workflow_Model) -> models.Workflow_Model:
     perms.ensure(wf,perm='modify')
     # don't write the result if the result after the update does not validate
     with db_transaction() as session:
         # PERM: self write
         res = db.Workflows.find_one_and_update({'wid': wf.wid}, {'$set': wf.model_dump_db()}, return_document=ReturnDocument.AFTER, session=session)
-        if res is None: raise NotFoundError(f'Workflow with wid={wf.wid} not found for update.')
         return models.Workflow_Model.model_validate(res)
 
 
 @app.post("/workflows/", tags=["Workflows"])
-def insert_workflow(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def insert_workflow(wf: models.Workflow_Model) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.Workflows.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
 
 @app.post("/workflows_history/", tags=["Workflows"])
-def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def insert_workflow_history(wf: models.Workflow_Model) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
@@ -937,14 +518,7 @@ def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model 
 # --------------------------------------------------
 
 @app.get("/executions/", tags=["Executions"])
-def get_executions(
-    status: str = "", 
-    workflow_version: int = 0, 
-    workflow_id: str = "", 
-    num_limit: int = 0, 
-    label: str = "",
-    current_user: User_Model = Depends(get_current_authenticated_user)
-) -> List[models.WorkflowExecution_Model]:
+def get_executions(status: str = "", workflow_version: int = 0, workflow_id: str = "", num_limit: int = 0, label: str = "") -> List[models.WorkflowExecution_Model]:
     output = []
     filtering = {}
     if status:
@@ -965,19 +539,23 @@ def get_executions(
 
 
 @app.get("/executions/{uid}", tags=["Executions"])
-def get_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
+def get_execution(uid: str) -> models.WorkflowExecution_Model:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
     return perms.ensure(models.WorkflowExecution_Model.model_validate(res))
 
 # FIXME: how is this different from get_execution??
 @app.get("/edm_execution/{uid}", tags=["Executions"])
-def get_edm_execution_uid(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
-    return get_execution(uid, current_user=current_user)
+def get_edm_execution_uid(uid: str) -> models.WorkflowExecution_Model:
+    #res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    #if res is None: raise NotFoundError(f'Database reports no edm_execution with uid={uid}.')
+    #obj=models.WorkflowExecution_Model.model_validate(res)
+    #return obj
+    return get_execution(uid)
 
 @app.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
-def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['input','output'], current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
-    obj=get_edm_execution_uid(uid, current_user=current_user) # handles perms
+def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['input','output']) -> List[str]:
+    obj=get_edm_execution_uid(uid) # handles perms
     for m in obj.EDMMapping:
         T='input' if (m.createFrom or m.createNew) else 'output'
         if T==iotype and m.EDMEntity==entity:
@@ -988,40 +566,34 @@ def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['
 
 
 @app.post("/executions/create/", tags=["Executions"])
-def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def create_execution(wec: models.WorkflowExecutionCreate_Model) -> str:
     perms.TODO(wec)
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wec.wid, workflowVer=wec.version, requestedBy=current_user.mail, ip=wec.ip, no_onto=wec.no_onto)
+    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wec.wid, workflowVer=wec.version, requestedBy='', ip=wec.ip, no_onto=wec.no_onto)
     return str(c.executionID)
 
 
 @app.post("/executions/", tags=["Executions"])
-def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def insert_execution(data: models.WorkflowExecution_Model) -> str:
     perms.ensure(data,perm='child',on='parent')
     res = db.WorkflowExecutions.insert_one(data.model_dump_db())
     return str(res.inserted_id)
 
 @app.get("/executions/{uid}/inputs/", tags=["Executions"])
-def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
-    ex = get_execution(uid, current_user=current_user) # checks perms already
-    if ex.Inputs: 
-        res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs)})
-        if res is None: raise NotFoundError(f'Database reports no IOData with uid={ex.Inputs}.')
-        return models.IODataRecord_Model.model_validate(res).DataSet
+def get_execution_inputs(uid: str) -> List[models.IODataRecordItem_Model]:
+    ex = get_execution(uid) # checks perms already
+    if ex.Inputs: return models.IODataRecord_Model.model_validate(db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs)})).DataSet
     return []
 
 
 @app.get("/executions/{uid}/outputs/", tags=["Executions"])
-def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
-    ex = get_execution(uid, current_user=current_user)
-    if ex.Outputs:
-        res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Outputs)})
-        if res is None: raise NotFoundError(f'Database reports no IOData with uid={ex.Outputs}.')
-        return models.IODataRecord_Model.model_validate(res).DataSet
+def get_execution_outputs(uid: str) -> List[models.IODataRecordItem_Model]:
+    ex = get_execution(uid)
+    if ex.Outputs: return models.IODataRecord_Model.model_validate(db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Outputs)})).DataSet
     return []
 
 @app.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
-def get_execution_livelog(uid: str, num: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
-    ex = get_execution(uid, current_user=current_user)
+def get_execution_livelog(uid: str, num: int) -> List[str]:
+    ex = get_execution(uid)
     if ex.loggerURI is not None:
         import Pyro5.api
         import serpent
@@ -1037,37 +609,33 @@ def get_execution_livelog(uid: str, num: int, current_user: User_Model = Depends
     return []
 
 
-def get_execution_io_item(uid: str, name, obj_id: str, inputs: bool, current_user: User_Model) -> models.IODataRecordItem_Model:
-    ex = get_execution(uid, current_user=current_user)
-    data_id = ex.Inputs if inputs else ex.Outputs
-    res = db.IOData.find_one({'_id': bson.objectid.ObjectId(data_id)})
-    if res is None: raise NotFoundError(f'Database reports no IOData with uid={data_id}.')
-
-    data = models.IODataRecord_Model.model_validate(res)
+def get_execution_io_item(uid: str, name, obj_id: str, inputs: bool) -> models.IODataRecordItem_Model:
+    ex = get_execution(uid)
+    data = models.IODataRecord_Model.model_validate(db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs if inputs else ex.Outputs)}))
     for elem in data.DataSet:
         if elem.Name == name and elem.ObjID == obj_id:
             return elem
-    raise NotFoundError(f'Execution weid={uid}, {"inputs" if inputs else "outputs"}: no element with name="{name}" & obj_id="{obj_id}".')
+    raise NotFoundError('Execution weid={uid}, {"inputs" it inputs else "outputs"}: no element with {name=} & {obj_id=}.')
 
 
 @app.get("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
-def get_execution_input_item(uid: str, name: str, obj_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
-    return get_execution_io_item(uid, name, obj_id, inputs=True, current_user=current_user)
+def get_execution_input_item(uid: str, name: str, obj_id: str) -> models.IODataRecordItem_Model:
+    return get_execution_io_item(uid, name, obj_id, inputs=True)
 
 
 @app.get("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
-def get_execution_output_item(uid: str, name: str, obj_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
-    return get_execution_io_item(uid, name, obj_id, inputs=False, current_user=current_user)
+def get_execution_output_item(uid: str, name: str, obj_id: str) -> models.IODataRecordItem_Model:
+    return get_execution_io_item(uid, name, obj_id, inputs=False)
 
 
 @app.get("/executions/{uid}/input_item/{name}//", tags=["Executions"])
-def _get_execution_input_item(uid: str, name: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
-    return get_execution_io_item(uid, name, '', inputs=True, current_user=current_user)
+def _get_execution_input_item(uid: str, name: str) -> models.IODataRecordItem_Model:
+    return get_execution_io_item(uid, name, '', inputs=True)
 
 
 @app.get("/executions/{uid}/output_item/{name}//", tags=["Executions"])
-def _get_execution_output_item(uid: str, name: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
-    return get_execution_io_item(uid, name, '', inputs=False, current_user=current_user)
+def _get_execution_output_item(uid: str, name: str) -> models.IODataRecordItem_Model:
+    return get_execution_io_item(uid, name, '', inputs=False)
 
 
 
@@ -1076,8 +644,8 @@ class M_IODataSetContainer(BaseModel):
     object: typing.Optional[dict] = None
 
 # FIXME: validation
-def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_container: M_IODataSetContainer, current_user: User_Model):
-    we = get_execution(uid, current_user=current_user)
+def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_container):
+    we = get_execution(uid)
     perms.ensure(we,perm='modify',on='self')
     if (we.Status == 'Created' and inputs==True) or (we.Status == 'Running' and inputs==False):
         with db_transaction() as session:
@@ -1095,23 +663,23 @@ def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_c
 
 
 @app.patch("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
-def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
-    return set_execution_io_item(uid, name, obj_id, True, data, current_user)
+def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, obj_id, True, data)
 
 
 @app.patch("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
-def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
-    return set_execution_io_item(uid, name, obj_id, False, data, current_user)
+def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, obj_id, False, data)
 
 
 @app.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"])
-def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
-    return set_execution_io_item(uid, name, '', True, data, current_user)
+def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, '', True, data)
 
 
 @app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"])
-def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
-    return set_execution_io_item(uid, name, '', False, data, current_user)
+def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer):
+    return set_execution_io_item(uid, name, '', False, data)
 
 
 class M_ModifyExecutionOntoBaseObjectID(BaseModel):
@@ -1119,33 +687,31 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     value: str
 
 @app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
-def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID):
     perms.TODO()
     with db_transaction() as session:
-        rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}}, return_document=ReturnDocument.AFTER, session=session)
-        if rec is None: raise NotFoundError(f'Execution with uid={uid} or EDM mapping with name={data.name} not found.')
+        rec = db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}}, return_document=ReturnDocument.AFTER, session=session)
         models.WorkflowExecution_Model.model_validate(rec)
-    return get_execution(uid, current_user=current_user)
+    return get_execution(uid)
 
 class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
     data: list[dict]
 
 @app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
-def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user)):
-    for d in data: modify_execution_id(uid,d, current_user=current_user)
-    return get_execution(uid, current_user=current_user)
+def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID]):
+    for d in data: modify_execution_id(uid,d)
+    return get_execution(uid)
 
 class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
     name: str
     value: list[str]
 
 @app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
-def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs):
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}}, return_document=ReturnDocument.AFTER, session=session)
-        if rec is None: raise NotFoundError(f'Execution with uid={uid} or EDM mapping with name={data.name} not found.')
         models.WorkflowExecution_Model.model_validate(rec)
-    return get_execution(uid, current_user=current_user)
+    return get_execution(uid)
 
 
 class M_ModifyExecution(BaseModel):
@@ -1153,22 +719,21 @@ class M_ModifyExecution(BaseModel):
     value: str
 
 @app.patch("/executions/{uid}", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution(uid: str, data: M_ModifyExecution):
     perms.TODO()
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid)}, {"$set": {data.key: data.value}}, return_document=ReturnDocument.AFTER, session=session)
-        if rec is None: raise NotFoundError(f'Execution with uid={uid} not found for update.')
         models.WorkflowExecution_Model.model_validate(rec)
-    return get_execution(uid, current_user=current_user)
+    return get_execution(uid)
 
 
 @app.patch("/executions/{uid}/schedule", tags=["Executions"])
-def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)):
-    execution_record = perms.ensure(get_execution(uid, current_user=current_user),perm='modify')
+def schedule_execution(uid: str):
+    execution_record = perms.ensure(get_execution(uid),perm='modify')
     if execution_record.Status == 'Created' or True:
         data = type('', (), {})()
         mod=M_ModifyExecution(key = "Status",value = "Pending")
-        return modify_execution(uid, mod, current_user=current_user)
+        return modify_execution(uid, mod)
     return None
 
 
@@ -1177,14 +742,14 @@ def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_
 # --------------------------------------------------
 
 @app.get("/iodata/{uid}", tags=["IOData"])
-def get_execution_iodata(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecord_Model:
+def get_execution_iodata(uid: str) -> models.IODataRecord_Model:
     res = db.IOData.find_one({'_id': bson.objectid.ObjectId(uid)})
     if res is None: raise NotFoundError(f'Database reports no IOData with uid={uid}.')
     return perms.ensure(models.IODataRecord_Model.model_validate(res))
 
 # TODO: pass and store parent data as well
 @app.post("/iodata/", tags=["IOData"])
-def insert_execution_iodata(data: models.IODataRecord_Model, current_user: User_Model = Depends(get_current_authenticated_user)):
+def insert_execution_iodata(data: models.IODataRecord_Model):
     perms.ensure(data,perm='child',on='parent')
     res = db.IOData.insert_one(data.model_dump_db())
     return str(res.inserted_id)
@@ -1209,7 +774,7 @@ async def get_temp_dir():
 
 
 @app.get("/file/{uid}", tags=["Files"])
-def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_file(uid: str, tdir=Depends(get_temp_dir)):
     fs = gridfs.GridFS(db)
     foundfile = fs.get(bson.objectid.ObjectId(uid))
     if not foundfile: raise NotFoundError('Database reports no file with {uid=}.')
@@ -1221,7 +786,7 @@ def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = De
 
 # TODO: needs parent as parameter, so that perms can be checked
 @app.post("/file/", tags=["Files"])
-def upload_file(file: UploadFile, current_user: User_Model = Depends(get_current_authenticated_user)):
+def upload_file(file: UploadFile):
     perms.TODO()
     if file:
         fs = gridfs.GridFS(db)
@@ -1231,7 +796,7 @@ def upload_file(file: UploadFile, current_user: User_Model = Depends(get_current
 
 
 @app.get("/property_array_data/{fid}/{i_start}/{i_count}/", tags=["Additional"])
-def get_property_array_data(fid: str, i_start: int, i_count: int, current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_property_array_data(fid: str, i_start: int, i_count: int):
     # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid) # checks perms
     with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
@@ -1252,7 +817,7 @@ def get_property_array_data(fid: str, i_start: int, i_count: int, current_user: 
 
 
 @app.get("/field_as_vtu/{fid}", tags=["Additional"])
-def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir)):
     # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
     full_path = tdir + "/file.h5"
@@ -1270,7 +835,7 @@ def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir), current_user: User_Mo
 # --------------------------------------------------
 
 @app.post("/logs/", tags=["Logs"])
-def insert_log(data: dict, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
+def insert_log(data: dict, request: Request):
     perms.notRemote(request,'inserting logging data')
     res = db.Logs.insert_one(data)
     return str(res.inserted_id)
@@ -1281,7 +846,7 @@ def insert_log(data: dict, request: Request, current_user: User_Model = Depends(
 # --------------------------------------------------
 
 @app.get("/status/", tags=["Stats"])
-def get_status(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_status():
     mupifDBStatus = 'OK'
     schedulerStatus = 'OK'
 
@@ -1309,7 +874,7 @@ def get_status(current_user: User_Model = Depends(get_current_authenticated_user
 
 
 @app.get("/execution_statistics/", tags=["Stats"])
-def get_execution_statistics(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
+def get_execution_statistics() -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
     res = client.MuPIF.WorkflowExecutions.aggregate([
         {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
     ])
@@ -1331,7 +896,7 @@ def get_execution_statistics(current_user: User_Model = Depends(get_current_auth
 
 
 @app.get("/settings/", tags=["Settings"])
-def get_settings(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_settings():
     table = db.Settings
     for s in table.find():
         del s['_id']
@@ -1340,7 +905,7 @@ def get_settings(current_user: User_Model = Depends(get_current_authenticated_us
 
 
 @app.get("/database/maybe_init",tags=["Settings"])
-def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
+def db_init():
     # probably initialized already
     if 'Settings' in db.list_collection_names(): return False
     for coll,rec in [
@@ -1376,7 +941,7 @@ def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
 
 
 @app.get("/scheduler_statistics/", tags=["Stats"])
-def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_scheduler_statistics():
     table = db.Stat
     output = {}
     for s in table.find():
@@ -1394,7 +959,7 @@ class M_ModifyStatistics(BaseModel):
 
 
 @app.patch("/scheduler_statistics/", tags=["Stats"])
-def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
+def set_scheduler_statistics(data: M_ModifyStatistics, request: Request):
     perms.notRemote(request,'modifying scheduler statistics')
     if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
         res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
@@ -1403,7 +968,7 @@ def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current
 
 
 @app.get("/status2/", tags=["Stats"])
-def get_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_status2():
     ns = None
     try:
         ns = mp.pyroutil.connectNameserver()
@@ -1431,70 +996,26 @@ def get_status2(current_user: User_Model = Depends(get_current_authenticated_use
 
 
 @app.get("/scheduler-status2/", tags=["Stats"])
-def get_scheduler_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_scheduler_status2():
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.schedulerInfo(ns)
 
 
 @app.get("/ns-status2/", tags=["Stats"])
-def get_ns_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_ns_status2():
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.nsInfo(ns)
 
 
 @app.get("/vpn-status2/", tags=["Stats"])
-def get_vpn_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_vpn_status2():
     return mp.monitor.vpnInfo(hidePriv=False)
 
 
 @app.get("/jobmans-status2/", tags=["Stats"])
-def get_jobmans_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_jobmans_status2():
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.jobmanInfo(ns)
-
-
-# @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
-# def ui():
-#     f = open('../ui/app.html', 'r')
-#     content = f.read()
-#     f.close()
-#     return HTMLResponse(content=content, status_code=200)
-
-
-# @app.get("/UI/{file_path:path}", tags=["User Interface"])
-# def get_ui_file(file_path: str):
-#     try:
-#         if file_path.find('..') == -1:
-#             f = open('../ui/'+file_path, 'r')
-#             content = f.read()
-#             f.close()
-#             return HTMLResponse(content=content, status_code=200)
-#     except:
-#         pass
-#     print(file_path + " not found")
-#     return None
-
-
-@app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
-def ui():
-    f = open('../UI/index.html', 'r')
-    content = f.read()
-    f.close()
-    return HTMLResponse(content=content, status_code=200)
-
-
-@app.get("/UI/{file_path:path}", tags=["User Interface"])
-def get_ui_file(file_path: str):
-    try:
-        if file_path.find('..') == -1:
-            f = open('../UI/'+file_path, 'r')
-            content = f.read()
-            f.close()
-            return HTMLResponse(content=content, status_code=200)
-    except:
-        pass
-    print(file_path + " not found")
-    return None
 
 
 class M_FindParams(BaseModel):
