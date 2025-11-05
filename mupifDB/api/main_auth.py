@@ -11,7 +11,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     import uvicorn
     import os
     host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
-    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8008'))
+    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
 from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
@@ -340,25 +340,26 @@ async def get_current_authenticated_user(
 
 async def get_valid_session_from_header(
     # db_conn = Depends(get_db_connection),
+    request: Request,
     header_credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)
 ) -> Session_Model:
     """
     Validates a Bearer token for the /api/refresh_token endpoint.
     """
-    token = header_credentials.credentials
-    
-    if not token:
+    if header_credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing access token in Authorization header",
+            detail="Authorization header is missing or malformed.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+        
+    token = header_credentials.credentials
+    
     session_id: str
     try:
         payload = jwt.decode(token, APP_SECRET_KEY, algorithms=[ALGORITHM])
         session_id = str(payload.get("session_id"))
-        if session_id is None:
+        if session_id == "None": # The original code casts to str, so check against "None" string
             raise JWTError("Invalid session ID in token")
             
     except JWTError:
@@ -377,7 +378,7 @@ async def get_valid_session_from_header(
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    return session_record 
+    return session_record
 
 # Shorthands for common exceptions
 def NotFoundError(detail):
@@ -530,7 +531,8 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
     return {
         "access_token": access_token, 
         "token_type": "bearer",
-        "message": "Login successful"
+        "message": "Login successful",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)).isoformat()
     }
 
 
@@ -1427,7 +1429,7 @@ def get_status2(current_user: User_Model = Depends(get_current_authenticated_use
     else:
         DMSStatus = 'Failed'
 
-    return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name':os.environ["MUPIF_VPN_NAME"]}
+    return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name': os.environ["MUPIF_VPN_NAME"]}
 
 
 @app.get("/scheduler-status2/", tags=["Stats"])
@@ -1502,7 +1504,7 @@ class M_FindParams(BaseModel):
 
 
 @app.put("/EDM/{db}/{type}/find", tags=["EDM"])
-def edm_find(db: str, type: str, data: M_FindParams):
+def edm_find(db: str, type: str, data: M_FindParams, current_user: User_Model = Depends(get_current_authenticated_user)):
     res = client[db][type].find(data.filter)
     ids = [str(r["_id"]) for r in res]
     return ids

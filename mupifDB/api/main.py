@@ -11,7 +11,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     import uvicorn
     import os
     host=os.environ.get('MUPIFDB_RESTAPI_HOST','0.0.0.0')
-    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
+    port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8009'))
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
 import time
