@@ -992,8 +992,46 @@ def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['
 @app.post("/executions/create/", tags=["Executions"])
 def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.TODO(wec)
-    c = mupifDB.workflowmanager.WorkflowExecutionContext.create(workflowID=wec.wid, workflowVer=wec.version, requestedBy=current_user.mail, ip=wec.ip, no_onto=wec.no_onto)
-    return str(c.executionID)
+
+    wdoc = get_workflow_by_version(workflow_id=wec.wid, workflow_version=wec.version, current_user=current_user)
+
+    @pydantic.validate_call(validate_return=True)
+    def createIODataSet(workflowDoc: models.Workflow_Model, type: Literal['Inputs','Outputs'], no_onto=False):
+        IOCard = workflowDoc.IOCard
+        data: list[models.IODataRecordItem_Model] = []
+        # loop over workflow inputs or outputs
+        for io in {'Inputs':IOCard.Inputs,'Outputs':IOCard.Outputs}[type]:  # type: ignore 
+            objids=([io.ObjID] if isinstance(io.ObjID,str) else (io.ObjID if io.ObjID is not None else []))
+            for objid in objids:
+                data.append(
+                    models.IODataRecordItem_Model.model_validate(
+                        # upcast to common base class (InputOutputBase_Model), filtering only inherited keys
+                        dict([(k,v) for k,v in io.model_dump().items() if k in models.InputOutputBase_Model.model_fields.keys()])
+                        |
+                        dict(Compulsory=io.Compulsory if type=='Inputs' else False)
+                    )
+                )
+        rec_id = insert_execution_iodata(
+            data=models.IODataRecord_Model(_id=None, Type=type, DataSet=data),
+            current_user=current_user
+        )
+        return rec_id
+
+    inputsId = createIODataSet(workflowDoc=wdoc, type='Inputs', no_onto=wec.no_onto)
+    outputsId = createIODataSet(workflowDoc=wdoc, type='Outputs', no_onto=wec.no_onto)
+
+    ex = models.WorkflowExecution_Model(
+        _id=None,
+        WorkflowID=wec.wid,
+        WorkflowVersion=wdoc.Version,
+        RequestedBy=current_user.mail,
+        CreatedDate=datetime.now(),
+        Inputs=inputsId,
+        Outputs=outputsId,
+        EDMMapping=([] if wec.no_onto else wdoc.EDMMapping),
+    )
+    new_id = insert_execution(data=ex, current_user=current_user)
+    return new_id
 
 
 @app.post("/executions/", tags=["Executions"])
