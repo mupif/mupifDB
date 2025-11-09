@@ -93,8 +93,7 @@ GOOGLE_CLIENT_ID = login_config.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = login_config.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = login_config.get("GOOGLE_REDIRECT_URI", "")
 GOOGLE_DISCOVERY_URL = login_config.get("GOOGLE_DISCOVERY_URL", "")
-AUTH_APP_SECRET_KEY = login_config.get("AUTH_APP_SECRET_KEY", "") or os.urandom(24)
-
+AUTH_APP_SECRET_KEY = login_config.get("AUTH_APP_SECRET_KEY", os.urandom(24).hex())
 path_of_this_file = os.path.dirname(os.path.abspath(__file__))
 
 sys.path.append(path_of_this_file+"/..")
@@ -545,7 +544,7 @@ def addWorkflow(usecaseid):
     fileID = None
     wid = None
     useCase = str(usecaseid)
-    log.info(f"ADDING USECASE (maybe) {request.files=} {request.form=} {admin_rights=}")
+    log.info(f"ADDING WORKFLOW (maybe) {request.files=} {request.form=} {admin_rights=}")
     # request.form is okay from browser, but fails from CURL; so use files which are uploaded instead to detect
     if (request.form or request.files) and admin_rights:
         with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:

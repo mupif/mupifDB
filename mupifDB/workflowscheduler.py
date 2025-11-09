@@ -363,6 +363,7 @@ def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
                 env['PYTHONPATH'] = mupifDBSrcDir
             env['MUPIF_NS'] = ns_uri
             env['MUPIFDB_REST_SERVER_TYPE'] = api_type
+            env['API_CREDENTIALS_FILE'] = os.environ.get('API_CREDENTIALS_FILE', "None")
 
             completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
             workflowLog.write(textwrap.dedent(f'''

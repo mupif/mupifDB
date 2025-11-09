@@ -14,13 +14,13 @@ import Pyro5.errors
 def downloadWorkflowFiles(eid):
     import zipfile
     we_rec = mupifDB.restApiControl.getExecutionRecord(eid)
-    workflowVersion = int(we_rec['WorkflowVersion'])
-    wid = we_rec['WorkflowID']
+    workflowVersion = int(we_rec.WorkflowVersion)
+    wid = we_rec.WorkflowID
     workflow_record = mupifDB.restApiControl.getWorkflowRecord(wid=wid, version=workflowVersion)
 
-    python_script_filename = workflow_record['modulename'] + ".py"
+    python_script_filename = workflow_record.modulename + ".py"
 
-    fc, fn = mupifDB.restApiControl.getBinaryFileByID(workflow_record['GridFSID'])
+    fc, fn = mupifDB.restApiControl.getBinaryFileByID(workflow_record.GridFSID)
     file_path = f'./{fn}'
     with open(file_path, "wb") as f:
         f.write(fc)
@@ -75,11 +75,11 @@ if __name__ == "__main__":
         if args.download:
             downloadWorkflowFiles(weid)
 
-        mupifDB.restApiControl.setExecutionStatus(weid,'Running')
+        mupifDB.restApiControl.setExecutionStatus(weid, 'Running')
         
         # add REST logging handler for this weid, add 'weid' field to every message automatically
         import mupifDB.restLogger
-        log.addHandler(mupifDB.restLogger.RestLogHandler(extraData={'weid':weid}))
+        log.addHandler(mupifDB.restLogger.RestLogHandler(extraData={'weid': weid}))
 
         execution_record = mupifDB.restApiControl.getExecutionRecord(weid)
         if execution_record is None:
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         workflow_record = mupifDB.restApiControl.getWorkflowRecord(execution_record.WorkflowID, execution_record.WorkflowVersion)
         if workflow_record is None:
             log.error("Workflow not found")
-            mupifDB.restApiControl.setExecutionStatus(weid,'Failed')
+            mupifDB.restApiControl.setExecutionStatus(weid, 'Failed')
             sys.exit(1)
 
         #
@@ -101,8 +101,8 @@ if __name__ == "__main__":
         workflow = workflow_class()
         workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record.UseCase, 'Task_ID': execution_record.Task_ID, 'Log_URI': logUri}})
         wfUri = str(daemon.register(workflow))
-        mupifDB.restApiControl.setExecutionParameter(weid,'workflowURI',wfUri)
-        mupifDB.restApiControl.setExecutionParameter(weid,'loggerURI',logUri)
+        mupifDB.restApiControl.setExecutionParameter(weid, 'workflowURI', wfUri)
+        mupifDB.restApiControl.setExecutionParameter(weid, 'loggerURI', logUri)
         mupifDB.workflowmanager.mapInputs(workflow, weid)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, weid, workflow.getExecutionTargetTime())
@@ -110,25 +110,26 @@ if __name__ == "__main__":
 
     except Exception as err:
         log.exception(err)
-        if hasattr(err,'_pyroTraceback'):
+        if hasattr(err, '_pyroTraceback'):
             log.error(''.join(Pyro5.errors.get_pyro_traceback()))
         try:
-            workflow.terminate()
+            if workflow is not None:
+                workflow.terminate()
         except:
             pass
         if type(err) == mp.JobManNoResourcesException:
             log.error('Not enough resources')
-            mupifDB.restApiControl.setExecutionStatusFailed(weid)
+            mupifDB.restApiControl.setExecutionStatusFailed(str(weid))
             sys.exit(2)
-        mupifDB.restApiControl.setExecutionStatus(weid,'Failed')
+        mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
         sys.exit(1)
 
     except:
         log.info("Unknown error")
         if workflow is not None:
             workflow.terminate()
-        mupifDB.restApiControl.setExecutionStatus(weid,'Failed')
+        mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
         sys.exit(1)
 
-    mupifDB.restApiControl.setExecutionStatus(weid,'Finished')
+    mupifDB.restApiControl.setExecutionStatus(weid, 'Finished')
     sys.exit(0)

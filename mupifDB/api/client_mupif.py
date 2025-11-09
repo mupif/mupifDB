@@ -79,11 +79,10 @@ def getAuthToken() -> dict[str,Any] | None:
 
     return bearer_token
 
-def getRequestHeaders() -> dict[str,str]:
-    headers = {
-        'content-type': 'application/json',
-        'Accept-Charset': 'UTF-8',
-    }
+def getRequestHeaders(content_type: str | None = None) -> dict[str,str]:
+    headers = {'Accept-Charset': 'UTF-8'}
+    if content_type is not None:
+        headers['Content-type'] = content_type
     token = getAuthToken()
     if token is not None:
         headers['Authorization'] = f"Bearer {token['access_token']}"
