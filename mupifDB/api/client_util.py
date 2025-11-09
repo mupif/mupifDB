@@ -5,16 +5,11 @@ import logging
 import json
 from typing import TypeVar,Any,Callable,Optional,Dict,List,Literal
 from rich import print_json
-log=logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
-api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
-
-if api_type=='granta':
-    RESTserver = 'https://musicode.grantami.com/musicode/api/'
-else:
-    RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
-    RESTserver = RESTserver.replace('5000', '8005')
+RESTserver = os.environ.get('MUPIFDB_REST_SERVER', "http://127.0.0.1:8005/")
+RESTserver = RESTserver.replace('5000', '8005')
 
 # RESTserver *must* have trailing /, fix if not
 if not RESTserver[-1] == '/':

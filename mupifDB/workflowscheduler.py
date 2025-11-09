@@ -59,8 +59,6 @@ except ImportError:
 
 schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"
 
-api_type = os.environ.get('MUPIFDB_REST_SERVER_TYPE', "mupif")
-
 ns = mp.pyroutil.connectNameserver()
 ns_uri = str(ns._pyroUri)
 
@@ -309,7 +307,7 @@ def executeWorkflow_inner1(we_id: str) -> None:
         log.info("Workflow document with wid %s, id %s, version %s found" % (wid, we_rec.dbID, workflowVersion))
 
     # check if status is "Scheduled"
-    if we_rec.Status == 'Scheduled' or api_type == 'granta':  # todo remove granta
+    if we_rec.Status == 'Scheduled':
         return executeWorkflow_inner2(we_id,we_rec,workflow_record)
     else:
         log.error("WEID %s not scheduled for execution" % we_id)
@@ -362,7 +360,6 @@ def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
             else:
                 env['PYTHONPATH'] = mupifDBSrcDir
             env['MUPIF_NS'] = ns_uri
-            env['MUPIFDB_REST_SERVER_TYPE'] = api_type
             env['API_CREDENTIALS_FILE'] = os.environ.get('API_CREDENTIALS_FILE', "None")
 
             completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
@@ -474,8 +471,6 @@ def checkWorkflowResources(wid, version):
 def checkExecutionResources(eid):
     try:
         log.info("Checking execution resources")
-        if api_type == 'granta':
-            return True  # todo granta temporary
         execution = restApiControl.getExecutionRecord(eid)
         return checkWorkflowResources(execution.WorkflowID, execution.WorkflowVersion)
     except Exception as e:
@@ -531,8 +526,7 @@ def scheduler_schedule_pending(pool):
         if int(wed.Attempts) > 10:
             try:
                 restApiControl.setExecutionStatus(weid,'Created')
-                if api_type != 'granta':
-                    my_email.sendEmailAboutExecutionStatus(weid)
+                my_email.sendEmailAboutExecutionStatus(weid)
             except Exception as e:
                 log.exception('')
         else:
@@ -555,22 +549,20 @@ def scheduler_schedule_pending(pool):
                 log.info(f"WEID {weid} added to the execution pool")
             else:
                 log.info(f"WEID {weid} cannot be scheduled due to unavailable resources")
-                if api_type != 'granta':
-                    try:
-                        we_rec = restApiControl.getExecutionRecord(weid)
-                        restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
-                    except Exception as e:
-                        log.exception('Failure getting execution record (for execution with resources unavailable)')
+                try:
+                    we_rec = restApiControl.getExecutionRecord(weid)
+                    restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
+                except Exception as e:
+                    log.exception('Failure getting execution record (for execution with resources unavailable)')
 
 
     # display progress (consider use of tqdm)
     lt = time.localtime(time.time())
-    if api_type != 'granta':
-        try:
-            stat=SchedulerStat.model_validate(monitor.getStatistics(raw=True))
-            log.info(f'Scheduled/Running/Load: {stat.tasks.scheduled}/{stat.tasks.running}/{stat.load}')
-        except Exception as e:
-            log.exception('')
+    try:
+        stat=SchedulerStat.model_validate(monitor.getStatistics(raw=True))
+        log.info(f'Scheduled/Running/Load: {stat.tasks.scheduled}/{stat.tasks.running}/{stat.load}')
+    except Exception as e:
+        log.exception('')
 
 
 # callbacks for the task pool

@@ -16,11 +16,8 @@ from .. import models
 from rich import print_json
 from rich.pretty import pprint
 
-from .client_util import api_type, NotFoundResponse
+from .client_util import NotFoundResponse
 
-if api_type=='granta':
-    from .client_granta import *
-else:
-    from .client_mupif import *
+from .client_mupif import *
 
 from .client_edm import *

@@ -19,19 +19,19 @@ http://www.mupif.org
 
 *```cd mupifDB/mupifDB/api```*
 
-*```MUPIFDB_REST_SERVER_TYPE=mupif uvicorn main:app --reload --host 127.0.0.1 --port 8005```*
+*```uvicorn main:app --reload --host 127.0.0.1 --port 8005```*
 
 ### WEB interface
 
 *```cd mupifDB/webapi```*
 
-*```MUPIF_NS=127.0.0.1:10000 MUPIFDB_REST_SERVER=http://127.0.0.1:8005 FLASK_APP=index.py MUPIFDB_REST_SERVER_TYPE=mupif python3 -m flask run --host 127.0.0.1 --port 5555```*
+*```MUPIF_NS=127.0.0.1:10000 MUPIFDB_REST_SERVER=http://127.0.0.1:8005 FLASK_APP=index.py python3 -m flask run --host 127.0.0.1 --port 5555```*
 
 ### Workflow execution scheduler
 
 *```cd mupifDB/mupifDB```*
 
-*```MUPIFDB_REST_SERVER=http://127.0.0.1:8005 MUPIFDB_REST_SERVER_TYPE=mupif MUPIF_NS=127.0.0.1:10000 python3 workflowscheduler.py```*
+*```MUPIFDB_REST_SERVER=http://127.0.0.1:8005 MUPIF_NS=127.0.0.1:10000 python3 workflowscheduler.py```*
 
 ### Other
 

@@ -7,20 +7,15 @@ import tempfile
 import re
 from ast import literal_eval
 from mupifDB.api import client
-from mupifDB.api.client_util import api_type
-if api_type=='granta':
-    from mupifDB.api import client_granta
 import Pyro5, Pyro5.api
 import mupif
 import mupif.pyroutil
 import logging
 
-
 from mupifDB import models
 import pydantic
 from typing import Literal,Any,List
 
-from mupifDB.api.client_util import api_type
 
 log = logging.getLogger()
 
@@ -218,10 +213,6 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
         inp_record = client.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
         inp_record = client.getExecutionInputRecordItem(eid, name, obj_id)
-
-    ## FIXME: wrap this
-    # if False and api_type == 'granta':
-    #    inp_record = client_granta._getGrantaExecutionInputItem(eid, name)
 
     op = inp_record.EDMPath
     if op is not None:
@@ -473,8 +464,6 @@ def mapInputs(app, eid):
     execution = client.getExecutionRecord(eid)
     workflow = client.getWorkflowRecord(execution.WorkflowID, execution.WorkflowVersion)
     workflow_input_templates = workflow.IOCard.Inputs
-    #if api_type == 'granta':
-    #    workflow_input_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Inputs)
 
     for input_template in workflow_input_templates:
         print("Mapping input " + str(input_template))
@@ -748,116 +737,8 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
         raise ValueError(f'Handling of io param of type {object_type} not implemented' % object_type)
 
 
-def _getGrantaOutput(app, eid, name, obj_id, data_id, time, object_type):
-    if object_type == 'mupif.Property':
-        prop = app.get(mupif.DataID[data_id], time, obj_id)
-        if prop.valueType == mupif.ValueType.Scalar:
-            return {
-                "name": str(name),
-                "value": prop.quantity.value.tolist(),
-                "type": "float"
-            }
-
-    elif object_type == 'mupif.String':
-        string = app.get(mupif.DataID[data_id], time, obj_id)
-        return {
-            "name": str(name),
-            "value": prop.getValue(),
-            "type": "str"
-        }
-
-    if object_type == 'mupif.HeavyStruct':
-        hs = app.get(mupif.DataID[data_id], time, obj_id)
-        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-            full_path = tempDir + "/file.h5"
-            if isinstance(hs, Pyro5.api.Proxy):
-                hs = hs.copyRemote()
-            hs_copy = hs.deepcopy()
-            hs_copy.moveStorage(full_path)
-            fileID = None
-            with open(full_path, 'rb') as f:
-                fileID = client.uploadBinaryFile(f)
-                f.close()
-            if fileID is None:
-                print("hdf5 file was not saved")
-            else:
-                return {
-                    "name": str(name),
-                    "value": {
-                        "url": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
-                        "description": None
-                    },
-                    "type": "hyperlink"
-                }
-
-    elif object_type == 'mupif.Field':
-        field = app.get(mupif.DataID[data_id], time, obj_id)
-        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-            full_path = tempDir + "/file.h5"
-            field.toHdf5(fileName=full_path)
-            fileID = None
-            with open(full_path, 'rb') as f:
-                fileID = client.uploadBinaryFile(f)
-                f.close()
-            if fileID is None:
-                print("hdf5 file was not saved")
-            else:
-                return {
-                    "name": str(name),
-                    "value": {
-                        "url": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
-                        "description": None
-                    },
-                    "type": "hyperlink"
-                }
-
-    elif object_type == 'mupif.PyroFile':
-        pf = app.get(mupif.DataID[data_id], time, obj_id)
-        fn = pf.getBasename()
-        with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
-            full_path = tempDir + "/" + fn
-            mupif.PyroFile.copy(pf, full_path)
-            fileID = None
-            with open(full_path, 'rb') as f:
-                fileID = client.uploadBinaryFile(f)
-                f.close()
-            if fileID is None:
-                print("hdf5 file was not saved")
-            else:
-                return {
-                    "name": str(name),
-                    "value": {
-                        "url": "https://musicode.grantami.com/musicode/filestore/%s" % str(fileID),
-                        "description": None
-                    },
-                    "type": "hyperlink"
-                }
-
-    elif object_type == 'mupif.Function':
-        obj = app.get(mupif.DataID[data_id], time, obj_id)
-        return {
-            "name": str(name),
-            "value": {"x": list(obj.x.value), "y": list(obj.y.value)},
-            "type": "series",
-            "unit": str(obj.unit)
-        }
-
-    return None
-
-
 def mapOutputs(app, eid, time):
-    execution = client.getExecutionRecord(eid)
-    workflow = client.getWorkflowRecord(execution.WorkflowID, execution.WorkflowVersion)
-    workflow_output_templates = workflow.IOCard.Outputs
-    #if api_type == 'granta':
-    #    workflow_output_templates = client_granta._getGrantaWorkflowMetadataFromDatabase(execution.WorkflowID.Outputs)
-
-    granta_output_data = []
-
     outputs = client.getExecutionOutputRecord(eid)
-    #if api_type == 'granta':
-    #    outputs = workflow_output_templates
-
     createOutputEDMMappingObjects(app=app, eid=eid, outputs=outputs)
     execution = client.getExecutionRecord(eid)
 
@@ -877,43 +758,26 @@ def mapOutputs(app, eid, time):
             objID = [objID]
 
         for oid in objID:
-            if api_type == 'granta':
-                output = client_granta._getGrantaOutput(
-                    app=app,
-                    eid=eid,
-                    name=name,
-                    obj_id=oid,
-                    data_id=typeID,
-                    time=time,
-                    object_type=object_type
-                )
-                if output is not None:
-                    granta_output_data.append(output)
-            else:
-                edmlist = False
-                edmpath = outitem.EDMPath
-                edm_base_objects = execution.EDMMapping
-                if edmpath is not None:
-                    splitted = edmpath.split('.', 1)
-                    base_object_name = splitted[0]
-                    for i in edm_base_objects:
-                        if i.Name == base_object_name:
-                            edmlist = i.EDMList
-                            break
+            edmlist = False
+            edmpath = outitem.EDMPath
+            edm_base_objects = execution.EDMMapping
+            if edmpath is not None:
+                splitted = edmpath.split('.', 1)
+                base_object_name = splitted[0]
+                for i in edm_base_objects:
+                    if i.Name == base_object_name:
+                        edmlist = i.EDMList
+                        break
 
-                mapOutput(
-                    app=app,
-                    eid=eid,
-                    name=name,
-                    obj_id=oid,
-                    data_id=typeID,
-                    time=time,
-                    object_type=object_type,
-                    onto_path=edmpath,
-                    onto_base_objects=edm_base_objects,
-                    edm_list=edmlist  # outitem.get('EDMList', False)
-                )
-
-    if api_type == 'granta':
-        client_granta._setGrantaExecutionResults(eid, granta_output_data)
-
+            mapOutput(
+                app=app,
+                eid=eid,
+                name=name,
+                obj_id=oid,
+                data_id=typeID,
+                time=time,
+                object_type=object_type,
+                onto_path=edmpath,
+                onto_base_objects=edm_base_objects,
+                edm_list=edmlist  # outitem.get('EDMList', False)
+            )
