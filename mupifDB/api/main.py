@@ -1513,7 +1513,8 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
 
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
 def ui():
-    f = open('../UI/index.html', 'r')
+    # f = open('../UI/index.html', 'r')
+    f = open('../../../mupifWeb/index.html', 'r')
     content = f.read()
     f.close()
     return HTMLResponse(content=content, status_code=200)
@@ -1534,11 +1535,11 @@ ALLOWED_FILES = [
 
 @app.get("/UI/{file_path:path}", tags=["User Interface"])
 def get_ui_file(file_path: str):
-    # ⚠️ Security check for directory traversal
+    # Security check for directory traversal
     if '..' in file_path or file_path.startswith('/'):
         return Response(status_code=403) # Forbidden
 
-    full_path = os.path.join('../UI', file_path)
+    full_path = os.path.join('../../../mupifWeb', file_path)
     file_name = os.path.basename(file_path)
     if file_name not in ALLOWED_FILES:
         return ui()
@@ -1546,7 +1547,7 @@ def get_ui_file(file_path: str):
     # 1. Check if the file exists
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
         print(f"{file_path} not found")
-        return Response(status_code=404) # Not Found
+        return Response(status_code=404)
 
     # 2. Determine the file extension and MIME type
     file_ext = os.path.splitext(file_path)[1].lower()
