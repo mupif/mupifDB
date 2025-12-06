@@ -15,7 +15,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
 from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
 from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
@@ -753,7 +753,6 @@ async def upload_workflow_and_dependencies(
     """
     Endpoint to upload a main workflow file and multiple additional dependency files.
     """
-    # NOTE: Assuming only admin or specific user can upload, adjust the check below:
     if not current_user.rights_admin:
         raise HTTPException(status_code=403, detail="You don't have permission to perform this action.")
 
@@ -972,6 +971,23 @@ def get_executions(
 def get_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
+    inputsId = res.get('Inputs', None)
+    outputsId = res.get('Outputs', None)
+    if inputsId is not None:
+        try:
+            res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(inputsId)})
+            if res_io is not None:
+                res['InputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+        except Exception as e:
+            print(e)
+    if outputsId is not None:
+        try:
+            res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(outputsId)})
+            if res_io is not None:
+                res['OutputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+        except Exception as e:
+            print(e)
+
     return perms.ensure(models.WorkflowExecution_Model.model_validate(res))
 
 # FIXME: how is this different from get_execution??
@@ -1495,28 +1511,6 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
     return mp.monitor.jobmanInfo(ns)
 
 
-# @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
-# def ui():
-#     f = open('../ui/app.html', 'r')
-#     content = f.read()
-#     f.close()
-#     return HTMLResponse(content=content, status_code=200)
-
-
-# @app.get("/UI/{file_path:path}", tags=["User Interface"])
-# def get_ui_file(file_path: str):
-#     try:
-#         if file_path.find('..') == -1:
-#             f = open('../ui/'+file_path, 'r')
-#             content = f.read()
-#             f.close()
-#             return HTMLResponse(content=content, status_code=200)
-#     except:
-#         pass
-#     print(file_path + " not found")
-#     return None
-
-
 @app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
 def ui():
     f = open('../UI/index.html', 'r')
@@ -1525,18 +1519,51 @@ def ui():
     return HTMLResponse(content=content, status_code=200)
 
 
+MIME_TYPES = {
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+}
+
+ALLOWED_FILES = [
+    'bundle.js'
+]
+
 @app.get("/UI/{file_path:path}", tags=["User Interface"])
 def get_ui_file(file_path: str):
+    # ⚠️ Security check for directory traversal
+    if '..' in file_path or file_path.startswith('/'):
+        return Response(status_code=403) # Forbidden
+
+    full_path = os.path.join('../UI', file_path)
+    file_name = os.path.basename(file_path)
+    if file_name not in ALLOWED_FILES:
+        return ui()
+    
+    # 1. Check if the file exists
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        print(f"{file_path} not found")
+        return Response(status_code=404) # Not Found
+
+    # 2. Determine the file extension and MIME type
+    file_ext = os.path.splitext(file_path)[1].lower()
+    media_type = MIME_TYPES.get(file_ext, "application/octet-stream") # Default to generic binary type
+    
+    # Use HTMLResponse if it's explicitly HTML, otherwise use PlainTextResponse/Response
     try:
-        if file_path.find('..') == -1:
-            f = open('../UI/'+file_path, 'r')
+        with open(full_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            f.close()
-            return HTMLResponse(content=content, status_code=200)
-    except:
-        pass
-    print(file_path + " not found")
-    return None
+
+        # 3. Return the response with the correct media_type
+        # Use PlainTextResponse for text-based files like JS, CSS, HTML
+        return PlainTextResponse(content=content, media_type=media_type, status_code=200)
+
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}")
+        return Response(status_code=500)
 
 
 class M_FindParams(BaseModel):
