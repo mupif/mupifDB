@@ -44,3 +44,4 @@ sphinxcontrib-openapi
 sphinx-rtd-theme
 myst-nb
 python-jose
+passlib
