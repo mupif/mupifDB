@@ -481,8 +481,19 @@ tags_metadata = [
     },
 ]
 
+servers_list = [
+    {
+        "url": "https://test.mupif.org/api", 
+        "description": "Test API"
+    },
+]
 
-app = FastAPI(openapi_tags=tags_metadata)
+
+app = FastAPI(
+    openapi_tags=tags_metadata,
+    # root_path="/api",
+    servers=servers_list,
+)
 
 
 @app.exception_handler(fastapi.exceptions.RequestValidationError)
