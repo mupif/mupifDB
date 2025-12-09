@@ -1584,7 +1584,7 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
     return mp.monitor.jobmanInfo(ns)
 
 
-@app.get("/UI/", response_class=HTMLResponse, tags=["User Interface"])
+@app.get("/UI", response_class=HTMLResponse, tags=["User Interface"])
 def ui():
     # f = open('../UI/index.html', 'r')
     f = open('../../../mupifWeb/index.html', 'r')
