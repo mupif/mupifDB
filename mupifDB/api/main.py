@@ -493,7 +493,7 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     # root_path="/api",
     servers=servers_list,
-    openapi_url="/api/openapi.json"
+    # openapi_url="/api/openapi.json"
 )
 
 
