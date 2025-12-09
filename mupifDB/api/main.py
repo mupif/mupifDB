@@ -450,6 +450,9 @@ tags_metadata = [
         "name": "Authentication",
     },
     {
+        "name": "Users",
+    },
+    {
         "name": "Usecases",
     },
     {
@@ -612,6 +615,64 @@ async def read_current_user(current_user: User_Model = Depends(get_current_authe
     user_dict.pop('_id', None)
     return user_dict
 
+
+# --------------------------------------------------
+# Users
+# --------------------------------------------------
+
+@app.get("/users", tags=["Users"])
+def get_users(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[User_Model]:
+    if not current_user.rights_admin:
+        raise ForbiddenError("Only admin users can access the list of users.")
+    res = db.user.find()
+    users = [User_Model.model_validate(r) for r in res]
+    for user in users:
+        user.password = "********"  # Mask password
+    return users
+
+@app.get("/users/{user_id}", tags=["Users"])
+def get_user(user_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> User_Model:
+    if not current_user.rights_admin and str(current_user.id) != user_id:
+        raise ForbiddenError("Only admin users or the user themselves can access user details.")
+    res = db.user.find_one({"_id": bson.objectid.ObjectId(user_id)})
+    if res is None:
+        raise NotFoundError(f'User with id={user_id} not found.')
+    user = User_Model.model_validate(res)
+    user.password = "********"  # Mask password
+    return user
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = None
+    # name: Optional[str] = None
+    # surname: Optional[str] = None
+    # mail: Optional[str] = None
+
+@app.patch("/users/{user_id}", tags=["Users"])
+def update_user(user_id: str, user_update: UserUpdate, current_user: User_Model = Depends(get_current_authenticated_user)) -> User_Model:
+    if not current_user.rights_admin and str(current_user.id) != user_id:
+        raise ForbiddenError("Only admin users or the user themselves can update user details.")
+    
+    update_data = user_update.model_dump(exclude_unset=True)
+    
+    if 'password' in update_data:
+        if update_data['password'] is None:
+            del update_data['password']
+        if len(update_data['password']) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long.")
+        update_data['password'] = get_password_hash(update_data['password'])
+    
+    updated_user_doc = db.user.find_one_and_update(
+        {"_id": bson.objectid.ObjectId(user_id)},
+        {"$set": update_data},
+        return_document=ReturnDocument.AFTER
+    )
+    
+    if updated_user_doc is None:
+        raise NotFoundError(f'User with id={user_id} not found.')
+    
+    updated_user = User_Model.model_validate(updated_user_doc)
+    updated_user.password = "********"  # Mask password
+    return updated_user
 
 # --------------------------------------------------
 # Default
