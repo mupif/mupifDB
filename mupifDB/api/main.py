@@ -1012,7 +1012,7 @@ def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model 
 # Executions
 # --------------------------------------------------
 
-@app.get("/executions/", tags=["Executions"])
+@app.get("/executions", tags=["Executions"])
 def get_executions(
     status: str = "", 
     workflow_version: int = 0, 
@@ -1080,7 +1080,7 @@ def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['
     return []
 
 
-@app.post("/executions/create/", tags=["Executions"])
+@app.post("/executions/create", tags=["Executions"])
 def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.TODO(wec)
 
@@ -1125,7 +1125,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
     return new_id
 
 
-@app.post("/executions/", tags=["Executions"])
+@app.post("/executions", tags=["Executions"])
 def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.ensure(data,perm='child',on='parent')
     res = db.WorkflowExecutions.insert_one(data.model_dump_db())
@@ -1141,7 +1141,7 @@ def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_curren
     return []
 
 
-@app.get("/executions/{uid}/outputs/", tags=["Executions"])
+@app.get("/executions/{uid}/outputs", tags=["Executions"])
 def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
     ex = get_execution(uid, current_user=current_user)
     if ex.Outputs:
