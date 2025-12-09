@@ -494,7 +494,7 @@ servers_list = [
 
 app = FastAPI(
     openapi_tags=tags_metadata,
-    # root_path="/api",
+    root_path="/api",
     servers=servers_list,
     # openapi_url="/api/openapi.json"
 )
