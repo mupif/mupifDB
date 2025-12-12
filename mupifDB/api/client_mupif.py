@@ -94,10 +94,10 @@ def getRequestHeaders(content_type: str | None = None) -> dict[str,str]:
 # --------------------------------------------------
 
 def getUsecaseRecords():
-    return [models.UseCase_Model.model_validate(rec) for rec in rGet("api/usecases", headers=getRequestHeaders())]
+    return [models.UseCase_Model.model_validate(rec) for rec in rGet("api/usecases", headers=getRequestHeaders())['collection']]
 
 def getUsecaseRecord(ucid):
-    return rGet(f"api/usecases/{ucid}", headers=getRequestHeaders())
+    return rGet(f"api/usecases/{ucid}", headers=getRequestHeaders())['entity']
 
 def insertUsecaseRecord(ucid, description):
     return rPost("api/usecases/", data=json.dumps({"ucid": ucid, "Description": description}), headers=getRequestHeaders())
@@ -108,18 +108,18 @@ def insertUsecaseRecord(ucid, description):
 # --------------------------------------------------
 
 def getWorkflowRecords() -> List[models.Workflow_Model]:
-    return [models.Workflow_Model.model_validate(record) for record in rGet("workflows", headers=getRequestHeaders())]
+    return [models.Workflow_Model.model_validate(record) for record in rGet("workflows", headers=getRequestHeaders())['collection']]
 
 def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
-    return [models.Workflow_Model.model_validate(record) for record in rGet(f"usecases/{usecase}/workflows", headers=getRequestHeaders())]
+    return [models.Workflow_Model.model_validate(record) for record in rGet(f"usecases/{usecase}/workflows", headers=getRequestHeaders())['collection']]
 
 pydantic.validate_call(validate_return=True)
 def getWorkflowRecord(wid, version: int) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}/version/{version}", headers=getRequestHeaders()))
+    return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}/version/{version}", headers=getRequestHeaders())['entity'])
 
 pydantic.validate_call(validate_return=True)  # todo delete
 def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json(), headers=getRequestHeaders()))
+    return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json(), headers=getRequestHeaders())['entity'])
 
 def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
     files = {}
@@ -176,12 +176,12 @@ def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=N
     if workflow_version is not None and workflow_version<0: workflow_version=None
     for n,a in [('num_limit',num_limit),('label',label),('workflow_id',workflow_id),('workflow_version',workflow_version),('status',status)]:
         if a is not None: query += f"&{n}={str(a)}"
-    return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)]
+    return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)['collection']]
 
 
 pydantic.validate_call(validate_return=True)
 def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
-    return models.WorkflowExecution_Model.model_validate(rGet(f"executions/{weid}", headers=getRequestHeaders()))
+    return models.WorkflowExecution_Model.model_validate(rGet(f"executions/{weid}", headers=getRequestHeaders())['entity'])
 
 def getScheduledExecutions(num_limit: int|None=None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)

@@ -252,3 +252,39 @@ class MupifDBStatus_Model(StrictBase):
 
 #{'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
 # {'mupifDBStatus': mupifDBStatus, 'schedulerStatus': schedulerStatus, 'totalStat': stat, 'schedulerStat': schedulerstat}
+
+
+# ------------------------------
+# API models
+
+class Pagination_Model(StrictBase):
+    page: int
+    pageSize: int
+    totalCount: int
+
+# Usecases
+
+class UsecaseEntityResponse(BaseModel):
+    entity: UseCase_Model
+
+class UsecaseCollectionResponse(BaseModel):
+    collection: List[UseCase_Model]
+    pagination: Pagination_Model
+
+# Workflows
+
+class WorkflowEntityResponse(BaseModel):
+    entity: Workflow_Model
+
+class WorkflowCollectionResponse(BaseModel):
+    collection: List[Workflow_Model]
+    pagination: Pagination_Model
+
+# Executions
+
+class ExecutionEntityResponse(BaseModel):
+    entity: WorkflowExecution_Model
+
+class ExecutionCollectionResponse(BaseModel):
+    collection: List[WorkflowExecution_Model]
+    pagination: Pagination_Model

@@ -674,6 +674,7 @@ def update_user(user_id: str, user_update: UserUpdate, current_user: User_Model 
     updated_user.password = "********"  # Mask password
     return updated_user
 
+
 # --------------------------------------------------
 # Default
 # --------------------------------------------------
@@ -687,23 +688,75 @@ def read_root():
 # Usecases
 # --------------------------------------------------
 
-@app.get("/usecases", tags=["Usecases"])
-def get_usecases(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.UseCase_Model]:
-    res = db.UseCases.find()
-    return perms.filterSelfRead([m:=models.UseCase_Model.model_validate(r) for r in res])
+@app.get("/usecases", tags=["Usecases"], response_model=models.UsecaseCollectionResponse)
+def get_usecases(
+    page: int = 1,
+    pageSize: int = 20,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.UsecaseCollectionResponse:
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+    filtering = {}
+    skip = (page - 1) * pageSize
+    
+    res = (
+        db.UseCases.find(filtering)
+        .sort('_id', 1)
+        .skip(skip)
+        .limit(pageSize)
+    )
+    
+    total_count = db.UseCases.count_documents(filtering)
+    
+    return models.UsecaseCollectionResponse(
+        collection=perms.filterSelfRead([models.UseCase_Model.model_validate(r) for r in res]),
+        pagination = models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
 
 
-@app.get("/usecases/{uid}", tags=["Usecases"])
-def get_usecase(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.UseCase_Model:
+@app.get("/usecases/{uid}", tags=["Usecases"], response_model=models.UsecaseEntityResponse)
+def get_usecase(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.UsecaseEntityResponse:
     res = db.UseCases.find_one({"ucid": uid})
     if res is None: raise NotFoundError(f'Database reports no workflow with ucid={uid}.')
-    return perms.ensure(models.UseCase_Model.model_validate(res))
+    return models.UsecaseEntityResponse(entity=perms.ensure(models.UseCase_Model.model_validate(res)))
 
-
-@app.get("/usecases/{uid}/workflows", tags=["Usecases"])
-def get_usecase_workflows(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.Workflow_Model]:
-    res = db.Workflows.find({"UseCase": uid})
-    return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
+@app.get("/usecases/{uid}/workflows", tags=["Usecases"], response_model=models.WorkflowCollectionResponse)
+def get_usecase_workflows(
+    uid: str,
+    page: int = 1,
+    pageSize: int = 20,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.WorkflowCollectionResponse:
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+    filtering = {"UseCase": uid}
+    skip = (page - 1) * pageSize
+    
+    res = (
+        db.Workflows.find(filtering)
+        .sort('_id', 1)
+        .skip(skip)
+        .limit(pageSize)
+    )
+    
+    total_count = db.Workflows.count_documents(filtering)
+    
+    return models.WorkflowCollectionResponse(
+        collection=perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res]),
+        pagination = models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
 
 
 @app.post("/usecases", tags=["Usecases"])
@@ -717,11 +770,36 @@ def post_usecase(uc: models.UseCase_Model, current_user: User_Model = Depends(ge
 # Workflows
 # --------------------------------------------------
 
-@app.get("/workflows", tags=["Workflows"])
-def get_workflows(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.Workflow_Model]:
-    res = db.Workflows.find()
-    return perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res])
-
+@app.get("/workflows", tags=["Workflows"], response_model=models.WorkflowCollectionResponse)
+def get_workflows(
+    page: int = 1,
+    pageSize: int = 20,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.WorkflowCollectionResponse:
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+    filtering = {}
+    skip = (page - 1) * pageSize
+    
+    res = (
+        db.Workflows.find(filtering)
+        .sort('_id', 1) 
+        .skip(skip)
+        .limit(pageSize)
+    )
+    
+    total_count = db.Workflows.count_documents(filtering)
+    
+    return models.WorkflowCollectionResponse(
+        collection=perms.filterSelfRead([models.Workflow_Model.model_validate(r) for r in res]),
+        pagination = models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -958,8 +1036,8 @@ async def upload_workflow_and_dependencies(
         raise HTTPException(status_code=500, detail=f"Internal server error during workflow upload: {e}")
 
 
-@app.get("/workflows/{workflow_id}", tags=["Workflows"])
-def get_workflow(workflow_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
+@app.get("/workflows/{workflow_id}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+def get_workflow(workflow_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
     return get_workflow_by_version(workflow_id, -1)
 
 
@@ -975,15 +1053,15 @@ def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> m
     return perms.ensure(models.Workflow_Model.model_validate(res))
 
 
-@app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"])
-def get_workflow_by_version(workflow_id: str, workflow_version: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
+@app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+def get_workflow_by_version(workflow_id: str, workflow_version: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
     res = get_workflow_by_version_inside(workflow_id, workflow_version)
     if res is None:
         raise NotFoundError(f'Database reports no workflow with wid={workflow_id} and Version={workflow_version}.')
-    return res
+    return models.WorkflowEntityResponse(entity=res)
 
 
-@app.patch("/workflows/", tags=["Workflows"])
+@app.patch("/workflows", tags=["Workflows"])
 def update_workflow(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
     perms.ensure(wf,perm='modify')
     # don't write the result if the result after the update does not validate
@@ -994,14 +1072,14 @@ def update_workflow(wf: models.Workflow_Model, current_user: User_Model = Depend
         return models.Workflow_Model.model_validate(res)
 
 
-@app.post("/workflows/", tags=["Workflows"])
+@app.post("/workflows", tags=["Workflows"])
 def insert_workflow(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.Workflows.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
 
-@app.post("/workflows_history/", tags=["Workflows"])
+@app.post("/workflows_history", tags=["Workflows"])
 def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
@@ -1012,15 +1090,27 @@ def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model 
 # Executions
 # --------------------------------------------------
 
-@app.get("/executions", tags=["Executions"])
+@app.get("/executions", tags=["Executions"], response_model=models.ExecutionCollectionResponse)
 def get_executions(
     status: str = "", 
     workflow_version: int = 0, 
     workflow_id: str = "", 
-    num_limit: int = 0, 
+    num_limit: Optional[int] = None,  # Deprecated attribute: maximum number of items to return
     label: str = "",
+    page: int = 1,
+    pageSize: int = 20,
     current_user: User_Model = Depends(get_current_authenticated_user)
-) -> List[models.WorkflowExecution_Model]:
+) -> models.ExecutionCollectionResponse:
+        
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+
+    if num_limit is not None:
+        log.warning("The 'num_limit' parameter is deprecated. Please use 'pageSize' instead.")
+        pageSize = num_limit
+        
     output = []
     filtering = {}
     if status:
@@ -1031,17 +1121,27 @@ def get_executions(
         filtering["WorkflowID"] = workflow_id
     if label:
         filtering["label"] = label
-    if num_limit == 0:
-        num_limit = 999999
-    #print(200*'!')
-    #pprint(filtering)
-    res = db.WorkflowExecutions.find(filtering).sort('SubmittedDate', 1).limit(num_limit)
-    # pprint(res)
-    return perms.filterSelfRead([models.WorkflowExecution_Model.model_validate(r) for r in res])
+        
+    skip = (page - 1) * pageSize
+    
+    res = (
+        db.WorkflowExecutions.find(filtering)
+        .sort('SubmittedDate', 1)
+        .skip(skip)
+        .limit(pageSize)
+    )
+    
+    return models.ExecutionCollectionResponse(
+        collection=perms.filterSelfRead([models.WorkflowExecution_Model.model_validate(r) for r in res]),
+        pagination = models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=db.WorkflowExecutions.count_documents(filtering)
+        )
+    )
 
-
-@app.get("/executions/{uid}", tags=["Executions"])
-def get_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
+@app.get("/executions/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
+def get_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
     inputsId = res.get('Inputs', None)
@@ -1060,20 +1160,19 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
                 res['OutputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
         except Exception as e:
             print(e)
-
-    return perms.ensure(models.WorkflowExecution_Model.model_validate(res))
+    return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
 
 # FIXME: how is this different from get_execution??
-@app.get("/edm_execution/{uid}", tags=["Executions"])
-def get_edm_execution_uid(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
+@app.get("/edm_execution/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
+def get_edm_execution_uid(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     return get_execution(uid, current_user=current_user)
 
 @app.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
 def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['input','output'], current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
-    obj=get_edm_execution_uid(uid, current_user=current_user) # handles perms
+    obj = get_edm_execution_uid(uid, current_user=current_user).entity # handles perms
     for m in obj.EDMMapping:
-        T='input' if (m.createFrom or m.createNew) else 'output'
-        if T==iotype and m.EDMEntity==entity:
+        T = 'input' if (m.createFrom or m.createNew) else 'output'
+        if T == iotype and m.EDMEntity==entity:
             if m.id is not None: return [m.id]
             elif m.ids is not None: return m.ids
             else: return []
@@ -1084,7 +1183,7 @@ def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['
 def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.TODO(wec)
 
-    wdoc = get_workflow_by_version(workflow_id=wec.wid, workflow_version=wec.version, current_user=current_user)
+    wdoc = get_workflow_by_version(workflow_id=wec.wid, workflow_version=wec.version, current_user=current_user).entity
 
     @pydantic.validate_call(validate_return=True)
     def createIODataSet(workflowDoc: models.Workflow_Model, type: Literal['Inputs','Outputs'], no_onto=False):
@@ -1133,7 +1232,7 @@ def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Mo
 
 @app.get("/executions/{uid}/inputs/", tags=["Executions"])
 def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
-    ex = get_execution(uid, current_user=current_user) # checks perms already
+    ex = get_execution(uid, current_user=current_user).entity # checks perms already
     if ex.Inputs: 
         res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs)})
         if res is None: raise NotFoundError(f'Database reports no IOData with uid={ex.Inputs}.')
@@ -1143,7 +1242,7 @@ def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_curren
 
 @app.get("/executions/{uid}/outputs", tags=["Executions"])
 def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
-    ex = get_execution(uid, current_user=current_user)
+    ex = get_execution(uid, current_user=current_user).entity # checks perms already
     if ex.Outputs:
         res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Outputs)})
         if res is None: raise NotFoundError(f'Database reports no IOData with uid={ex.Outputs}.')
@@ -1152,7 +1251,7 @@ def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_curre
 
 @app.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
 def get_execution_livelog(uid: str, num: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
-    ex = get_execution(uid, current_user=current_user)
+    ex = get_execution(uid, current_user=current_user).entity
     if ex.loggerURI is not None:
         import Pyro5.api
         import serpent
@@ -1169,7 +1268,7 @@ def get_execution_livelog(uid: str, num: int, current_user: User_Model = Depends
 
 
 def get_execution_io_item(uid: str, name, obj_id: str, inputs: bool, current_user: User_Model) -> models.IODataRecordItem_Model:
-    ex = get_execution(uid, current_user=current_user)
+    ex = get_execution(uid, current_user=current_user).entity
     data_id = ex.Inputs if inputs else ex.Outputs
     res = db.IOData.find_one({'_id': bson.objectid.ObjectId(data_id)})
     if res is None: raise NotFoundError(f'Database reports no IOData with uid={data_id}.')
@@ -1208,7 +1307,7 @@ class M_IODataSetContainer(BaseModel):
 
 # FIXME: validation
 def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_container: M_IODataSetContainer, current_user: User_Model):
-    we = get_execution(uid, current_user=current_user)
+    we = get_execution(uid, current_user=current_user).entity
     perms.ensure(we,perm='modify',on='self')
     if (we.Status == 'Created' and inputs==True) or (we.Status == 'Running' and inputs==False):
         with db_transaction() as session:
@@ -1249,8 +1348,8 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     name: str
     value: str
 
-@app.patch("/executions/{uid}/set_onto_base_object_id/", tags=["Executions"])
-def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user)):
+@app.patch("/executions/{uid}/set_onto_base_object_id", tags=["Executions"], response_model=models.ExecutionEntityResponse)
+def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     perms.TODO()
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}}, return_document=ReturnDocument.AFTER, session=session)
@@ -1261,7 +1360,7 @@ def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, curre
 class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
     data: list[dict]
 
-@app.patch("/executions/{uid}/set_onto_base_object_id_multiple/", tags=["Executions"])
+@app.patch("/executions/{uid}/set_onto_base_object_id_multiple", tags=["Executions"])
 def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user)):
     for d in data: modify_execution_id(uid,d, current_user=current_user)
     return get_execution(uid, current_user=current_user)
@@ -1270,7 +1369,7 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
     name: str
     value: list[str]
 
-@app.patch("/executions/{uid}/set_onto_base_object_ids/", tags=["Executions"])
+@app.patch("/executions/{uid}/set_onto_base_object_ids", tags=["Executions"])
 def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user)):
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}}, return_document=ReturnDocument.AFTER, session=session)
@@ -1295,7 +1394,7 @@ def modify_execution(uid: str, data: M_ModifyExecution, current_user: User_Model
 
 @app.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)):
-    execution_record = perms.ensure(get_execution(uid, current_user=current_user),perm='modify')
+    execution_record = perms.ensure(get_execution(uid, current_user=current_user).entity, perm='modify')
     if execution_record.Status == 'Created' or True:
         data = type('', (), {})()
         mod=M_ModifyExecution(key = "Status",value = "Pending")
@@ -1314,7 +1413,7 @@ def get_execution_iodata(uid: str, current_user: User_Model = Depends(get_curren
     return perms.ensure(models.IODataRecord_Model.model_validate(res))
 
 # TODO: pass and store parent data as well
-@app.post("/iodata/", tags=["IOData"])
+@app.post("/iodata", tags=["IOData"])
 def insert_execution_iodata(data: models.IODataRecord_Model, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.ensure(data,perm='child',on='parent')
     res = db.IOData.insert_one(data.model_dump_db())
@@ -1351,7 +1450,7 @@ def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = De
     return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
 
 # TODO: needs parent as parameter, so that perms can be checked
-@app.post("/file/", tags=["Files"])
+@app.post("/file", tags=["Files"])
 def upload_file(file: UploadFile, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.TODO()
     if file:
@@ -1361,7 +1460,7 @@ def upload_file(file: UploadFile, current_user: User_Model = Depends(get_current
     return None
 
 
-@app.get("/property_array_data/{fid}/{i_start}/{i_count}/", tags=["Additional"])
+@app.get("/property_array_data/{fid}/{i_start}/{i_count}", tags=["Additional"])
 def get_property_array_data(fid: str, i_start: int, i_count: int, current_user: User_Model = Depends(get_current_authenticated_user)):
     # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid) # checks perms
@@ -1400,7 +1499,7 @@ def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir), current_user: User_Mo
 # Stats
 # --------------------------------------------------
 
-@app.post("/logs/", tags=["Logs"])
+@app.post("/logs", tags=["Logs"])
 def insert_log(data: dict, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.notRemote(request,'inserting logging data')
     res = db.Logs.insert_one(data)
@@ -1411,7 +1510,7 @@ def insert_log(data: dict, request: Request, current_user: User_Model = Depends(
 # Stats
 # --------------------------------------------------
 
-@app.get("/status/", tags=["Stats"])
+@app.get("/status", tags=["Stats"])
 def get_status(current_user: User_Model = Depends(get_current_authenticated_user)):
     mupifDBStatus = 'OK'
     schedulerStatus = 'OK'
@@ -1439,7 +1538,7 @@ def get_status(current_user: User_Model = Depends(get_current_authenticated_user
     )
 
 
-@app.get("/execution_statistics/", tags=["Stats"])
+@app.get("/execution_statistics", tags=["Stats"])
 def get_execution_statistics(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
     res = client.MuPIF.WorkflowExecutions.aggregate([
         {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
@@ -1461,7 +1560,7 @@ def get_execution_statistics(current_user: User_Model = Depends(get_current_auth
     )
 
 
-@app.get("/settings/", tags=["Settings"])
+@app.get("/settings", tags=["Settings"])
 def get_settings(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Settings
     for s in table.find():
@@ -1506,7 +1605,7 @@ def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
 
 
 
-@app.get("/scheduler_statistics/", tags=["Stats"])
+@app.get("/scheduler_statistics", tags=["Stats"])
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Stat
     output = {}
@@ -1524,7 +1623,7 @@ class M_ModifyStatistics(BaseModel):
     value: int
 
 
-@app.patch("/scheduler_statistics/", tags=["Stats"])
+@app.patch("/scheduler_statistics", tags=["Stats"])
 def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.notRemote(request,'modifying scheduler statistics')
     if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
@@ -1533,7 +1632,7 @@ def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current
     return False
 
 
-@app.get("/status2/", tags=["Stats"])
+@app.get("/status2", tags=["Stats"])
 def get_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = None
     try:
@@ -1561,24 +1660,24 @@ def get_status2(current_user: User_Model = Depends(get_current_authenticated_use
     return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name': os.environ["MUPIF_VPN_NAME"]}
 
 
-@app.get("/scheduler-status2/", tags=["Stats"])
+@app.get("/scheduler-status2", tags=["Stats"])
 def get_scheduler_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.schedulerInfo(ns)
 
 
-@app.get("/ns-status2/", tags=["Stats"])
+@app.get("/ns-status2", tags=["Stats"])
 def get_ns_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.nsInfo(ns)
 
 
-@app.get("/vpn-status2/", tags=["Stats"])
+@app.get("/vpn-status2", tags=["Stats"])
 def get_vpn_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     return mp.monitor.vpnInfo(hidePriv=False)
 
 
-@app.get("/jobmans-status2/", tags=["Stats"])
+@app.get("/jobmans-status2", tags=["Stats"])
 def get_jobmans_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.jobmanInfo(ns)
