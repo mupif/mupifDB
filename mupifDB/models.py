@@ -1,18 +1,20 @@
 import datetime
 import pydantic
 from pydantic.networks import IPvAnyAddress
-from pydantic import Field, AliasChoices, BeforeValidator
-from typing import Optional,List,Literal,Any,Annotated,Dict,Tuple
+from pydantic import BaseModel, Field, AliasChoices, BeforeValidator
+from typing import Any, List, Literal, Optional, Iterator, TypeVar, Callable, Annotated, Dict, Tuple
 import bson.objectid
+from bson.errors import InvalidId
+from pydantic_core import CoreSchema, PydanticCustomError, core_schema
 
-DatabaseID=Annotated[str,BeforeValidator(lambda x: str(x) if isinstance(x,bson.objectid.ObjectId) else x)]
+DatabaseID = Annotated[str, BeforeValidator(lambda x: str(x) if isinstance(x,bson.objectid.ObjectId) else x)]
 
 # for backwards compat only: load None where (possibly empty) string is required now
-Str_EmptyFromNone=Annotated[str,BeforeValidator(lambda x: '' if x is None else x)]
+Str_EmptyFromNone=Annotated[str, BeforeValidator(lambda x: '' if x is None else x)]
 # opposite: saved as empty string, but should be loaded as None if empty
-None_FromEmptyStr=Annotated[None,BeforeValidator(lambda x: None if x=='' else x)]
+None_FromEmptyStr=Annotated[None, BeforeValidator(lambda x: None if x == '' else x)]
 # bool which can be loaded from None (and becomes False)
-Bool_FalseFromNone=Annotated[bool,BeforeValidator(lambda x: False if x is None else x)]
+Bool_FalseFromNone=Annotated[bool, BeforeValidator(lambda x: False if x is None else x)]
 
 
 ExecutionStatus_Literal=Literal['Created','Pending','Scheduled','Running','Finished','Failed']
@@ -257,6 +259,52 @@ class MupifDBStatus_Model(StrictBase):
 # ------------------------------
 # API models
 
+class PyObjectId(bson.objectid.ObjectId):
+    """Custom type for MongoDB's ObjectId, compatible with Pydantic V2"""
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Callable[[Any], CoreSchema]) -> CoreSchema:
+        """
+        Pydantic V2 core schema generation for custom types.
+        It defines validation and serialization logic.
+        """
+        # Validator function: Checks if input is a valid ObjectId (or can be converted)
+        def validate_objectid(value: Any) -> bson.objectid.ObjectId:
+            if isinstance(value, bson.objectid.ObjectId):
+                return value
+            
+            if isinstance(value, str):
+                try:
+                    return bson.objectid.ObjectId(value)
+                except InvalidId as e:
+                    # Raise a PydanticCustomError for better error handling
+                    raise PydanticCustomError('invalid_object_id', 'Invalid ObjectId value') from e
+            
+            raise PydanticCustomError('invalid_object_id', 'ObjectId must be a string or ObjectId instance')
+
+
+        # Define the core schema
+        # The schema uses:
+        # 1. `before`: A custom function to validate and convert the input to an ObjectId object.
+        # 2. `serialization`: Converts the ObjectId object back to a string for JSON/response.
+        return core_schema.json_or_python_schema(
+            python_schema=core_schema.no_info_before_validator_function(validate_objectid, core_schema.is_instance_schema(bson.objectid.ObjectId)),
+            json_schema=core_schema.str_schema(),
+            serialization=core_schema.to_string_ser_schema(),
+        )
+
+class User_Model(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    mail: str
+    name: str
+    surname: str
+    password: str
+    rights_admin: bool = False
+    
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {bson.objectid.ObjectId: str} # Still works, but V2 handles it via the custom type now
+
 class Pagination_Model(StrictBase):
     page: int
     pageSize: int
@@ -287,4 +335,13 @@ class ExecutionEntityResponse(BaseModel):
 
 class ExecutionCollectionResponse(BaseModel):
     collection: List[WorkflowExecution_Model]
+    pagination: Pagination_Model
+
+# Users
+
+class UserEntityResponse(BaseModel):
+    entity: User_Model
+
+class UserCollectionResponse(BaseModel):
+    collection: List[User_Model]
     pagination: Pagination_Model

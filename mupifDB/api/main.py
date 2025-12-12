@@ -85,59 +85,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
 db = client.MuPIF
 
+from mupifDB import models
+from mupifDB.models import User_Model
 
 # --- MongoDB Model Definitions for Authentication ---
-
-# FIX: PyObjectId updated for Pydantic V2
-class PyObjectId(ObjectId):
-    """Custom type for MongoDB's ObjectId, compatible with Pydantic V2"""
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Callable[[Any], CoreSchema]) -> CoreSchema:
-        """
-        Pydantic V2 core schema generation for custom types.
-        It defines validation and serialization logic.
-        """
-        # Validator function: Checks if input is a valid ObjectId (or can be converted)
-        def validate_objectid(value: Any) -> ObjectId:
-            if isinstance(value, ObjectId):
-                return value
-            
-            if isinstance(value, str):
-                try:
-                    return ObjectId(value)
-                except InvalidId as e:
-                    # Raise a PydanticCustomError for better error handling
-                    raise PydanticCustomError('invalid_object_id', 'Invalid ObjectId value') from e
-            
-            raise PydanticCustomError('invalid_object_id', 'ObjectId must be a string or ObjectId instance')
-
-
-        # Define the core schema
-        # The schema uses:
-        # 1. `before`: A custom function to validate and convert the input to an ObjectId object.
-        # 2. `serialization`: Converts the ObjectId object back to a string for JSON/response.
-        return core_schema.json_or_python_schema(
-            python_schema=core_schema.no_info_before_validator_function(validate_objectid, core_schema.is_instance_schema(ObjectId)),
-            json_schema=core_schema.str_schema(),
-            serialization=core_schema.to_string_ser_schema(),
-        )
-
-
-class User_Model(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    mail: str
-    name: str
-    surname: str
-    password: str
-    rights_admin: bool = False
-    
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str} # Still works, but V2 handles it via the custom type now
         
 class Session_Model(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    id: Optional[models.PyObjectId] = Field(alias="_id", default=None)
     session_token: str
     user_id: str # Storing user ID as string (ObjectId converted to string)
     expires_at: datetime
@@ -398,8 +352,6 @@ def NotFoundError(detail):
 def ForbiddenError(detail):
     return HTTPException(status_code=403, detail=detail)
 
-from mupifDB import models
-
 # Transaction support for MongoDB, used to re-validate a record after validation,
 # aborting the transaction automatically if it does not validate.
 #
@@ -620,26 +572,55 @@ async def read_current_user(current_user: User_Model = Depends(get_current_authe
 # Users
 # --------------------------------------------------
 
-@app.get("/users", tags=["Users"])
-def get_users(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[User_Model]:
+@app.get("/users", tags=["Users"], response_model=models.UserCollectionResponse)
+def get_users(
+    page: int = 1,
+    pageSize: int = 20,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.UserCollectionResponse:
+    
     if not current_user.rights_admin:
         raise ForbiddenError("Only admin users can access the list of users.")
-    res = db.user.find()
-    users = [User_Model.model_validate(r) for r in res]
+        
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+    filtering = {}
+    skip = (page - 1) * pageSize
+    
+    res = (
+        db.user.find(filtering)
+        .sort('surname', 1)
+        .skip(skip)
+        .limit(pageSize)
+    )
+    
+    users = [models.User_Model.model_validate(r) for r in res]
     for user in users:
         user.password = "********"  # Mask password
-    return users
+        
+    total_count = db.user.count_documents(filtering)
+    
+    return models.UserCollectionResponse(
+        collection=users,
+        pagination = models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
 
-@app.get("/users/{user_id}", tags=["Users"])
-def get_user(user_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> User_Model:
+@app.get("/users/{user_id}", tags=["Users"], response_model=models.UserEntityResponse)
+def get_user(user_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.UserEntityResponse:
     if not current_user.rights_admin and str(current_user.id) != user_id:
         raise ForbiddenError("Only admin users or the user themselves can access user details.")
     res = db.user.find_one({"_id": bson.objectid.ObjectId(user_id)})
     if res is None:
         raise NotFoundError(f'User with id={user_id} not found.')
-    user = User_Model.model_validate(res)
+    user = models.User_Model.model_validate(res)
     user.password = "********"  # Mask password
-    return user
+    return models.UserEntityResponse(entity=user)
 
 class UserUpdate(BaseModel):
     password: Optional[str] = None
