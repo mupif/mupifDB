@@ -665,7 +665,7 @@ def initexecution(wid, version, methods=('GET')):
     disable_onto = 'no_onto' in request.args
     we_record = restApiControl.getWorkflowRecord(wid, int(version))
     if we_record is not None:
-        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)
+        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)['inserted_id']
         return redirect(f'{BASE_URL}/workflowexecutions/{weid}')
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'), login=login_header_html())

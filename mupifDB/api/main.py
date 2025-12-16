@@ -559,9 +559,7 @@ async def register_user(user: OAuth2PasswordRequestForm = Depends()):
 @app.get("/current_user", tags=["Authentication"])
 async def read_current_user(current_user: User_Model = Depends(get_current_authenticated_user)):
     # Create a dict and remove sensitive data before returning
-    print(current_user)
     user_dict = current_user.model_dump(by_alias=True)
-    print(user_dict)
     user_dict['id'] = str(user_dict['_id'])
     user_dict.pop('password', None)
     user_dict.pop('_id', None)
@@ -1160,8 +1158,8 @@ def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['
     return []
 
 
-@app.post("/executions/create", tags=["Executions"])
-def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+@app.post("/executions/create", tags=["Executions"], response_model=models.CreateNewExecutionEntityResponse)
+def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.CreateNewExecutionEntityResponse:
     perms.TODO(wec)
 
     wdoc = get_workflow_by_version(workflow_id=wec.wid, workflow_version=wec.version, current_user=current_user).entity
@@ -1201,15 +1199,18 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
         Outputs=outputsId,
         EDMMapping=([] if wec.no_onto else wdoc.EDMMapping),
     )
-    new_id = insert_execution(data=ex, current_user=current_user)
-    return new_id
+    return insert_execution(data=ex, current_user=current_user)
 
 
 @app.post("/executions", tags=["Executions"])
-def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.CreateNewExecutionEntityResponse:
     perms.ensure(data,perm='child',on='parent')
     res = db.WorkflowExecutions.insert_one(data.model_dump_db())
-    return str(res.inserted_id)
+    entity = get_execution(str(res.inserted_id), current_user=current_user).entity
+    return models.CreateNewExecutionEntityResponse(
+        entity=entity,
+        inserted_id=str(res.inserted_id)
+    )
 
 @app.get("/executions/{uid}/inputs/", tags=["Executions"])
 def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
@@ -1363,11 +1364,57 @@ class M_ModifyExecution(BaseModel):
     key: str
     value: str
 
-@app.patch("/executions/{uid}", tags=["Executions"])
-def modify_execution(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):
+@app.patch("/executions/{uid}/set_param", tags=["Executions"])
+def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.TODO()
     with db_transaction() as session:
-        rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid)}, {"$set": {data.key: data.value}}, return_document=ReturnDocument.AFTER, session=session)
+        if data.key == 'Status':
+            if data.value == 'Created':
+                db.WorkflowExecutions.find_one_and_update(
+                    {'_id': bson.objectid.ObjectId(uid), 'Status': {'$ne': data.value}},
+                    {"$set": {
+                        'SubmittedDate': None,
+                        'ScheduledDate': None,
+                        'StartDate': None,
+                        'EndDate': None
+                    }},
+                    session=session)
+            if data.value == 'Pending':
+                # todo check if all inputs are set
+                db.WorkflowExecutions.find_one_and_update(
+                    {'_id': bson.objectid.ObjectId(uid), 'Status': {'$ne': data.value}},
+                    {"$set": {
+                        'SubmittedDate': datetime.now().isoformat(),
+                        'ScheduledDate': None,
+                        'StartDate': None,
+                        'EndDate': None
+                    }},
+                    session=session)
+            if data.value == 'Scheduled':
+                db.WorkflowExecutions.find_one_and_update(
+                    {'_id': bson.objectid.ObjectId(uid), 'Status': {'$ne': data.value}},
+                    {"$set": {
+                        'ScheduledDate': datetime.now().isoformat(),
+                        'StartDate': None,
+                        'EndDate': None
+                    }},
+                    session=session)
+            if data.value == 'Running':
+                db.WorkflowExecutions.find_one_and_update(
+                    {'_id': bson.objectid.ObjectId(uid), 'Status': {'$ne': data.value}},
+                    {"$set": {
+                        'StartDate': datetime.now().isoformat(),
+                        'EndDate': None
+                    }},
+                    session=session)
+            if data.value in ('Finished','Failed'):
+                db.WorkflowExecutions.find_one_and_update(
+                    {'_id': bson.objectid.ObjectId(uid), 'Status': {'$ne': data.value}},
+                    {"$set": {
+                        'EndDate': datetime.now().isoformat()
+                    }},
+                    session=session)
+        rec = db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid)}, {"$set": {data.key: data.value}}, return_document=ReturnDocument.AFTER, session=session)
         if rec is None: raise NotFoundError(f'Execution with uid={uid} not found for update.')
         models.WorkflowExecution_Model.model_validate(rec)
     return get_execution(uid, current_user=current_user)
@@ -1379,7 +1426,7 @@ def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_
     if execution_record.Status == 'Created' or True:
         data = type('', (), {})()
         mod=M_ModifyExecution(key = "Status",value = "Pending")
-        return modify_execution(uid, mod, current_user=current_user)
+        return modify_execution_set_param(uid, mod, current_user=current_user)
     return None
 
 

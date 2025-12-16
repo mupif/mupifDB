@@ -193,7 +193,7 @@ def scheduleExecution(execution_id: str):
     return rPatch(f"executions/{execution_id}/schedule", headers=getRequestHeaders())
 
 def setExecutionParameter(execution_id: str, param: str, value: Any, val_type="str"):
-    return rPatch(f"executions/{execution_id}", data=json.dumps({"key": str(param), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"executions/{execution_id}/set_param", data=json.dumps({"key": str(param), "value": value}), headers=getRequestHeaders())
 
 def setExecutionOntoBaseObjectID(execution_id, name, value):
     return rPatch(f"executions/{execution_id}/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
@@ -210,12 +210,7 @@ def setExecutionAttemptsCount(execution_id, val):
 def setExecutionStatus(execution_id: str, status: models.ExecutionStatus_Literal, revertPending=False):
     if status=='Created': setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
     elif status=='Pending' and not revertPending:
-        setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
         setExecutionAttemptsCount(execution_id, 0)
-    elif status=='Running':
-        setExecutionParameter(execution_id, "StartDate", str(datetime.datetime.now()))
-    elif status in ('Finished','Failed'):
-        setExecutionParameter(execution_id, "EndDate", str(datetime.datetime.now()))
     return setExecutionParameter(execution_id, "Status", status)
 
 def createExecution(wid: str, version: int, ip: str, no_onto=False):

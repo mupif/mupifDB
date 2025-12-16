@@ -168,7 +168,7 @@ class TestFoo:
         wrec=restApiControl.getWorkflowRecord(wid, -1)
         assert wrec.wid==wid
         # print_json(data=wrec)
-        weid=restApiControl.createExecution(wid,version=1,ip='localhost')
+        weid = restApiControl.createExecution(wid,version=1,ip='localhost')['inserted_id']
         print(f'Execution created, {weid=}')
         restApiControl.scheduleExecution(weid)
         print(f'Execution scheduled, {weid=}')

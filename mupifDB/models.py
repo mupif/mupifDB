@@ -160,7 +160,7 @@ class IODataRecord_Model(MongoObj_Model):
 class WorkflowExecutionCreate_Model(StrictBase):
     wid: str
     version: int
-    ip: str
+    ip: Optional[str]=''
     no_onto: bool=False
 
 
@@ -336,6 +336,10 @@ class ExecutionEntityResponse(BaseModel):
 class ExecutionCollectionResponse(BaseModel):
     collection: List[WorkflowExecution_Model]
     pagination: Pagination_Model
+
+class CreateNewExecutionEntityResponse(ExecutionEntityResponse):
+    inserted_id: str
+    pass
 
 # Users
 
