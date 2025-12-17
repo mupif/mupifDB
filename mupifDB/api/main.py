@@ -1119,6 +1119,32 @@ def get_executions(
         )
     )
 
+def get_execution_base(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
+    return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
+
+def get_execution_with_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
+    res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
+    inputsId = res.get('Inputs', None)
+    outputsId = res.get('Outputs', None)
+    if inputsId is not None:
+        try:
+            res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(inputsId)})
+            if res_io is not None:
+                res['InputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+        except Exception as e:
+            print(e)
+    if outputsId is not None:
+        try:
+            res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(outputsId)})
+            if res_io is not None:
+                res['OutputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+        except Exception as e:
+            print(e)
+    return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
+
 @app.get("/executions/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
 def get_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
@@ -1139,6 +1165,8 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
                 res['OutputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
         except Exception as e:
             print(e)
+    if res['Status'] == 'Created':
+        res['canBeSubmitted'] = check_execution_inputs(uid, current_user=current_user)
     return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
 
 # FIXME: how is this different from get_execution??
@@ -1325,6 +1353,149 @@ def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, c
 def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, '', False, data, current_user)
 
+def ObjIDIsIterable(val):
+    try:
+        a = val[0]
+        if not isinstance(val, str):
+            return True
+    except:
+        return False
+
+def checkInput(execution, name, obj_id, object_type, data_id, onto_path=None, onto_base_objects=[]):
+    inp_record = None
+    for elem in execution.InputsData:
+        if elem.Name == name and elem.ObjID == obj_id:
+            inp_record = elem
+
+    if onto_path is not None:
+        splitted = onto_path.split('.', 1)
+        base_object_name = splitted[0]
+        object_path = splitted[1]
+
+        # find base object info
+        info = None
+        for i in onto_base_objects:
+            if i.Name == base_object_name:
+                info = i
+
+        # get the desired object
+        if info is not None:
+            edm_data = dms_api_path_get(
+                db=info.DBName,
+                type=info.EDMEntity,
+                id=info.id,
+                path=object_path,
+                # current_user=current_user
+            )
+
+            if edm_data is not None:
+                if object_type == 'mupif.Property':
+                    if edm_data.get('value', None) is not None:
+                        return True
+                if object_type == 'mupif.String':
+                    if edm_data.get('value', None) is not None:
+                        return True
+        return False
+
+    else:
+        if inp_record is not None:
+            # check value from database record
+            if object_type == 'mupif.Property':
+                # FIXME: mismatch between mupif and mupifDBs models here?
+                file_id = inp_record.Object.get('FileID',None)
+                if file_id is None:
+                    # property from dict
+                    try:
+                        prop = mp.ConstantProperty.from_db_dict(inp_record.Object)
+                        return True
+                    except:
+                        return False
+                else:
+                    # now just a formal check, actual file loading will not be done here
+                    return True
+
+                    # # property from hdf5 file
+                    # pfile, fn = client.getBinaryFileByID(file_id)
+                    # with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                    #     full_path = tempDir + "/file.h5"
+                    #     f = open(full_path, 'wb')
+                    #     f.write(pfile)
+                    #     f.close()
+                    #     try:
+                    #         prop = mp.ConstantProperty.loadHdf5(full_path)
+                    #         return True
+                    #     except:
+                    #         return False
+
+            elif object_type == 'mupif.String':
+                # property from dict
+                try:
+                    prop = mp.String.from_db_dict(inp_record.Object)
+                    return True
+                except:
+                    return False
+
+            elif object_type == 'mupif.HeavyStruct':
+                file_id = inp_record.Object.get('FileID', None)
+                if file_id is not None:
+                    # now just a formal check, actual file loading will not be done here
+                    return True
+                
+                    # # load from hdf5 file
+                    # pfile, fn = client.getBinaryFileByID(file_id)
+                    # with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                    #     full_path = tempDir + "/file.h5"
+                    #     f = open(full_path, 'wb')
+                    #     f.write(pfile)
+                    #     f.close()
+                    #     try:
+                    #         hs = mp.HeavyStruct(h5path=full_path, mode='readonly', id=mp.DataID[data_id])
+                    #         return True
+                    #     except:
+                    #         return False
+    return False
+
+@app.get("/executions/{uid}/check_inputs", tags=["Executions"], response_model=bool)
+def check_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> bool:
+    execution = get_execution_with_inputs(uid, current_user=current_user).entity
+    workflow = get_workflow_by_version_inside(execution.WorkflowID, execution.WorkflowVersion)
+    if workflow is None:
+        raise RuntimeError('Workflow for execution not found.')
+    workflow_input_templates = workflow.IOCard.Inputs
+    execution_inputs = execution.InputsData
+    if execution_inputs is None:
+        raise RuntimeError('Execution inputs data not found.')
+
+    for input_template in execution_inputs:
+        name = input_template.Name
+        object_type = input_template.Type
+        valueType = input_template.ValueType
+        data_id = input_template.TypeID
+        # try to get raw PID from typeID
+        match = re.search(r'\w+\Z', data_id)
+        if match:
+            data_id = match.group()
+
+        objID = input_template.ObjID
+        compulsory = input_template.Compulsory
+        if compulsory:
+            if not ObjIDIsIterable(objID):
+                objID = [objID]
+
+            if isinstance(objID, list) or isinstance(objID, tuple):
+                for oid in objID:
+                    if checkInput(
+                        execution=execution,
+                        name=name,
+                        obj_id=oid,
+                        data_id=data_id,
+                        object_type=object_type,
+                        onto_path=input_template.EDMPath,
+                        onto_base_objects=execution.EDMMapping,
+                    ) is False:
+                        return False
+
+    return True
 
 class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     name: str

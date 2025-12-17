@@ -213,6 +213,7 @@ class WorkflowExecution_Model(MongoObj_Model):
     Outputs: str
     InputsData: Optional[List[IODataRecordItem_Model] | None]=None
     OutputsData: Optional[List[IODataRecordItem_Model] | None]=None
+    canBeSubmitted: Optional[bool]=False
 
     def TEMP_getChildren(self) -> List[Tuple[str,DbRef_Model]]:
         return [(attr,DbRef_Model(where=where,id=id)) for where,id,attr in [('IOData',self.Inputs,'Inputs'),('IOData',self.Outputs,'Outputs'),('fs.files',self.ExecutionLog,'ExecutionLog')] if id is not None and id!='']
