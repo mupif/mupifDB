@@ -1353,6 +1353,16 @@ def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, c
 def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, '', False, data, current_user)
 
+
+@app.patch("/executions/{uid}/input_item/{name}/", tags=["Executions"])
+def _set_execution_input_item_(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+    return set_execution_io_item(uid, name, '', True, data, current_user)
+
+
+@app.patch("/executions/{uid}/output_item/{name}/", tags=["Executions"])
+def _set_execution_output_item_(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+    return set_execution_io_item(uid, name, '', False, data, current_user)
+
 def ObjIDIsIterable(val):
     try:
         a = val[0]
