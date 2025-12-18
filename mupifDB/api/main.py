@@ -1334,12 +1334,12 @@ def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_c
     return False
 
 
-@app.patch("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
+@app.patch("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
 def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, obj_id, True, data, current_user)
 
 
-@app.patch("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
+@app.patch("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
 def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, obj_id, False, data, current_user)
 
