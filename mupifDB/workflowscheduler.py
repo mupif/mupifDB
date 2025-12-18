@@ -523,7 +523,7 @@ def scheduler_schedule_pending(pool):
         assert weid is not None # make pyright happy
         log.info(f'{weid} found as pending ({wed.Attempts=})')
         # check number of attempts for execution
-        if int(wed.Attempts) > 10:
+        if int(wed.Attempts) > 12:
             try:
                 restApiControl.setExecutionStatus(weid,'Created')
                 my_email.sendEmailAboutExecutionStatus(weid)
