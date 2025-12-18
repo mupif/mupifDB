@@ -1710,7 +1710,7 @@ def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir), current_user: User_Mo
 
 @app.post("/logs", tags=["Logs"])
 def insert_log(data: dict, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
-    perms.notRemote(request,'inserting logging data')
+    # perms.notRemote(request,'inserting logging data')
     res = db.Logs.insert_one(data)
     return str(res.inserted_id)
 
@@ -1834,7 +1834,7 @@ class M_ModifyStatistics(BaseModel):
 
 @app.patch("/scheduler_statistics", tags=["Stats"])
 def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
-    perms.notRemote(request,'modifying scheduler statistics')
+    # perms.notRemote(request,'modifying scheduler statistics')
     if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
         res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
         return True
