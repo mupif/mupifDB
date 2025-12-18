@@ -1105,7 +1105,7 @@ def get_executions(
     
     res = (
         db.WorkflowExecutions.find(filtering)
-        .sort('SubmittedDate', 1)
+        .sort('CreatedDate', -1)
         .skip(skip)
         .limit(pageSize)
     )
