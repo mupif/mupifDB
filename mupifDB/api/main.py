@@ -448,7 +448,8 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     root_path="/api",
     servers=servers_list,
-    # openapi_url="/api/openapi.json"
+    # openapi_url="/api/openapi.json",
+    redirect_slashes=True,
 )
 
 
@@ -1300,12 +1301,16 @@ def get_execution_output_item(uid: str, name: str, obj_id: str, current_user: Us
     return get_execution_io_item(uid, name, obj_id, inputs=False, current_user=current_user)
 
 
-@app.get("/executions/{uid}/input_item/{name}//", tags=["Executions"])
+@app.get("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
+@app.get("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
+@app.get("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _get_execution_input_item(uid: str, name: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, '', inputs=True, current_user=current_user)
 
 
-@app.get("/executions/{uid}/output_item/{name}//", tags=["Executions"])
+@app.get("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
+@app.get("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
+@app.get("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _get_execution_output_item(uid: str, name: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, '', inputs=False, current_user=current_user)
 
