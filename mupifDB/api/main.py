@@ -1349,24 +1349,19 @@ def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSe
     return set_execution_io_item(uid, name, obj_id, False, data, current_user)
 
 
-@app.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"])
+@app.patch("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
+@app.patch("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
+@app.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, '', True, data, current_user)
 
 
-@app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"])
+@app.patch("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
+@app.patch("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
+@app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, '', False, data, current_user)
 
-
-@app.patch("/executions/{uid}/input_item/{name}", tags=["Executions"])
-def _set_execution_input_item_(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
-    return set_execution_io_item(uid, name, '', True, data, current_user)
-
-
-@app.patch("/executions/{uid}/output_item/{name}", tags=["Executions"])
-def _set_execution_output_item_(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
-    return set_execution_io_item(uid, name, '', False, data, current_user)
 
 def ObjIDIsIterable(val):
     try:
@@ -1562,7 +1557,8 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
                         'SubmittedDate': None,
                         'ScheduledDate': None,
                         'StartDate': None,
-                        'EndDate': None
+                        'EndDate': None,
+                        'ExecutionLog': None
                     }},
                     session=session)
             if data.value == 'Pending':
@@ -1573,7 +1569,8 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
                         'SubmittedDate': datetime.now().isoformat(),
                         'ScheduledDate': None,
                         'StartDate': None,
-                        'EndDate': None
+                        'EndDate': None,
+                        'ExecutionLog': None
                     }},
                     session=session)
             if data.value == 'Scheduled':
@@ -1582,7 +1579,8 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
                     {"$set": {
                         'ScheduledDate': datetime.now().isoformat(),
                         'StartDate': None,
-                        'EndDate': None
+                        'EndDate': None,
+                        'ExecutionLog': None
                     }},
                     session=session)
             if data.value == 'Running':
@@ -1590,7 +1588,8 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
                     {'_id': bson.objectid.ObjectId(uid), 'Status': {'$ne': data.value}},
                     {"$set": {
                         'StartDate': datetime.now().isoformat(),
-                        'EndDate': None
+                        'EndDate': None,
+                        'ExecutionLog': None
                     }},
                     session=session)
             if data.value in ('Finished','Failed'):
