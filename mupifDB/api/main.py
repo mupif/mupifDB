@@ -1291,12 +1291,12 @@ def get_execution_io_item(uid: str, name, obj_id: str, inputs: bool, current_use
     raise NotFoundError(f'Execution weid={uid}, {"inputs" if inputs else "outputs"}: no element with name="{name}" & obj_id="{obj_id}".')
 
 
-@app.get("/executions/{uid}/input_item/{name}/{obj_id}/", tags=["Executions"])
+@app.get("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
 def get_execution_input_item(uid: str, name: str, obj_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, obj_id, inputs=True, current_user=current_user)
 
 
-@app.get("/executions/{uid}/output_item/{name}/{obj_id}/", tags=["Executions"])
+@app.get("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
 def get_execution_output_item(uid: str, name: str, obj_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, obj_id, inputs=False, current_user=current_user)
 
