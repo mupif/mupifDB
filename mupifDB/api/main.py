@@ -973,11 +973,6 @@ async def upload_workflow_and_dependencies(
                         log.debug(f"Skipping empty additional file upload.")
                         continue # Skip empty uploads
 
-                    # You might want different allowed_file rules for additional files
-                    if not allowed_file(file.filename):
-                        log.warning(f"Skipping potentially disallowed file type for additional file: {file.filename}")
-                        continue # Or raise an error, depending on your policy
-
                     additional_file_path = os.path.join(tempDir, file.filename)
                     with open(additional_file_path, "wb") as f:
                         f.write(await file.read())
