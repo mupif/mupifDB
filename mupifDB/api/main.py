@@ -1814,6 +1814,7 @@ def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
 
 
 @app.get("/scheduler_statistics", tags=["Stats"])
+@app.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Stat
     output = {}
@@ -1832,6 +1833,7 @@ class M_ModifyStatistics(BaseModel):
 
 
 @app.patch("/scheduler_statistics", tags=["Stats"])
+@app.patch("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     # perms.notRemote(request,'modifying scheduler statistics')
     if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
@@ -1841,6 +1843,7 @@ def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current
 
 
 @app.get("/status2", tags=["Stats"])
+@app.get("/status2/", tags=["Stats"], include_in_schema=False)
 def get_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = None
     try:
@@ -1869,23 +1872,27 @@ def get_status2(current_user: User_Model = Depends(get_current_authenticated_use
 
 
 @app.get("/scheduler-status2", tags=["Stats"])
+@app.get("/scheduler-status2/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.schedulerInfo(ns)
 
 
 @app.get("/ns-status2", tags=["Stats"])
+@app.get("/ns-status2/", tags=["Stats"], include_in_schema=False)
 def get_ns_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.nsInfo(ns)
 
 
 @app.get("/vpn-status2", tags=["Stats"])
+@app.get("/vpn-status2/", tags=["Stats"], include_in_schema=False)
 def get_vpn_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     return mp.monitor.vpnInfo(hidePriv=False)
 
 
 @app.get("/jobmans-status2", tags=["Stats"])
+@app.get("/jobmans-status2/", tags=["Stats"], include_in_schema=False)
 def get_jobmans_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.jobmanInfo(ns)
