@@ -441,6 +441,10 @@ servers_list = [
         "url": "https://test.mupif.org/api", 
         "description": "Test API"
     },
+    {
+        "url": "https://musicode.mupif.org/api", 
+        "description": "MUSICODE API"
+    },
 ]
 
 
@@ -661,7 +665,7 @@ def update_user(user_id: str, user_update: UserUpdate, current_user: User_Model 
 
 @app.get("/")
 def read_root():
-    return RedirectResponse(url="/api/docs")
+    return RedirectResponse(url="/api/UI")
 
 
 # --------------------------------------------------

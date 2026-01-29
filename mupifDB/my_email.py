@@ -44,11 +44,12 @@ def sendEmail(receiver_address, subject, message):
 
 
 def sendEmailAboutExecutionStatus(eid):
-    web_server = 'http://' + str(os.environ.get('MUPIF_NS', "http://127.0.0.1:9090")).replace('http://', '').split(':')[0] + ':5555/'
+    settings = restApiControl.getSettings()
+    web_server = settings.webUrl
 
     execution = restApiControl.getExecutionRecord(eid)
     if execution.RequestedBy != '':
-        text = f'Your execution of workflow "{execution.WorkflowID}" (version {execution.WorkflowVersion}) is now in Status "{execution.Status}". You can view its detail here: {web_server}workflowexecutions/{eid}'
+        text = f'Your execution of workflow "{execution.WorkflowID}" v{execution.WorkflowVersion} is now in Status "{execution.Status}". You can view its detail here: {web_server}/executions/{eid}'
         if execution.Status == 'Created':
             text += ' It has probably reached the limit of attempts for execution while some resources were not available.'
         return sendEmail(execution.RequestedBy, 'MuPIF DB execution info', text)

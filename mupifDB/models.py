@@ -306,6 +306,11 @@ class User_Model(BaseModel):
         arbitrary_types_allowed = True
         json_encoders = {bson.objectid.ObjectId: str} # Still works, but V2 handles it via the custom type now
 
+class Settings_Model(MongoObj_Model):
+    projectName: str=''
+    projectLogoUrl: str=''
+    webUrl: str=''
+
 class Pagination_Model(StrictBase):
     page: int
     pageSize: int

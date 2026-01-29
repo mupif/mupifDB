@@ -324,7 +324,8 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # Settings
 # --------------------------------------------------
 
-def getSettings(maybe_init_db: bool=False):
+pydantic.validate_call(validate_return=True)
+def getSettings(maybe_init_db: bool=False) -> models.Settings_Model:
     if maybe_init_db: rGet("database/maybe_init", headers=getRequestHeaders())
     return rGet("settings", headers=getRequestHeaders())
 
