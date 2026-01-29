@@ -153,7 +153,7 @@ class TestFoo:
     def test_00_status(self,restApi):
         from rich.pretty import pprint
         # this initializes the db
-        pprint(restApiControl.getSettings(maybe_init_db=True))
+        print(restApiControl.getSettings(maybe_init_db=True))
     def test_01_workflowdemo01(self,scheduler):
         wf=wfmini01.MiniWorkflow1()
         md=wf.metadata
