@@ -11,6 +11,8 @@ from typing import List, Optional, Tuple
 
 thisDir = os.path.dirname(os.path.abspath(__file__))
 
+API_PREFIX = "api/"
+
 # --------------------------------------------------
 # Authentication
 # --------------------------------------------------
@@ -41,7 +43,7 @@ def getAuthToken() -> dict[str,Any] | None:
                 'Accept-Charset': 'UTF-8',
                 'Accept': 'application/json',
             }
-            response = rPost(f"api/login", data={
+            response = rPost(f"{API_PREFIX}login", data={
                 "grant_type": "password",
                 "username": api_credentials['username'],
                 "password": api_credentials['password'],
@@ -65,7 +67,7 @@ def getAuthToken() -> dict[str,Any] | None:
                 'Accept': 'application/json',
                 'Authorization': f"Bearer {bearer_token['access_token']}"
             }
-            response = rPost(f"api/refresh_token", headers=headers)
+            response = rPost(f"{API_PREFIX}refresh_token", headers=headers)
             # print(response)
             bearer_token = response
             bearer_token_expires_at = 0
@@ -94,13 +96,13 @@ def getRequestHeaders(content_type: str | None = None) -> dict[str,str]:
 # --------------------------------------------------
 
 def getUsecaseRecords():
-    return [models.UseCase_Model.model_validate(rec) for rec in rGet("api/usecases", headers=getRequestHeaders())['collection']]
+    return [models.UseCase_Model.model_validate(rec) for rec in rGet(f"{API_PREFIX}usecases", headers=getRequestHeaders())['collection']]
 
 def getUsecaseRecord(ucid):
-    return rGet(f"api/usecases/{ucid}", headers=getRequestHeaders())['entity']
+    return rGet(f"{API_PREFIX}usecases/{ucid}", headers=getRequestHeaders())['entity']
 
 def insertUsecaseRecord(ucid, description):
-    return rPost("api/usecases/", data=json.dumps({"ucid": ucid, "Description": description}), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}usecases/", data=json.dumps({"ucid": ucid, "Description": description}), headers=getRequestHeaders())
 
 
 # --------------------------------------------------
@@ -108,18 +110,17 @@ def insertUsecaseRecord(ucid, description):
 # --------------------------------------------------
 
 def getWorkflowRecords() -> List[models.Workflow_Model]:
-    return [models.Workflow_Model.model_validate(record) for record in rGet("workflows", headers=getRequestHeaders())['collection']]
+    return [models.Workflow_Model.model_validate(record) for record in rGet(f"{API_PREFIX}workflows", headers=getRequestHeaders())['collection']]
 
 def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
-    return [models.Workflow_Model.model_validate(record) for record in rGet(f"usecases/{usecase}/workflows", headers=getRequestHeaders())['collection']]
+    return [models.Workflow_Model.model_validate(record) for record in rGet(f"{API_PREFIX}usecases/{usecase}/workflows", headers=getRequestHeaders())['collection']]
 
 pydantic.validate_call(validate_return=True)
 def getWorkflowRecord(wid, version: int) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rGet(f"workflows/{wid}/version/{version}", headers=getRequestHeaders())['entity'])
-
+    return models.Workflow_Model.model_validate(rGet(f"{API_PREFIX}workflows/{wid}/version/{version}", headers=getRequestHeaders())['entity'])
 pydantic.validate_call(validate_return=True)  # todo delete
 def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rPatch("workflows/", data=wf.model_dump_json(), headers=getRequestHeaders())['entity'])
+    return models.Workflow_Model.model_validate(rPatch(f"{API_PREFIX}workflows/", data=wf.model_dump_json(), headers=getRequestHeaders())['entity'])
 
 def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
     files = {}
@@ -156,7 +157,7 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
         files['additional_files'] = additional_files_for_request
 
     try:
-        response = rPost(f"usecases/{usecaseid}/workflows", files=files, headers=getRequestHeaders())
+        response = rPost(f"{API_PREFIX}usecases/{usecaseid}/workflows", files=files, headers=getRequestHeaders())
         return response['wid']
 
     except requests.exceptions.ConnectionError as e:
@@ -172,7 +173,7 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
 
 pydantic.validate_call(validate_return=True)
 def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecution_Model]:
-    query = "executions/?noparam"
+    query = f"{API_PREFIX}executions/?noparam"
     if workflow_version is not None and workflow_version<0: workflow_version=None
     for n,a in [('num_limit',num_limit),('label',label),('workflow_id',workflow_id),('workflow_version',workflow_version),('status',status)]:
         if a is not None: query += f"&{n}={str(a)}"
@@ -181,8 +182,7 @@ def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=N
 
 pydantic.validate_call(validate_return=True)
 def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
-    return models.WorkflowExecution_Model.model_validate(rGet(f"executions/{weid}", headers=getRequestHeaders())['entity'])
-
+    return models.WorkflowExecution_Model.model_validate(rGet(f"{API_PREFIX}executions/{weid}", headers=getRequestHeaders())['entity'])
 def getScheduledExecutions(num_limit: int|None=None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
@@ -190,19 +190,18 @@ def getPendingExecutions(num_limit: int|None=None):
     return getExecutionRecords(status="Pending", num_limit=num_limit)
 
 def scheduleExecution(execution_id: str):
-    return rPatch(f"executions/{execution_id}/schedule", headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/schedule", headers=getRequestHeaders())
 
 def setExecutionParameter(execution_id: str, param: str, value: Any, val_type="str"):
-    return rPatch(f"executions/{execution_id}/set_param", data=json.dumps({"key": str(param), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_param", data=json.dumps({"key": str(param), "value": value}), headers=getRequestHeaders())
 
 def setExecutionOntoBaseObjectID(execution_id, name, value):
-    return rPatch(f"executions/{execution_id}/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
 
 def setExecutionOntoBaseObjectIDMultiple(execution_id, data):
-    return rPatch(f"executions/{execution_id}/set_onto_base_object_id_multiple/", data=json.dumps({"data": data}), headers=getRequestHeaders())
-
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_id_multiple/", data=json.dumps({"data": data}), headers=getRequestHeaders())
 def setExecutionOntoBaseObjectIDs(execution_id, name, value):
-    return rPatch(f"executions/{execution_id}/set_onto_base_object_ids/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_ids/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
 
 def setExecutionAttemptsCount(execution_id, val):
     return setExecutionParameter(execution_id, "Attempts", str(val), "int")
@@ -215,17 +214,17 @@ def setExecutionStatus(execution_id: str, status: models.ExecutionStatus_Literal
 
 def createExecution(wid: str, version: int, ip: str, no_onto=False):
     wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_onto=no_onto)
-    return rPost("executions/create/", data=wec.model_dump_json(), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}executions/create/", data=wec.model_dump_json(), headers=getRequestHeaders())
 
 pydantic.validate_call(validate_return=True)
 def insertExecution(m: models.WorkflowExecution_Model):
-    return rPost("executions/", data=m.model_dump_json(), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}executions/", data=m.model_dump_json(), headers=getRequestHeaders())
 
 def getExecutionInputRecord(weid) -> List[models.IODataRecordItem_Model]:
-    return [models.IODataRecordItem_Model.model_validate(record) for record in rGet(f"executions/{weid}/inputs/", headers=getRequestHeaders())]
+    return [models.IODataRecordItem_Model.model_validate(record) for record in rGet(f"{API_PREFIX}executions/{weid}/inputs/", headers=getRequestHeaders())]
 
 def getExecutionOutputRecord(weid) -> List[models.IODataRecordItem_Model]:
-    return [models.IODataRecordItem_Model.model_validate(record) for record in rGet(f"executions/{weid}/outputs/", headers=getRequestHeaders())]
+    return [models.IODataRecordItem_Model.model_validate(record) for record in rGet(f"{API_PREFIX}executions/{weid}/outputs/", headers=getRequestHeaders())]
 
 def getExecutionInputRecordItem(weid, name, obj_id):
     io_data = getExecutionInputRecord(weid)
@@ -246,64 +245,61 @@ def getExecutionOutputRecordItem(weid, name, obj_id):
 # --------------------------------------------------
 pydantic.validate_call(validate_return=True)
 def getIODataRecord(iod_id: str):
-    return models.IODataRecord_Model.model_validate(rGet(f"iodata/{iod_id}", headers=getRequestHeaders()))
+    return models.IODataRecord_Model.model_validate(rGet(f"{API_PREFIX}iodata/{iod_id}", headers=getRequestHeaders()))
 
 pydantic.validate_call(validate_return=True)
 def insertIODataRecord(data: models.IODataRecord_Model):
-    return rPost("iodata/", data=data.model_dump_json(), headers=getRequestHeaders())
-
+    return rPost(f"{API_PREFIX}iodata/", data=data.model_dump_json(), headers=getRequestHeaders())
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
-    return rPatch(f"executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}), headers=getRequestHeaders())
 
 # TODO: validate input
 def setExecutionInputObject(weid, name, obj_id, object_dict):
-    return rPatch(f"executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}), headers=getRequestHeaders())
-
+    return rPatch(f"{API_PREFIX}executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}), headers=getRequestHeaders())
 # TODO: validate input
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
-    return rPatch(f"executions/{weid}/output_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}), headers=getRequestHeaders())
-
+    return rPatch(f"{API_PREFIX}executions/{weid}/output_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}), headers=getRequestHeaders())
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
-    return rGet(f"property_array_data/{file_id}/{i_start}/{i_count}/", headers=getRequestHeaders())
+    return rGet(f"{API_PREFIX}property_array_data/{file_id}/{i_start}/{i_count}/", headers=getRequestHeaders())
 
 
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
 def getBinaryFileByID(fid) -> Tuple[bytes,str]:
-    response = rGetRaw(f"file/{fid}", headers=getRequestHeaders())
+    response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders())
     d = response.headers['Content-Disposition']
     filename = re.findall("filename=(.+)", d)[0]
     return response.content, filename
 
 def uploadBinaryFile(binary_data) -> str:
-    return rPost("file/", files={"file": binary_data}, headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}file/", files={"file": binary_data}, headers=getRequestHeaders())
 
 
 # --------------------------------------------------
 # Stat
 # --------------------------------------------------
 def getStatus():
-    return rGet("status/", headers=getRequestHeaders())
+    return rGet(f"{API_PREFIX}status/", headers=getRequestHeaders())
 
 def getExecutionStatistics() -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
-    return models.MupifDBStatus_Model.ExecutionStatistics_Model.model_validate(rGet("execution_statistics/", headers=getRequestHeaders()))
+    return models.MupifDBStatus_Model.ExecutionStatistics_Model.model_validate(rGet(f"{API_PREFIX}execution_statistics/", headers=getRequestHeaders()))
 
 def getStatScheduler():
-    return models.MupifDBStatus_Model.Stat_Model.SchedulerStat_Model.model_validate(rGet("scheduler_statistics/", headers=getRequestHeaders()))
+    return models.MupifDBStatus_Model.Stat_Model.SchedulerStat_Model.model_validate(rGet(f"{API_PREFIX}scheduler_statistics/", headers=getRequestHeaders()))
 
 # # session is the requests module by default (one-off session for each request) but can be passed
 # # a custom requests.Session() object with config such as retries and timeouts.
 # # This feature is implemented only for setStatsScheduler to cleanly handle scheduler startup.
 # def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session: Any=requests):
 #     if runningTasks is not None:
-#         rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
+#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
 #     if scheduledTasks is not None:
-#         rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
+#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
 #     if load is not None:
-#         rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
+#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
 #     if processedTasks is not None:
-#         rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
+#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
 
 # NOTE: session arg is discarded
 def setStatScheduler(*args, session = None, **kw):
@@ -311,13 +307,13 @@ def setStatScheduler(*args, session = None, **kw):
 
 def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
     if runningTasks is not None:
-        rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}), headers=getRequestHeaders())
     if scheduledTasks is not None:
-        rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}), headers=getRequestHeaders())
     if load is not None:
-        rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}), headers=getRequestHeaders())
     if processedTasks is not None:
-        rPatch("scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}), headers=getRequestHeaders())
 
 
 # --------------------------------------------------
@@ -326,8 +322,8 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 
 pydantic.validate_call(validate_return=True)
 def getSettings(maybe_init_db: bool=False) -> models.Settings_Model:
-    if maybe_init_db: rGet("database/maybe_init", headers=getRequestHeaders())
-    return models.Settings_Model.model_validate(rGet("settings", headers=getRequestHeaders()))
+    if maybe_init_db: rGet(f"{API_PREFIX}database/maybe_init", headers=getRequestHeaders())
+    return models.Settings_Model.model_validate(rGet(f"{API_PREFIX}settings", headers=getRequestHeaders()))
 
 
 # --------------------------------------------------
@@ -335,40 +331,37 @@ def getSettings(maybe_init_db: bool=False) -> models.Settings_Model:
 # --------------------------------------------------
 
 def getEDMDataArray(DBName, Type):
-    response = rGet(f"EDM/{DBName}/{Type}", headers=getRequestHeaders())
+    response = rGet(f"{API_PREFIX}EDM/{DBName}/{Type}", headers=getRequestHeaders())
     return response.json()
 
 def getEDMData(DBName, Type, ID, path):
     if ID == '' or ID is None: return None
-    return rGet(f"EDM/{DBName}/{Type}/{ID}/?path={path}", headers=getRequestHeaders())
+    return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}/?path={path}", headers=getRequestHeaders())
 
 
 def setEDMData(DBName, Type, ID, path, data):
-    return rPatch(f"EDM/{DBName}/{Type}/{ID}", data=json.dumps({"path": str(path), "data": data}), headers=getRequestHeaders())
-
-
+    return rPatch(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}", data=json.dumps({"path": str(path), "data": data}), headers=getRequestHeaders())
 def createEDMData(DBName, Type, data):
-    return rPost(f"EDM/{DBName}/Type", data=json.dumps(data), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}EDM/{DBName}/{Type}", data=json.dumps(data), headers=getRequestHeaders())
 
 
 def cloneEDMData(DBName, Type, ID, shallow=[]):
-    return rGet(f"EDM/{DBName}/{Type}/{ID}/clone", params={"shallow": ' '.join(shallow)}, headers=getRequestHeaders())
+    return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}/clone", params={"shallow": ' '.join(shallow)}, headers=getRequestHeaders())
 
 
 def getSafeLinks(DBName, Type, ID, paths=[]):
-    return rGet(f"EDM/{DBName}/{Type}/{ID}/safe-links", params={"paths": ' '.join(paths)}, headers=getRequestHeaders())
+    return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}/safe-links", params={"paths": ' '.join(paths)}, headers=getRequestHeaders())
 
 
 def getEDMEntityIDs(DBName, Type, filter=None):
-    return rPut(f"EDM/{DBName}/{Type}/find", data=json.dumps({"filter": (filter if filter else {})}), headers=getRequestHeaders())
-
+    return rPut(f"{API_PREFIX}EDM/{DBName}/{Type}/find", data=json.dumps({"filter": (filter if filter else {})}), headers=getRequestHeaders())
 
 def uploadEDMBinaryFile(DBName, binary_data) -> str:
-    return rPost(f"EDM/{DBName}/blob/upload", files={"blob": binary_data}, headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}EDM/{DBName}/blob/upload", files={"blob": binary_data}, headers=getRequestHeaders())
 
 
 def getEDMBinaryFileByID(DBName, fid) -> Tuple[bytes,str]:
-    response = rGetRaw(f"EDM/{DBName}/blob/{fid}", headers=getRequestHeaders())
+    response = rGetRaw(f"{API_PREFIX}EDM/{DBName}/blob/{fid}", headers=getRequestHeaders())
     d = response.headers['Content-Disposition']
     filename = re.findall("filename=(.+)", d)[0]
     return response.content, filename
