@@ -1914,7 +1914,7 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
     return mp.monitor.jobmanInfo(ns)
 
 
-@base_router.get("/UI", response_class=HTMLResponse, tags=["User Interface"])
+@base_router.get("/UI", response_class=HTMLResponse, tags=["User Interface"], include_in_schema=False)
 def ui():
     # f = open('../UI/index.html', 'r')
     f = open('../../../mupifWeb/index.html', 'r')
@@ -1938,7 +1938,7 @@ ALLOWED_FILES = [
     'bundle.js'
 ]
 
-@base_router.get("/UI/{file_path:path}", tags=["User Interface"])
+@base_router.get("/UI/{file_path:path}", tags=["User Interface"], include_in_schema=False)
 def get_ui_file(file_path: str):
     if '..' in file_path or file_path.startswith('/'):
         return Response(status_code=403)
@@ -1974,7 +1974,7 @@ thisDir = os.path.dirname(os.path.abspath(__file__))
 home_dir_path = os.path.abspath(os.path.join(thisDir, "..", "..", "base_www"))
 home_index_file_path = os.path.abspath(os.path.join(home_dir_path, "index.html"))
 
-@home_router.get("/webfonts/{font_name}")
+@home_router.get("/webfonts/{font_name}", include_in_schema=False)
 async def get_home_font(font_name: str):
     font_path = Path(home_dir_path) / "webfonts" / font_name
     return FileResponse(font_path)
@@ -1986,7 +1986,7 @@ def home():
     f.close()
     return HTMLResponse(content=content, status_code=200)
 
-@home_router.get("/{file_path:path}", tags=["MoHomenitor User Interface"])
+@home_router.get("/{file_path:path}", tags=["Home User Interface"], include_in_schema=False)
 def get_home_file(file_path: str):
     if '..' in file_path or file_path.startswith('/'):
         return Response(status_code=403)
@@ -2020,7 +2020,7 @@ def get_home_file(file_path: str):
 async def monitor():
     return FileResponse(MONITOR_INDEX_PATH)
 
-@monitor_router.get("/{file_path:path}", tags=["Monitor User Interface"])
+@monitor_router.get("/{file_path:path}", tags=["Monitor User Interface"], include_in_schema=False)
 async def get_monitor_file(file_path: str):
     full_path = Path(MONITOR_SPA_PATH).resolve() / file_path
 
