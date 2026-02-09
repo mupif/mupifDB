@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSO
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
 from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 
 from pymongo import MongoClient
 import tempfile
@@ -80,6 +81,8 @@ if not DEVELOPMENT and APP_SECRET_KEY == 'secret_jwt_key':
 HTTPS_ENABLED = os.environ.get('HTTPS_ENABLED', False) in ['1','true','True','TRUE']
 SESSION_EXPIRE_MINUTES = 7 * 24 * 60
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+MONITOR_SPA_PATH = os.environ.get('MONITOR_SPA_PATH', '/var/lib/mupif/monitor/dist/spa')
+MONITOR_INDEX_PATH = os.path.join(MONITOR_SPA_PATH, "index.html")
 
 # --- MongoDB Connection ---
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
@@ -1956,6 +1959,24 @@ def get_ui_file(file_path: str):
     except Exception as e:
         print(f"Error reading file {file_path}: {e}")
         return Response(status_code=500)
+
+
+if os.path.isdir(MONITOR_SPA_PATH):
+    app.mount("/mon", StaticFiles(directory=MONITOR_SPA_PATH, html=True), name="mon")
+    print(f"Successfully mounted monitor from {MONITOR_SPA_PATH}")
+    
+    @app.get("/mon", include_in_schema=False)
+    async def read_index():
+        return FileResponse(MONITOR_INDEX_PATH)
+else:
+    logging.warning(f"Static files directory not found at {MONITOR_SPA_PATH}.")
+
+    @app.get("/mon")
+    async def mon_placeholder():
+        return JSONResponse(
+            status_code=404, 
+            content={"error": "Monitor UI not available locally."}
+        )
 
 
 class M_FindParams(BaseModel):
