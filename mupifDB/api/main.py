@@ -14,7 +14,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
-from fastapi import FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
+from fastapi import APIRouter, FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
@@ -47,6 +47,7 @@ import json
 from typing import Any, List, Literal, Optional, Iterator, TypeVar, Callable
 from rich import print_json
 from rich.pretty import pprint
+from pathlib import Path
 
 # EDM Imports
 from typing_extensions import Annotated, Self
@@ -81,6 +82,7 @@ if not DEVELOPMENT and APP_SECRET_KEY == 'secret_jwt_key':
 HTTPS_ENABLED = os.environ.get('HTTPS_ENABLED', False) in ['1','true','True','TRUE']
 SESSION_EXPIRE_MINUTES = 7 * 24 * 60
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
 MONITOR_SPA_PATH = os.environ.get('MONITOR_SPA_PATH', '/var/lib/mupif/monitor/dist/spa')
 MONITOR_INDEX_PATH = os.path.join(MONITOR_SPA_PATH, "index.html")
 
@@ -441,11 +443,11 @@ tags_metadata = [
 
 servers_list = [
     {
-        "url": "https://test.mupif.org/api", 
+        "url": "https://test.mupif.org/", 
         "description": "Test API"
     },
     {
-        "url": "https://musicode.mupif.org/api", 
+        "url": "https://musicode.mupif.org/", 
         "description": "MUSICODE API"
     },
 ]
@@ -453,9 +455,7 @@ servers_list = [
 
 app = FastAPI(
     openapi_tags=tags_metadata,
-    root_path="/api",
     servers=servers_list,
-    # openapi_url="/api/openapi.json",
     redirect_slashes=True,
 )
 
@@ -476,12 +476,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+api_router = APIRouter()
+base_router = APIRouter()
+home_router = APIRouter()
+monitor_router = APIRouter()
+
+
+# --------------------------------------------------
+# Default
+# --------------------------------------------------
+
+@api_router.get("/", include_in_schema=False)
+def api_docs_redirect():
+    return RedirectResponse(url="/docs")
+
+@base_router.get("/", include_in_schema=False)
+def home_redirect():
+    return RedirectResponse(url="/home/")
+
 
 # --------------------------------------------------
 # --- AUTHENTICATION ENDPOINTS ---
 # --------------------------------------------------
 
-@app.post("/login", tags=["Authentication"])
+@api_router.post("/login", tags=["Authentication"])
 async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends()):
     user = db_get_user_by_email(form_data.username)
     
@@ -513,7 +531,7 @@ async def login(response: Response, form_data: OAuth2PasswordRequestForm = Depen
     }
 
 
-@app.post("/refresh_token", tags=["Authentication"])
+@api_router.post("/refresh_token", tags=["Authentication"])
 async def refresh_token(valid_session: Session_Model = Depends(get_valid_session_from_header)):
     """
     Refreshes the short-lived JWT for non-browser clients (Bearer token usage).
@@ -529,7 +547,7 @@ async def refresh_token(valid_session: Session_Model = Depends(get_valid_session
     }
 
 
-@app.post("/logout", tags=["Authentication"])
+@api_router.post("/logout", tags=["Authentication"])
 async def logout(response: Response, request: Request):
     
     token = request.cookies.get("access_token") 
@@ -554,7 +572,7 @@ async def logout(response: Response, request: Request):
     return {"message": "Logged out and session revoked"}
 
 
-@app.post("/register", tags=["Authentication"])
+@api_router.post("/register", tags=["Authentication"])
 async def register_user(user: OAuth2PasswordRequestForm = Depends()):
     db_user = db_get_user_by_email(mail=user.username)
     if db_user:
@@ -564,7 +582,7 @@ async def register_user(user: OAuth2PasswordRequestForm = Depends()):
     return create_user(user=user)
 
 
-@app.get("/current_user", tags=["Authentication"])
+@api_router.get("/current_user", tags=["Authentication"])
 async def read_current_user(current_user: User_Model = Depends(get_current_authenticated_user)):
     # Create a dict and remove sensitive data before returning
     user_dict = current_user.model_dump(by_alias=True)
@@ -578,7 +596,7 @@ async def read_current_user(current_user: User_Model = Depends(get_current_authe
 # Users
 # --------------------------------------------------
 
-@app.get("/users", tags=["Users"], response_model=models.UserCollectionResponse)
+@api_router.get("/users", tags=["Users"], response_model=models.UserCollectionResponse)
 def get_users(
     page: int = 1,
     pageSize: int = 20,
@@ -617,7 +635,7 @@ def get_users(
         )
     )
 
-@app.get("/users/{user_id}", tags=["Users"], response_model=models.UserEntityResponse)
+@api_router.get("/users/{user_id}", tags=["Users"], response_model=models.UserEntityResponse)
 def get_user(user_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.UserEntityResponse:
     if not current_user.rights_admin and str(current_user.id) != user_id:
         raise ForbiddenError("Only admin users or the user themselves can access user details.")
@@ -634,7 +652,7 @@ class UserUpdate(BaseModel):
     # surname: Optional[str] = None
     # mail: Optional[str] = None
 
-@app.patch("/users/{user_id}", tags=["Users"])
+@api_router.patch("/users/{user_id}", tags=["Users"])
 def update_user(user_id: str, user_update: UserUpdate, current_user: User_Model = Depends(get_current_authenticated_user)) -> User_Model:
     if not current_user.rights_admin and str(current_user.id) != user_id:
         raise ForbiddenError("Only admin users or the user themselves can update user details.")
@@ -663,19 +681,10 @@ def update_user(user_id: str, user_update: UserUpdate, current_user: User_Model 
 
 
 # --------------------------------------------------
-# Default
-# --------------------------------------------------
-
-@app.get("/")
-def read_root():
-    return RedirectResponse(url="/api/UI")
-
-
-# --------------------------------------------------
 # Usecases
 # --------------------------------------------------
 
-@app.get("/usecases", tags=["Usecases"], response_model=models.UsecaseCollectionResponse)
+@api_router.get("/usecases", tags=["Usecases"], response_model=models.UsecaseCollectionResponse)
 def get_usecases(
     page: int = 1,
     pageSize: int = 20,
@@ -707,13 +716,13 @@ def get_usecases(
     )
 
 
-@app.get("/usecases/{uid}", tags=["Usecases"], response_model=models.UsecaseEntityResponse)
+@api_router.get("/usecases/{uid}", tags=["Usecases"], response_model=models.UsecaseEntityResponse)
 def get_usecase(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.UsecaseEntityResponse:
     res = db.UseCases.find_one({"ucid": uid})
     if res is None: raise NotFoundError(f'Database reports no workflow with ucid={uid}.')
     return models.UsecaseEntityResponse(entity=perms.ensure(models.UseCase_Model.model_validate(res)))
 
-@app.get("/usecases/{uid}/workflows", tags=["Usecases"], response_model=models.WorkflowCollectionResponse)
+@api_router.get("/usecases/{uid}/workflows", tags=["Usecases"], response_model=models.WorkflowCollectionResponse)
 def get_usecase_workflows(
     uid: str,
     page: int = 1,
@@ -746,7 +755,7 @@ def get_usecase_workflows(
     )
 
 
-@app.post("/usecases", tags=["Usecases"])
+@api_router.post("/usecases", tags=["Usecases"])
 def post_usecase(uc: models.UseCase_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.ensure(uc,perm='child',on='parent')
     res = db.UseCases.insert_one(uc.model_dump_db())
@@ -757,7 +766,7 @@ def post_usecase(uc: models.UseCase_Model, current_user: User_Model = Depends(ge
 # Workflows
 # --------------------------------------------------
 
-@app.get("/workflows", tags=["Workflows"], response_model=models.WorkflowCollectionResponse)
+@api_router.get("/workflows", tags=["Workflows"], response_model=models.WorkflowCollectionResponse)
 def get_workflows(
     page: int = 1,
     pageSize: int = 20,
@@ -881,7 +890,7 @@ def insertWorkflowDefinition_model(source: pydantic.FilePath, rec: models.Workfl
     return None
 
 
-@app.post("/usecases/{usecaseid}/workflows", tags=["Usecases"])
+@api_router.post("/usecases/{usecaseid}/workflows", tags=["Usecases"])
 async def upload_workflow_and_dependencies(
     usecaseid: str,
     workflow_file: UploadFile = File(..., description="The main workflow Python file."),
@@ -1018,7 +1027,7 @@ async def upload_workflow_and_dependencies(
         raise HTTPException(status_code=500, detail=f"Internal server error during workflow upload: {e}")
 
 
-@app.get("/workflows/{workflow_id}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+@api_router.get("/workflows/{workflow_id}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
 def get_workflow(workflow_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
     return get_workflow_by_version(workflow_id, -1)
 
@@ -1035,7 +1044,7 @@ def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> m
     return perms.ensure(models.Workflow_Model.model_validate(res))
 
 
-@app.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+@api_router.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
 def get_workflow_by_version(workflow_id: str, workflow_version: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
     res = get_workflow_by_version_inside(workflow_id, workflow_version)
     if res is None:
@@ -1043,7 +1052,7 @@ def get_workflow_by_version(workflow_id: str, workflow_version: int, current_use
     return models.WorkflowEntityResponse(entity=res)
 
 
-@app.patch("/workflows", tags=["Workflows"])
+@api_router.patch("/workflows", tags=["Workflows"])
 def update_workflow(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.Workflow_Model:
     perms.ensure(wf,perm='modify')
     # don't write the result if the result after the update does not validate
@@ -1054,14 +1063,14 @@ def update_workflow(wf: models.Workflow_Model, current_user: User_Model = Depend
         return models.Workflow_Model.model_validate(res)
 
 
-@app.post("/workflows", tags=["Workflows"])
+@api_router.post("/workflows", tags=["Workflows"])
 def insert_workflow(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.Workflows.insert_one(wf.model_dump_db())
     return str(res.inserted_id)
 
 
-@app.post("/workflows_history", tags=["Workflows"])
+@api_router.post("/workflows_history", tags=["Workflows"])
 def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     perms.ensure(wf,perm='child',on='parent')
     res = db.WorkflowsHistory.insert_one(wf.model_dump_db())
@@ -1072,7 +1081,7 @@ def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model 
 # Executions
 # --------------------------------------------------
 
-@app.get("/executions", tags=["Executions"], response_model=models.ExecutionCollectionResponse)
+@api_router.get("/executions", tags=["Executions"], response_model=models.ExecutionCollectionResponse)
 def get_executions(
     status: str = "", 
     workflow_version: int = 0, 
@@ -1148,7 +1157,7 @@ def get_execution_with_inputs(uid: str, current_user: User_Model = Depends(get_c
             print(e)
     return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
 
-@app.get("/executions/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
+@api_router.get("/executions/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
 def get_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     res = db.WorkflowExecutions.find_one({"_id": bson.objectid.ObjectId(uid)})
     if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
@@ -1173,11 +1182,11 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
     return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
 
 # FIXME: how is this different from get_execution??
-@app.get("/edm_execution/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
+@api_router.get("/edm_execution/{uid}", tags=["Executions"], response_model=models.ExecutionEntityResponse)
 def get_edm_execution_uid(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     return get_execution(uid, current_user=current_user)
 
-@app.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
+@api_router.get("/edm_execution/{uid}/{entity}/{iotype}", tags=["Executions"])
 def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['input','output'], current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
     obj = get_edm_execution_uid(uid, current_user=current_user).entity # handles perms
     for m in obj.EDMMapping:
@@ -1189,7 +1198,7 @@ def get_edm_execution_uid_entity_iotype(uid: str, entity: str, iotype: Literal['
     return []
 
 
-@app.post("/executions/create", tags=["Executions"], response_model=models.CreateNewExecutionEntityResponse)
+@api_router.post("/executions/create", tags=["Executions"], response_model=models.CreateNewExecutionEntityResponse)
 def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.CreateNewExecutionEntityResponse:
     perms.TODO(wec)
 
@@ -1233,7 +1242,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
     return insert_execution(data=ex, current_user=current_user)
 
 
-@app.post("/executions", tags=["Executions"])
+@api_router.post("/executions", tags=["Executions"])
 def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.CreateNewExecutionEntityResponse:
     perms.ensure(data,perm='child',on='parent')
     res = db.WorkflowExecutions.insert_one(data.model_dump_db())
@@ -1243,7 +1252,7 @@ def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Mo
         inserted_id=str(res.inserted_id)
     )
 
-@app.get("/executions/{uid}/inputs/", tags=["Executions"])
+@api_router.get("/executions/{uid}/inputs/", tags=["Executions"])
 def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
     ex = get_execution(uid, current_user=current_user).entity # checks perms already
     if ex.Inputs: 
@@ -1253,7 +1262,7 @@ def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_curren
     return []
 
 
-@app.get("/executions/{uid}/outputs", tags=["Executions"])
+@api_router.get("/executions/{uid}/outputs", tags=["Executions"])
 def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
     ex = get_execution(uid, current_user=current_user).entity # checks perms already
     if ex.Outputs:
@@ -1262,7 +1271,7 @@ def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_curre
         return models.IODataRecord_Model.model_validate(res).DataSet
     return []
 
-@app.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
+@api_router.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
 def get_execution_livelog(uid: str, num: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
     ex = get_execution(uid, current_user=current_user).entity
     if ex.loggerURI is not None:
@@ -1293,26 +1302,26 @@ def get_execution_io_item(uid: str, name, obj_id: str, inputs: bool, current_use
     raise NotFoundError(f'Execution weid={uid}, {"inputs" if inputs else "outputs"}: no element with name="{name}" & obj_id="{obj_id}".')
 
 
-@app.get("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
+@api_router.get("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
 def get_execution_input_item(uid: str, name: str, obj_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, obj_id, inputs=True, current_user=current_user)
 
 
-@app.get("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
+@api_router.get("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
 def get_execution_output_item(uid: str, name: str, obj_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, obj_id, inputs=False, current_user=current_user)
 
 
-@app.get("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
-@app.get("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
-@app.get("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
+@api_router.get("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
+@api_router.get("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
+@api_router.get("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _get_execution_input_item(uid: str, name: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, '', inputs=True, current_user=current_user)
 
 
-@app.get("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
-@app.get("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
-@app.get("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
+@api_router.get("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
+@api_router.get("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
+@api_router.get("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _get_execution_output_item(uid: str, name: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecordItem_Model:
     return get_execution_io_item(uid, name, '', inputs=False, current_user=current_user)
 
@@ -1341,26 +1350,26 @@ def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_c
     return False
 
 
-@app.patch("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
+@api_router.patch("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
 def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, obj_id, True, data, current_user)
 
 
-@app.patch("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
+@api_router.patch("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
 def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, obj_id, False, data, current_user)
 
 
-@app.patch("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
-@app.patch("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
-@app.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
+@api_router.patch("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
+@api_router.patch("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
+@api_router.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, '', True, data, current_user)
 
 
-@app.patch("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
-@app.patch("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
-@app.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
+@api_router.patch("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
+@api_router.patch("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
+@api_router.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
 def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
     return set_execution_io_item(uid, name, '', False, data, current_user)
 
@@ -1467,7 +1476,7 @@ def checkInput(execution, name, obj_id, object_type, data_id, onto_path=None, on
                     #         return False
     return False
 
-@app.get("/executions/{uid}/check_inputs", tags=["Executions"], response_model=bool)
+@api_router.get("/executions/{uid}/check_inputs", tags=["Executions"], response_model=bool)
 def check_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> bool:
     execution = get_execution_with_inputs(uid, current_user=current_user).entity
     workflow = get_workflow_by_version_inside(execution.WorkflowID, execution.WorkflowVersion)
@@ -1513,7 +1522,7 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     name: str
     value: str
 
-@app.patch("/executions/{uid}/set_onto_base_object_id", tags=["Executions"], response_model=models.ExecutionEntityResponse)
+@api_router.patch("/executions/{uid}/set_onto_base_object_id", tags=["Executions"], response_model=models.ExecutionEntityResponse)
 def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
     perms.TODO()
     with db_transaction() as session:
@@ -1525,7 +1534,7 @@ def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, curre
 class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
     data: list[dict]
 
-@app.patch("/executions/{uid}/set_onto_base_object_id_multiple", tags=["Executions"])
+@api_router.patch("/executions/{uid}/set_onto_base_object_id_multiple", tags=["Executions"])
 def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user)):
     for d in data: modify_execution_id(uid,d, current_user=current_user)
     return get_execution(uid, current_user=current_user)
@@ -1534,7 +1543,7 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
     name: str
     value: list[str]
 
-@app.patch("/executions/{uid}/set_onto_base_object_ids", tags=["Executions"])
+@api_router.patch("/executions/{uid}/set_onto_base_object_ids", tags=["Executions"])
 def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user)):
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}}, return_document=ReturnDocument.AFTER, session=session)
@@ -1547,7 +1556,7 @@ class M_ModifyExecution(BaseModel):
     key: str
     value: str
 
-@app.patch("/executions/{uid}/set_param", tags=["Executions"])
+@api_router.patch("/executions/{uid}/set_param", tags=["Executions"])
 def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.TODO()
     with db_transaction() as session:
@@ -1607,7 +1616,7 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
     return get_execution(uid, current_user=current_user)
 
 
-@app.patch("/executions/{uid}/schedule", tags=["Executions"])
+@api_router.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     execution_record = perms.ensure(get_execution(uid, current_user=current_user).entity, perm='modify')
     if execution_record.Status == 'Created' or True:
@@ -1621,21 +1630,21 @@ def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_
 # IOData
 # --------------------------------------------------
 
-@app.get("/iodata/{uid}", tags=["IOData"])
+@api_router.get("/iodata/{uid}", tags=["IOData"])
 def get_execution_iodata(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.IODataRecord_Model:
     res = db.IOData.find_one({'_id': bson.objectid.ObjectId(uid)})
     if res is None: raise NotFoundError(f'Database reports no IOData with uid={uid}.')
     return perms.ensure(models.IODataRecord_Model.model_validate(res))
 
 # TODO: pass and store parent data as well
-@app.post("/iodata", tags=["IOData"])
+@api_router.post("/iodata", tags=["IOData"])
 def insert_execution_iodata(data: models.IODataRecord_Model, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.ensure(data,perm='child',on='parent')
     res = db.IOData.insert_one(data.model_dump_db())
     return str(res.inserted_id)
 
 
-# @app.patch("/iodata/", tags=["IOData"])
+# @api_router.patch("/iodata/", tags=["IOData"])
 # def set_execution_iodata(data: M_Dict):
 #     res = db.IOData.insert_one(data.entity)
 #     return str(res.inserted_id)
@@ -1653,7 +1662,7 @@ async def get_temp_dir():
         del tdir
 
 
-@app.get("/file/{uid}", tags=["Files"])
+@api_router.get("/file/{uid}", tags=["Files"])
 def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
     fs = gridfs.GridFS(db)
     foundfile = fs.get(bson.objectid.ObjectId(uid))
@@ -1665,7 +1674,7 @@ def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = De
     return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
 
 # TODO: needs parent as parameter, so that perms can be checked
-@app.post("/file", tags=["Files"])
+@api_router.post("/file", tags=["Files"])
 def upload_file(file: UploadFile, current_user: User_Model = Depends(get_current_authenticated_user)):
     perms.TODO()
     if file:
@@ -1675,7 +1684,7 @@ def upload_file(file: UploadFile, current_user: User_Model = Depends(get_current
     return None
 
 
-@app.get("/property_array_data/{fid}/{i_start}/{i_count}", tags=["Additional"])
+@api_router.get("/property_array_data/{fid}/{i_start}/{i_count}", tags=["Additional"])
 def get_property_array_data(fid: str, i_start: int, i_count: int, current_user: User_Model = Depends(get_current_authenticated_user)):
     # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid) # checks perms
@@ -1696,7 +1705,7 @@ def get_property_array_data(fid: str, i_start: int, i_count: int, current_user: 
         return sub_propval.tolist()
 
 
-@app.get("/field_as_vtu/{fid}", tags=["Additional"])
+@api_router.get("/field_as_vtu/{fid}", tags=["Additional"])
 def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
     # XXX: make a direct function call, no need to go through REST API again (or is that for granta?)
     pfile, fn = mupifDB.restApiControl.getBinaryFileByID(fid)
@@ -1714,7 +1723,7 @@ def get_field_as_vtu(fid: str, tdir=Depends(get_temp_dir), current_user: User_Mo
 # Stats
 # --------------------------------------------------
 
-@app.post("/logs", tags=["Logs"])
+@api_router.post("/logs", tags=["Logs"])
 def insert_log(data: dict, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     # perms.notRemote(request,'inserting logging data')
     res = db.Logs.insert_one(data)
@@ -1725,7 +1734,7 @@ def insert_log(data: dict, request: Request, current_user: User_Model = Depends(
 # Stats
 # --------------------------------------------------
 
-@app.get("/status", tags=["Stats"])
+@api_router.get("/status", tags=["Stats"])
 def get_status(current_user: User_Model = Depends(get_current_authenticated_user)):
     mupifDBStatus = 'OK'
     schedulerStatus = 'OK'
@@ -1753,7 +1762,7 @@ def get_status(current_user: User_Model = Depends(get_current_authenticated_user
     )
 
 
-@app.get("/execution_statistics", tags=["Stats"])
+@api_router.get("/execution_statistics", tags=["Stats"])
 def get_execution_statistics(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
     res = client.MuPIF.WorkflowExecutions.aggregate([
         {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
@@ -1775,7 +1784,7 @@ def get_execution_statistics(current_user: User_Model = Depends(get_current_auth
     )
 
 
-@app.get("/settings", tags=["Settings"])
+@api_router.get("/settings", tags=["Settings"])
 def get_settings(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Settings
     for s in table.find():
@@ -1784,7 +1793,7 @@ def get_settings(current_user: User_Model = Depends(get_current_authenticated_us
     return {}
 
 
-@app.get("/database/maybe_init",tags=["Settings"])
+@api_router.get("/database/maybe_init",tags=["Settings"])
 def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
     # probably initialized already
     if 'Settings' in db.list_collection_names(): return False
@@ -1820,8 +1829,8 @@ def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
 
 
 
-@app.get("/scheduler_statistics", tags=["Stats"])
-@app.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
+@api_router.get("/scheduler_statistics", tags=["Stats"])
+@api_router.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Stat
     output = {}
@@ -1839,8 +1848,8 @@ class M_ModifyStatistics(BaseModel):
     value: int
 
 
-@app.patch("/scheduler_statistics", tags=["Stats"])
-@app.patch("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
+@api_router.patch("/scheduler_statistics", tags=["Stats"])
+@api_router.patch("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     # perms.notRemote(request,'modifying scheduler statistics')
     if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
@@ -1849,8 +1858,8 @@ def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current
     return False
 
 
-@app.get("/status2", tags=["Stats"])
-@app.get("/status2/", tags=["Stats"], include_in_schema=False)
+@api_router.get("/status2", tags=["Stats"])
+@api_router.get("/status2/", tags=["Stats"], include_in_schema=False)
 def get_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = None
     try:
@@ -1878,34 +1887,34 @@ def get_status2(current_user: User_Model = Depends(get_current_authenticated_use
     return {'nameserver': nameserverStatus, 'dms': DMSStatus, 'scheduler': schedulerStatus, 'name': os.environ["MUPIF_VPN_NAME"]}
 
 
-@app.get("/scheduler-status2", tags=["Stats"])
-@app.get("/scheduler-status2/", tags=["Stats"], include_in_schema=False)
+@api_router.get("/scheduler-status2", tags=["Stats"])
+@api_router.get("/scheduler-status2/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.schedulerInfo(ns)
 
 
-@app.get("/ns-status2", tags=["Stats"])
-@app.get("/ns-status2/", tags=["Stats"], include_in_schema=False)
+@api_router.get("/ns-status2", tags=["Stats"])
+@api_router.get("/ns-status2/", tags=["Stats"], include_in_schema=False)
 def get_ns_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.nsInfo(ns)
 
 
-@app.get("/vpn-status2", tags=["Stats"])
-@app.get("/vpn-status2/", tags=["Stats"], include_in_schema=False)
+@api_router.get("/vpn-status2", tags=["Stats"])
+@api_router.get("/vpn-status2/", tags=["Stats"], include_in_schema=False)
 def get_vpn_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     return mp.monitor.vpnInfo(hidePriv=False)
 
 
-@app.get("/jobmans-status2", tags=["Stats"])
-@app.get("/jobmans-status2/", tags=["Stats"], include_in_schema=False)
+@api_router.get("/jobmans-status2", tags=["Stats"])
+@api_router.get("/jobmans-status2/", tags=["Stats"], include_in_schema=False)
 def get_jobmans_status2(current_user: User_Model = Depends(get_current_authenticated_user)):
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.jobmanInfo(ns)
 
 
-@app.get("/UI", response_class=HTMLResponse, tags=["User Interface"])
+@base_router.get("/UI", response_class=HTMLResponse, tags=["User Interface"])
 def ui():
     # f = open('../UI/index.html', 'r')
     f = open('../../../mupifWeb/index.html', 'r')
@@ -1921,39 +1930,35 @@ MIME_TYPES = {
     ".json": "application/json",
     ".svg": "image/svg+xml",
     ".png": "image/png",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
 }
 
 ALLOWED_FILES = [
     'bundle.js'
 ]
 
-@app.get("/UI/{file_path:path}", tags=["User Interface"])
+@base_router.get("/UI/{file_path:path}", tags=["User Interface"])
 def get_ui_file(file_path: str):
-    # Security check for directory traversal
     if '..' in file_path or file_path.startswith('/'):
-        return Response(status_code=403) # Forbidden
+        return Response(status_code=403)
 
     full_path = os.path.join('../../../mupifWeb', file_path)
     file_name = os.path.basename(file_path)
     if file_name not in ALLOWED_FILES:
         return ui()
     
-    # 1. Check if the file exists
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
         print(f"{file_path} not found")
         return Response(status_code=404)
 
-    # 2. Determine the file extension and MIME type
     file_ext = os.path.splitext(file_path)[1].lower()
-    media_type = MIME_TYPES.get(file_ext, "application/octet-stream") # Default to generic binary type
+    media_type = MIME_TYPES.get(file_ext, "application/octet-stream")
     
-    # Use HTMLResponse if it's explicitly HTML, otherwise use PlainTextResponse/Response
     try:
         with open(full_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # 3. Return the response with the correct media_type
-        # Use PlainTextResponse for text-based files like JS, CSS, HTML
         return PlainTextResponse(content=content, media_type=media_type, status_code=200)
 
     except Exception as e:
@@ -1961,29 +1966,82 @@ def get_ui_file(file_path: str):
         return Response(status_code=500)
 
 
-if os.path.isdir(MONITOR_SPA_PATH):
-    app.mount("/mon", StaticFiles(directory=MONITOR_SPA_PATH, html=True), name="mon")
-    print(f"Successfully mounted monitor from {MONITOR_SPA_PATH}")
+# --------------------------------------------------
+# Home page
+# --------------------------------------------------
+
+thisDir = os.path.dirname(os.path.abspath(__file__))
+home_dir_path = os.path.abspath(os.path.join(thisDir, "..", "..", "base_www"))
+home_index_file_path = os.path.abspath(os.path.join(home_dir_path, "index.html"))
+
+@home_router.get("/webfonts/{font_name}")
+async def get_home_font(font_name: str):
+    font_path = Path(home_dir_path) / "webfonts" / font_name
+    return FileResponse(font_path)
+
+@home_router.get("/", response_class=HTMLResponse, tags=["Home User Interface"], include_in_schema=False)
+def home():
+    f = open(home_index_file_path, 'r')
+    content = f.read()
+    f.close()
+    return HTMLResponse(content=content, status_code=200)
+
+@home_router.get("/{file_path:path}", tags=["MoHomenitor User Interface"])
+def get_home_file(file_path: str):
+    if '..' in file_path or file_path.startswith('/'):
+        return Response(status_code=403)
+
+    full_path = os.path.join(home_dir_path, file_path)
+    file_name = os.path.basename(file_path)
+
+
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        print(f"{file_path} not found")
+        return Response(status_code=404)
+
+    file_ext = os.path.splitext(file_path)[1].lower()
+    media_type = MIME_TYPES.get(file_ext, "application/octet-stream")
     
-    @app.get("/mon", include_in_schema=False)
-    async def read_index():
-        return FileResponse(MONITOR_INDEX_PATH)
-else:
-    logging.warning(f"Static files directory not found at {MONITOR_SPA_PATH}.")
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return PlainTextResponse(content=content, media_type=media_type, status_code=200)
 
-    @app.get("/mon")
-    async def mon_placeholder():
-        return JSONResponse(
-            status_code=404, 
-            content={"error": "Monitor UI not available locally."}
-        )
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}")
+        return Response(status_code=500)
 
+
+# --------------------------------------------------
+# Monitor
+# --------------------------------------------------
+
+@monitor_router.get("/", response_class=HTMLResponse, tags=["Monitor User Interface"], include_in_schema=False)
+async def monitor():
+    return FileResponse(MONITOR_INDEX_PATH)
+
+@monitor_router.get("/{file_path:path}", tags=["Monitor User Interface"])
+async def get_monitor_file(file_path: str):
+    full_path = Path(MONITOR_SPA_PATH).resolve() / file_path
+
+    if not str(full_path).startswith(str(Path(MONITOR_SPA_PATH).resolve())):
+        return Response(status_code=403)
+
+    if not full_path.is_file():
+        print(f"{file_path} not found")
+        return Response(status_code=404)
+
+    return FileResponse(full_path)
+
+# --------------------------------------------------
+# ---
+# --------------------------------------------------
 
 class M_FindParams(BaseModel):
     filter: dict
 
 
-@app.put("/EDM/{db}/{type}/find", tags=["EDM"])
+@api_router.put("/EDM/{db}/{type}/find", tags=["EDM"])
 def edm_find(db: str, type: str, data: M_FindParams, current_user: User_Model = Depends(get_current_authenticated_user)):
     res = client[db][type].find(data.filter)
     ids = [str(r["_id"]) for r in res]
@@ -2364,7 +2422,7 @@ class _LinkTracker:
     nodes: Set[str]=pydantic.dataclasses.Field(default_factory=set)
     edges: Set[Tuple[str,str]]=pydantic.dataclasses.Field(default_factory=set)
 
-@app.get('/EDM/{db}/{type}/{id}/graph', tags=["EDM"])
+@api_router.get('/EDM/{db}/{type}/{id}/graph', tags=["EDM"])
 def _make_link_digraph(db: str, type: str, id:str, debug:bool=False, current_user: User_Model = Depends(get_current_authenticated_user)) -> Tuple[Set[str],Set[Tuple[str,str]]]:
     def _nd(k,i): return (f'{k}\n{i}' if debug else i)
     def _descend(klass,dbId,linkTracker):
@@ -2385,7 +2443,7 @@ def _make_link_digraph(db: str, type: str, id:str, debug:bool=False, current_use
 ##
 ## schema POST, GET
 ## 
-@app.post('/EDM/{db}/schema', tags=["EDM"])
+@api_router.post('/EDM/{db}/schema', tags=["EDM"])
 def dms_api_schema_post(db: str, schema: SchemaSchema, force:bool=False, current_user: User_Model = Depends(get_current_authenticated_user)):
     'Writes schema to the DB.'
     coll=GG.db_get(db)['schema']
@@ -2396,11 +2454,11 @@ def dms_api_schema_post(db: str, schema: SchemaSchema, force:bool=False, current
     coll.insert_one(json.loads(schema.json()))
     GG.schema_invalidate_cache()
 
-@app.get('/EDM/{db}/schema', tags=["EDM"])
+@api_router.get('/EDM/{db}/schema', tags=["EDM"])
 def dms_api_schema_get(db: str, include_id:bool=False, current_user: User_Model = Depends(get_current_authenticated_user)):
     return GG.schema_get(db,include_id=include_id)
 
-@app.get('/EDM/{db}/schema/graphviz', tags=["EDM"])
+@api_router.get('/EDM/{db}/schema/graphviz', tags=["EDM"])
 def dms_api_schema_graphviz(db: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     sch=GG.schema_get(db,include_id=False).root # root convertes from SchemaSchema to dict
     graph='digraph g {\n   graph [rankdir="LR"];\n'
@@ -2457,8 +2515,6 @@ class _ObjectTracker:
             if curr[:common+1]!=abspath[:common+1]: break
         #print(f'{common=}')
         return (len(curr)-common)*'.'+_unparse_path(abspath[common:])
-
-
 
 def _api_value_to_db_rec__attr(item,val,prefix):
     'Convert API value to the DB record (for attribute)'
@@ -2524,7 +2580,7 @@ class PatchData(pydantic.BaseModel):
     path: str
     data: Union[List[Dict[str,Any]],Dict[str,Any]]
 
-@app.patch('/EDM/{db}/{type}/{id}', tags=["EDM"])
+@api_router.patch('/EDM/{db}/{type}/{id}', tags=["EDM"])
 def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_user: User_Model = Depends(get_current_authenticated_user)):
     path,data=patchData.path,patchData.data
     RR=_resolve_path_head(db=db,type=type,id=id,path=path)
@@ -2554,7 +2610,7 @@ def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_u
         if r is None: raise RuntimeError(f'{db}/{R.type}/{R.id} not found for update?')
 
 
-@app.post('/EDM/{db}/{type}', tags=["EDM"])
+@api_router.post('/EDM/{db}/{type}', tags=["EDM"])
 def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     def _new_object(klass,dta,path,tracker):
         klassSchema=GG.schema_get_type(db,klass)
@@ -2596,14 +2652,14 @@ def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model =
     return _new_object(type,data,path=[],tracker=_ObjectTracker())
 
 
-@app.post('/EDM/{db}/blob/upload', tags=["EDM"])
+@api_router.post('/EDM/{db}/blob/upload', tags=["EDM"])
 def dms_api_blob_upload(db: str, blob: fastapi.UploadFile, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     'Streming blob upload'
     fs = gridfs.GridFS(GG.db_get(db))
     return str(fs.put(blob.file, filename=blob.filename))
 
 
-@app.get('/EDM/{db}/blob/{uid}', tags=["EDM"])
+@api_router.get('/EDM/{db}/blob/{uid}', tags=["EDM"])
 def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
     fs = gridfs.GridFS(GG.db_get(db))
     foundfile = fs.get(bson.objectid.ObjectId(uid))
@@ -2621,7 +2677,7 @@ def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir), current_user
 #
 # FIXME: paths is a space-delimited array
 #
-@app.get('/EDM/{db}/{type}/{id}/safe-links', tags=["EDM"])
+@api_router.get('/EDM/{db}/{type}/{id}/safe-links', tags=["EDM"])
 def dms_api_path_safe_links(db:str, type:str, id:str, paths:str='', debug:bool=False, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:
     # collect leaf IDs of modification paths
     modIds=set()
@@ -2648,7 +2704,7 @@ def dms_api_path_safe_links(db:str, type:str, id:str, paths:str='', debug:bool=F
     return list(ret)
 
 
-@app.get('/EDM/{db}/{type}/{id}/clone', tags=["EDM"])
+@api_router.get('/EDM/{db}/{type}/{id}/clone', tags=["EDM"])
 def dms_api_path_clone_get(db:str,type:str,id:str,shallow:str='', current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
     dump=dms_api_path_get(db=db,type=type,id=id,path=None,max_level=-1,tracking=True,meta=True,shallow=shallow)
     return dms_api_object_post(db=db,type=type,data=dump)
@@ -2656,7 +2712,7 @@ def dms_api_path_clone_get(db:str,type:str,id:str,shallow:str='', current_user: 
 #
 # FIXME: shallow is space-delimited list
 #
-@app.get('/EDM/{db}/{type}/{id}', tags=["EDM"])
+@api_router.get('/EDM/{db}/{type}/{id}', tags=["EDM"])
 def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:int=-1, tracking:bool=False, meta:bool=True, shallow:str='', current_user: User_Model = Depends(get_current_authenticated_user)) -> typing.Union[dict,List[dict]]:
     def _get_object(klass,dbId,parentId,path,tracker):
         if tracker and (p:=tracker.resolve_id_to_relpath(id=dbId,curr=path)): return p
@@ -2701,11 +2757,11 @@ def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:
     return (ret[0] if RR.isPlain else ret)
 
 
-@app.get('/EDM/{db}', tags=["EDM"])
+@api_router.get('/EDM/{db}', tags=["EDM"])
 def dms_api_type_list(db: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     return list(GG.schema_get(db).model_dump().keys())
 
-@app.get('/EDM/{db}/{type}', tags=["EDM"])
+@api_router.get('/EDM/{db}/{type}', tags=["EDM"])
 def dms_api_object_list(db: str, type: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     res=GG.db_get(db)[type].find()
     return [str(r['_id']) for r in res]
@@ -2785,6 +2841,10 @@ def initializeEdm(client):
 
 
 
+app.include_router(api_router, prefix="/api")
+app.include_router(base_router, prefix="")
+app.include_router(home_router, prefix="/home")
+app.include_router(monitor_router, prefix="/mon")
 
 
 
