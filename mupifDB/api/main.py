@@ -1914,6 +1914,11 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
     return mp.monitor.jobmanInfo(ns)
 
 
+@base_router.get("/api/UI", response_class=HTMLResponse, tags=["User Interface"], include_in_schema=False)
+def ui_redirect():
+    return RedirectResponse(url="/UI")
+
+
 @base_router.get("/UI", response_class=HTMLResponse, tags=["User Interface"], include_in_schema=False)
 def ui():
     # f = open('../UI/index.html', 'r')
