@@ -309,6 +309,21 @@ async def get_current_authenticated_user(
         
     return user
 
+async def get_optional_user(
+    response: Response,
+    # We call the existing dependency inside this function
+    header_credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    cookie_token: Optional[str] = Depends(get_cookie_token)
+) -> Optional[User_Model]:
+    try:
+        # Re-use the logic of your main auth function
+        user = await get_current_authenticated_user(response, header_credentials, cookie_token)
+        return user
+    except Exception: 
+        # If authentication fails for any reason (expired token, missing header, etc.)
+        # we return None so the endpoint can handle the redirect.
+        return None
+
 async def get_valid_session_from_header(
     # db_conn = Depends(get_db_connection),
     request: Request,
@@ -1914,6 +1929,19 @@ def get_jobmans_status2(current_user: User_Model = Depends(get_current_authentic
     return mp.monitor.jobmanInfo(ns)
 
 
+# --------------------------------------------------
+# UI
+# --------------------------------------------------
+
+@base_router.get("/login_fallback", response_class=HTMLResponse, tags=["User Interface"], include_in_schema=False)
+def ui_login():
+    # f = open('../UI/login.html', 'r')
+    f = open('../../../mupifWeb/login_fallback.html', 'r')
+    content = f.read()
+    f.close()
+    return HTMLResponse(content=content, status_code=200)
+
+
 @base_router.get("/api/UI", response_class=HTMLResponse, tags=["User Interface"], include_in_schema=False)
 def ui_redirect():
     return RedirectResponse(url="/UI")
@@ -1940,7 +1968,8 @@ MIME_TYPES = {
 }
 
 ALLOWED_FILES = [
-    'bundle.js'
+    'ui.bundle.js',
+    'login_fallback.bundle.js'
 ]
 
 @base_router.get("/UI/{file_path:path}", tags=["User Interface"], include_in_schema=False)
@@ -2022,7 +2051,10 @@ def get_home_file(file_path: str):
 # --------------------------------------------------
 
 @monitor_router.get("/", response_class=HTMLResponse, tags=["Monitor User Interface"], include_in_schema=False)
-async def monitor():
+async def monitor(request: Request, current_user: Optional[User_Model] = Depends(get_optional_user)):
+    if current_user is None:
+        return RedirectResponse(url=f"/login_fallback?redirectTo={request.url.path}")
+    
     return FileResponse(MONITOR_INDEX_PATH)
 
 @monitor_router.get("/{file_path:path}", tags=["Monitor User Interface"], include_in_schema=False)
