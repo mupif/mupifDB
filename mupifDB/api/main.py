@@ -1042,8 +1042,23 @@ async def upload_workflow_and_dependencies(
         raise HTTPException(status_code=500, detail=f"Internal server error during workflow upload: {e}")
 
 
-@api_router.get("/workflows/{workflow_id}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
-def get_workflow(workflow_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
+def get_workflow_by_uid_inside(uid: str) -> models.Workflow_Model | None:
+    res = db.Workflows.find_one({"_id": bson.objectid.ObjectId(uid)})
+    if res is None:
+        return None
+    return perms.ensure(models.Workflow_Model.model_validate(res))
+
+
+@api_router.get("/workflows/{uid}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+def get_workflow(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
+    res = get_workflow_by_uid_inside(uid)
+    if res is None:
+        raise NotFoundError(f'Database reports no workflow with _id={uid}.')
+    return models.WorkflowEntityResponse(entity=res)
+
+
+@api_router.get("/workflows_by_wid/{workflow_id}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+def get_workflow_by_wid(workflow_id: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
     return get_workflow_by_version(workflow_id, -1)
 
 
@@ -1059,7 +1074,7 @@ def get_workflow_by_version_inside(workflow_id: str, workflow_version: int) -> m
     return perms.ensure(models.Workflow_Model.model_validate(res))
 
 
-@api_router.get("/workflows/{workflow_id}/version/{workflow_version}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
+@api_router.get("/workflows_by_wid/{workflow_id}/version/{workflow_version}", tags=["Workflows"], response_model=models.WorkflowEntityResponse)
 def get_workflow_by_version(workflow_id: str, workflow_version: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowEntityResponse:
     res = get_workflow_by_version_inside(workflow_id, workflow_version)
     if res is None:
@@ -1178,6 +1193,13 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
     if res is None: raise NotFoundError(f'Database reports no execution with uid={uid}.')
     inputsId = res.get('Inputs', None)
     outputsId = res.get('Outputs', None)
+    if res.get('workflow', None) is None:
+        try:
+            w = get_workflow_by_version(res['WorkflowID'], res['WorkflowVersion'], current_user=current_user).entity
+            if w is not None:
+                res['workflow'] = w.dbID
+        except Exception as e:
+            print(e)
     if inputsId is not None:
         try:
             res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(inputsId)})
@@ -1246,6 +1268,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
 
     ex = models.WorkflowExecution_Model(
         _id=None,
+        workflow=wdoc.dbID,
         WorkflowID=wec.wid,
         WorkflowVersion=wdoc.Version,
         RequestedBy=current_user.mail,

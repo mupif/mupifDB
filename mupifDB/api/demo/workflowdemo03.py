@@ -71,7 +71,7 @@ class MuPIFThermoMechanicalDemo(mupif.Workflow):
         # It should be defined from outside using set() method.
 
         # __init__ code of constant_property_1 (Property)
-        self.constant_property_1 = mupif.property.ConstantProperty(value=0., propID=mupif.DataID.ID_Displacement, valueType=mupif.ValueType.Scalar, unit=mupif.U.m, time=None)
+        self.constant_property_1 = mupif.ConstantProperty(value=0., propID=mupif.DataID.ID_Displacement, valueType=mupif.ValueType.Scalar, unit=mupif.U.m, time=None)
 
         # for demonstration purposes
         time.sleep(30)

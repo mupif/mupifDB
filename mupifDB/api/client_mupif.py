@@ -117,10 +117,7 @@ def getWorkflowRecordsWithUsecase(usecase) -> List[models.Workflow_Model]:
 
 pydantic.validate_call(validate_return=True)
 def getWorkflowRecord(wid, version: int) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rGet(f"{API_PREFIX}workflows/{wid}/version/{version}", headers=getRequestHeaders())['entity'])
-pydantic.validate_call(validate_return=True)  # todo delete
-def updateWorkflow(wf: models.Workflow_Model) -> models.Workflow_Model:
-    return models.Workflow_Model.model_validate(rPatch(f"{API_PREFIX}workflows/", data=wf.model_dump_json(), headers=getRequestHeaders())['entity'])
+    return models.Workflow_Model.model_validate(rGet(f"{API_PREFIX}workflows_by_wid/{wid}/version/{version}", headers=getRequestHeaders())['entity'])
 
 def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
     files = {}

@@ -192,6 +192,7 @@ class Workflow_Model(MongoObj_Model):
 
 
 class WorkflowExecution_Model(MongoObj_Model):
+    workflow: Optional[str]=None
     WorkflowID: str
     WorkflowVersion: int
     Status: ExecutionStatus_Literal='Created'
