@@ -456,21 +456,21 @@ tags_metadata = [
     },
 ]
 
-servers_list = [
-    {
-        "url": "https://test.mupif.org/", 
-        "description": "Test API"
-    },
-    {
-        "url": "https://musicode.mupif.org/", 
-        "description": "MUSICODE API"
-    },
-]
+# servers_list = [
+#     {
+#         "url": "https://test.mupif.org/", 
+#         "description": "Test API"
+#     },
+#     {
+#         "url": "https://musicode.mupif.org/", 
+#         "description": "MUSICODE API"
+#     },
+# ]
 
 
 app = FastAPI(
     openapi_tags=tags_metadata,
-    servers=servers_list,
+    # servers=servers_list,
     redirect_slashes=True,
 )
 
@@ -1214,8 +1214,20 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
                 res['OutputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
         except Exception as e:
             print(e)
+    # execLog = res.get('ExecutionLog', None)
+    # if outputsId is not None:
+    #     try:
+    #         res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(execLog)})
+    #         if res_io is not None:
+    #             res['Log'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+    #     except Exception as e:
+    #         print(e)
     if res['Status'] == 'Created':
-        res['canBeSubmitted'] = check_execution_inputs(uid, current_user=current_user)
+        try:
+            res['canBeSubmitted'] = check_execution_inputs(uid, current_user=current_user)
+        except Exception as e:
+            print(e)
+            res['canBeSubmitted'] = False
     return models.ExecutionEntityResponse(entity=perms.ensure(models.WorkflowExecution_Model.model_validate(res)))
 
 # FIXME: how is this different from get_execution??
@@ -1439,21 +1451,22 @@ def checkInput(execution, name, obj_id, object_type, data_id, onto_path=None, on
 
         # get the desired object
         if info is not None:
-            edm_data = dms_api_path_get(
-                db=info.DBName,
-                type=info.EDMEntity,
-                id=info.id,
-                path=object_path,
-                # current_user=current_user
-            )
+            if info.id is not None:
+                edm_data = dms_api_path_get(
+                    db=info.DBName,
+                    type=info.EDMEntity,
+                    id=info.id,
+                    path=object_path,
+                    # current_user=current_user
+                )
 
-            if edm_data is not None:
-                if object_type == 'mupif.Property':
-                    if edm_data.get('value', None) is not None:
-                        return True
-                if object_type == 'mupif.String':
-                    if edm_data.get('value', None) is not None:
-                        return True
+                if edm_data is not None:
+                    if object_type == 'mupif.Property':
+                        if edm_data.get('value', None) is not None:
+                            return True
+                    if object_type == 'mupif.String':
+                        if edm_data.get('value', None) is not None:
+                            return True
         return False
 
     else:

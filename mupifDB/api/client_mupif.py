@@ -170,7 +170,7 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
 
 pydantic.validate_call(validate_return=True)
 def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecution_Model]:
-    query = f"{API_PREFIX}executions/?noparam"
+    query = f"{API_PREFIX}executions?noparam"
     if workflow_version is not None and workflow_version<0: workflow_version=None
     for n,a in [('num_limit',num_limit),('label',label),('workflow_id',workflow_id),('workflow_version',workflow_version),('status',status)]:
         if a is not None: query += f"&{n}={str(a)}"
