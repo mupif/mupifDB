@@ -469,7 +469,7 @@ def workflow(wid, version: int):
 
     html += f'<br><a href="{BASE_URL}/workflowexecutions/init/'+str(wid)+'/'+str(wdata.Version)+'">Initialize new execution record</a>'
     if len(wdata.EDMMapping):
-        html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata.Version) + '?no_onto">Optionally without EDM objects</a>'
+        html += '<a style="margin-left:50px;" href="/workflowexecutions/init/' + str(wid) + '/' + str(wdata.Version) + '?no_edm">Optionally without EDM objects</a>'
     html += '<br><br>Inputs'
     html += '<table class=\"tableType1\">'
     html += '<thead><th>Name</th><th>Type</th><th>DataID</th><th>Description</th><th>Units</th><th>ObjID</th><th>Compulsory</th><th>SetAt</th><th>EDMPath</th></thead>'
@@ -662,10 +662,10 @@ def executions():
 @app.route('/workflowexecutions/init/<wid>/<version>')
 @login_required
 def initexecution(wid, version, methods=('GET')):
-    disable_onto = 'no_onto' in request.args
+    disable_edm = 'no_edm' in request.args
     we_record = restApiControl.getWorkflowRecord(wid, int(version))
     if we_record is not None:
-        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_onto=disable_onto)['inserted_id']
+        weid = restApiControl.createExecution(wid, int(version), ip=getUserIPAddress(), no_edm=disable_edm)['inserted_id']
         return redirect(f'{BASE_URL}/workflowexecutions/{weid}')
     else:
         return my_render_template('basic.html', body=Markup('<h5>Workflow with given ID and version was not found.</h5>'), login=login_header_html())

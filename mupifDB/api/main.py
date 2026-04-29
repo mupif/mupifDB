@@ -1254,7 +1254,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
     wdoc = get_workflow_by_version(workflow_id=wec.wid, workflow_version=wec.version, current_user=current_user).entity
 
     @pydantic.validate_call(validate_return=True)
-    def createIODataSet(workflowDoc: models.Workflow_Model, type: Literal['Inputs','Outputs'], no_onto=False):
+    def createIODataSet(workflowDoc: models.Workflow_Model, type: Literal['Inputs','Outputs'], no_edm=False):
         IOCard = workflowDoc.IOCard
         data: list[models.IODataRecordItem_Model] = []
         # loop over workflow inputs or outputs
@@ -1275,8 +1275,8 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
         )
         return rec_id
 
-    inputsId = createIODataSet(workflowDoc=wdoc, type='Inputs', no_onto=wec.no_onto)
-    outputsId = createIODataSet(workflowDoc=wdoc, type='Outputs', no_onto=wec.no_onto)
+    inputsId = createIODataSet(workflowDoc=wdoc, type='Inputs', no_edm=wec.no_edm)
+    outputsId = createIODataSet(workflowDoc=wdoc, type='Outputs', no_edm=wec.no_edm)
 
     ex = models.WorkflowExecution_Model(
         _id=None,
@@ -1287,7 +1287,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
         CreatedDate=datetime.now(),
         Inputs=inputsId,
         Outputs=outputsId,
-        EDMMapping=([] if wec.no_onto else wdoc.EDMMapping),
+        EDMMapping=([] if wec.no_edm else wdoc.EDMMapping),
     )
     return insert_execution(data=ex, current_user=current_user)
 
@@ -1318,7 +1318,8 @@ def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_curre
     ex = get_execution(uid, current_user=current_user).entity # checks perms already
     if ex.Outputs:
         res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Outputs)})
-        if res is None: raise NotFoundError(f'Database reports no IOData with uid={ex.Outputs}.')
+        if res is None:
+            raise NotFoundError(f'Database reports no IOData with uid={ex.Outputs}.')
         return models.IODataRecord_Model.model_validate(res).DataSet
     return []
 

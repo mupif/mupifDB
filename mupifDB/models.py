@@ -161,7 +161,7 @@ class WorkflowExecutionCreate_Model(StrictBase):
     wid: str
     version: int
     ip: Optional[str]=''
-    no_onto: bool=False
+    no_edm: bool=False
 
 
 class Workflow_Model(MongoObj_Model):
