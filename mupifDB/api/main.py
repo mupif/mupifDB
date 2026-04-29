@@ -1302,12 +1302,13 @@ def insert_execution(data: models.WorkflowExecution_Model, current_user: User_Mo
         inserted_id=str(res.inserted_id)
     )
 
-@api_router.get("/executions/{uid}/inputs/", tags=["Executions"])
+@api_router.get("/executions/{uid}/inputs", tags=["Executions"])
 def get_execution_inputs(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.IODataRecordItem_Model]:
     ex = get_execution(uid, current_user=current_user).entity # checks perms already
     if ex.Inputs: 
         res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs)})
-        if res is None: raise NotFoundError(f'Database reports no IOData with uid={ex.Inputs}.')
+        if res is None:
+            raise NotFoundError(f'Database reports no IOData with uid={ex.Inputs}.')
         return models.IODataRecord_Model.model_validate(res).DataSet
     return []
 
@@ -1432,20 +1433,20 @@ def ObjIDIsIterable(val):
     except:
         return False
 
-def checkInput(execution, name, obj_id, object_type, data_id, onto_path=None, onto_base_objects=[]):
+def checkInput(execution, name, obj_id, object_type, data_id, edm_path=None, edm_base_objects=[]):
     inp_record = None
     for elem in execution.InputsData:
         if elem.Name == name and elem.ObjID == obj_id:
             inp_record = elem
 
-    if onto_path is not None:
-        splitted = onto_path.split('.', 1)
+    if edm_path is not None:
+        splitted = edm_path.split('.', 1)
         base_object_name = splitted[0]
         object_path = splitted[1]
 
         # find base object info
         info = None
-        for i in onto_base_objects:
+        for i in edm_base_objects:
             if i.Name == base_object_name:
                 info = i
 
@@ -1562,8 +1563,8 @@ def check_execution_inputs(uid: str, current_user: User_Model = Depends(get_curr
                         obj_id=oid,
                         data_id=data_id,
                         object_type=object_type,
-                        onto_path=input_template.EDMPath,
-                        onto_base_objects=execution.EDMMapping,
+                        edm_path=input_template.EDMPath,
+                        edm_base_objects=execution.EDMMapping,
                     ) is False:
                         return False
 

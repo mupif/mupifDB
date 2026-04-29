@@ -911,20 +911,20 @@ def setExecutionInputs(weid):
                 form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(ival), required)
             else:
                 if i.EDMPath is not None:
-                    onto_path = i.EDMPath
-                    onto_base_objects = execution_record.EDMMapping
+                    edm_path = i.EDMPath
+                    edm_base_objects = execution_record.EDMMapping
 
-                    splitted = onto_path.split('.', 1)
+                    splitted = edm_path.split('.', 1)
                     base_object_name = splitted[0]
                     object_path = splitted[1]
 
                     # find base object info
-                    info = [i for i in onto_base_objects if i.Name == base_object_name][0]
+                    info = [i for i in edm_base_objects if i.Name == base_object_name][0]
                     # get the desired object
-                    onto_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
-                    if onto_data is not None and type(onto_data) is dict:
-                        value = onto_data.get('value', None)
-                        unit = onto_data.get('unit', '')
+                    edm_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
+                    if edm_data is not None and type(edm_data) is dict:
+                        value = edm_data.get('value', None)
+                        unit = edm_data.get('unit', '')
                         if value is not None:
                             form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, str(value), required)
                             # form += str(value) + ' ' + str(unit)
@@ -952,20 +952,20 @@ def setExecutionInputs(weid):
                 form += "<input type=\"text\" name=\"Value_%d\" value=\"%s\" %s/>" % (c, sval, required)
             else:
                 if i.EDMPath is not None:
-                    onto_path = i.EDMPath
-                    onto_base_objects = execution_record.EDMMapping
+                    edm_path = i.EDMPath
+                    edm_base_objects = execution_record.EDMMapping
 
-                    splitted = onto_path.split('.', 1)
+                    splitted = edm_path.split('.', 1)
                     base_object_name = splitted[0]
                     object_path = splitted[1]
 
                     # find base object info
-                    info = [i for i in onto_base_objects if i.Name == base_object_name][0]
+                    info = [i for i in edm_base_objects if i.Name == base_object_name][0]
 
                     # get the desired object
-                    onto_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
-                    if onto_data is not None and type(onto_data) is dict:
-                        value = onto_data['value']
+                    edm_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
+                    if edm_data is not None and type(edm_data) is dict:
+                        value = edm_data['value']
                         if value is not None:
                             form += str(value)
                 else:
@@ -1088,21 +1088,21 @@ def getExecutionOutputs(weid):
                 val = f'<a href="{BASE_URL}/property_array_view/' + str(i.Object.get('FileID')) + '/1">link</a>'
             else:
                 if i.EDMPath:
-                    onto_path = i.EDMPath
-                    onto_base_objects = execution_record.EDMMapping
+                    edm_path = i.EDMPath
+                    edm_base_objects = execution_record.EDMMapping
 
-                    splitted = onto_path.split('.', 1)
+                    splitted = edm_path.split('.', 1)
                     base_object_name = splitted[0]
                     object_path = splitted[1]
 
                     # find base object info
-                    info = [i for i in onto_base_objects if i.Name==base_object_name][0]
+                    info = [i for i in edm_base_objects if i.Name==base_object_name][0]
 
                     # get the desired object
-                    onto_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
-                    if onto_data is not None:
-                        value = onto_data.get('value', None)
-                        unit = onto_data.get('unit', '')
+                    edm_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
+                    if edm_data is not None:
+                        value = edm_data.get('value', None)
+                        unit = edm_data.get('unit', '')
                         if value is not None:
                             val = str(value)# + ' ' + str(unit)
                 else:
@@ -1117,20 +1117,20 @@ def getExecutionOutputs(weid):
 
         if i.Type == 'mupif.String':
             if i.EDMPath:
-                onto_path = i.EDMPath
-                onto_base_objects = execution_record.EDMMapping
+                edm_path = i.EDMPath
+                edm_base_objects = execution_record.EDMMapping
 
-                splitted = onto_path.split('.', 1)
+                splitted = edm_path.split('.', 1)
                 base_object_name = splitted[0]
                 object_path = splitted[1]
 
                 # find base object info
-                info = [i for i in onto_base_objects if i.Name==base_object_name][0]
+                info = [i for i in edm_base_objects if i.Name==base_object_name][0]
 
                 # get the desired object
-                onto_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
-                if onto_data is not None:
-                    value = onto_data.get('value', None)
+                edm_data = restApiControl.getEDMData(info.DBName, info.EDMEntity, info.id, object_path)
+                if edm_data is not None:
+                    value = edm_data.get('value', None)
                     if value is not None:
                         val = str(value)
             else:

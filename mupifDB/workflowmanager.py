@@ -37,20 +37,20 @@ def ObjIDIsIterable(val):
         return False
 
 
-def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects=[]):
+def checkInput(eid, name, obj_id, object_type, data_id, linked_output=False, edm_path=None, edm_base_objects=[]):
     if linked_output:
         inp_record = client.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
         inp_record = client.getExecutionInputRecordItem(eid, name, obj_id)
 
-    if onto_path is not None:
-        splitted = onto_path.split('.', 1)
+    if edm_path is not None:
+        splitted = edm_path.split('.', 1)
         base_object_name = splitted[0]
         object_path = splitted[1]
 
         # find base object info
         info = None
-        for i in onto_base_objects:
+        for i in edm_base_objects:
             if i.Name == base_object_name:
                 info = i
 
@@ -164,8 +164,8 @@ def checkInputs(eid):
                     obj_id=oid,
                     data_id=data_id,
                     object_type=object_type,
-                    onto_path=input_template.EDMPath,
-                    onto_base_objects=execution.EDMMapping,
+                    edm_path=input_template.EDMPath,
+                    edm_base_objects=execution.EDMMapping,
                 ) is False:
                     return False
 
@@ -208,7 +208,7 @@ def getEDMTemporalPropertyInstance(edm_data, data_id, value_type):
     return obj
 
 
-def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, onto_path=None, onto_base_objects={}, value_type=None, edm_list=False):
+def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, edm_path=None, edm_base_objects={}, value_type=None, edm_list=False):
     if linked_output:
         inp_record = client.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
@@ -216,13 +216,13 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
 
     op = inp_record.EDMPath
     if op is not None:
-        # onto_path is used
+        # edm_path is used
         splitted = op.split('.', 1)
         base_object_name = splitted[0]
         object_path = splitted[1]
 
         # find base object info
-        info = [i for i in onto_base_objects if i.Name == base_object_name][0]
+        info = [i for i in edm_base_objects if i.Name == base_object_name][0]
 
         edm_dbname = info.DBName
         edm_entity = info.EDMEntity
@@ -499,8 +499,8 @@ def mapInputs(app, eid):
                 app_obj_id=oid,
                 data_id=data_id,
                 object_type=object_type,
-                onto_path=input_template.EDMPath,
-                onto_base_objects=execution.EDMMapping,
+                edm_path=input_template.EDMPath,
+                edm_base_objects=execution.EDMMapping,
                 value_type=input_template.ValueType,
                 edm_list=edmlist
             )
@@ -546,18 +546,18 @@ def setEDMDataToList(dbname, edmentity, edm_ids, object_path, data):
                 stage += 10
 
 
-def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None, onto_base_objects={}, edm_list=False):
+def mapOutput(app, eid, name, obj_id, data_id, time, object_type, edm_path=None, edm_base_objects={}, edm_list=False):
     if object_type == 'mupif.Property':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
 
         if prop.valueType in [mupif.ValueType.Scalar, mupif.ValueType.Vector, mupif.ValueType.Tensor]:
-            if onto_path is not None:
-                splitted = onto_path.split('.', 1)
+            if edm_path is not None:
+                splitted = edm_path.split('.', 1)
                 base_object_name = splitted[0]
                 object_path = splitted[1]
                 # find base object info
                 info = {}
-                for i in onto_base_objects:
+                for i in edm_base_objects:
                     if i.Name == base_object_name:
                         info = i
                 data = prop.to_db_dict(dialect='edm')
@@ -571,14 +571,14 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
             with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
                 full_path = tempDir + "/file.h5"
                 prop.saveHdf5(full_path)
-                if onto_path is not None:
+                if edm_path is not None:
                     raise NotImplementedError('Model-based output array mapping not yet implemented for EDM')
-                    splitted = onto_path.split('.', 1)
+                    splitted = edm_path.split('.', 1)
                     base_object_name = splitted[0]
                     object_path = splitted[1]
                     # find base object info
                     info = {}
-                    for i in onto_base_objects:
+                    for i in edm_base_objects:
                         if i['Name'] == base_object_name:
                             info = i
                     fileID = None
@@ -612,14 +612,14 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
     elif object_type == 'mupif.TemporalProperty':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
 
-        if onto_path is not None:
+        if edm_path is not None:
             raise NotImplementedError('Model-based output TemporalProperty mapping not yet implemented for EDM')
-            splitted = onto_path.split('.', 1)
+            splitted = edm_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
             # find base object info
             info = {}
-            for i in onto_base_objects:
+            for i in edm_base_objects:
                 if i['Name'] == base_object_name:
                     info = i
             data = prop.to_db_dict(dialect='edm')
@@ -632,14 +632,14 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
 
     elif object_type == 'mupif.String':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
-        if onto_path is not None:
+        if edm_path is not None:
             raise NotImplementedError('Model-based output string mapping not yet implemented for EDM')
-            splitted = onto_path.split('.', 1)
+            splitted = edm_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
             # find base object info
             info = {}
-            for i in onto_base_objects:
+            for i in edm_base_objects:
                 if i['Name'] == base_object_name:
                     info = i
             # set the desired object
@@ -653,14 +653,14 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, onto_path=None
 
     elif object_type.startswith('mupif.DataList'):
         dl = app.get(mupif.DataID[data_id], time, obj_id)
-        if onto_path is not None and edm_list is True:
+        if edm_path is not None and edm_list is True:
             raise NotImplementedError('Model-based output DataList mapping not yet implemented for EDM')
-            splitted = onto_path.split('.', 1)
+            splitted = edm_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
             # find base object info
             info = {}
-            for i in onto_base_objects:
+            for i in edm_base_objects:
                 if i['Name'] == base_object_name:
                     info = i
             ids = info.get('ids', [])
@@ -777,7 +777,7 @@ def mapOutputs(app, eid, time):
                 data_id=typeID,
                 time=time,
                 object_type=object_type,
-                onto_path=edmpath,
-                onto_base_objects=edm_base_objects,
+                edm_path=edmpath,
+                edm_base_objects=edm_base_objects,
                 edm_list=edmlist  # outitem.get('EDMList', False)
             )
