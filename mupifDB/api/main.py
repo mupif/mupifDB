@@ -49,6 +49,8 @@ from rich import print_json
 from rich.pretty import pprint
 from pathlib import Path
 
+from mupifDB import edm
+
 # EDM Imports
 from typing_extensions import Annotated, Self
 from typing import Union, Tuple, Set, Dict
@@ -66,7 +68,6 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import uuid
-import copy
 import contextlib
 from pymongo.client_session import ClientSession
 from pymongo.collection import Collection
@@ -1113,16 +1114,16 @@ def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model 
 
 @api_router.get("/executions", tags=["Executions"], response_model=models.ExecutionCollectionResponse)
 def get_executions(
-    status: str = "", 
-    workflow_version: int = 0, 
-    workflow_id: str = "", 
+    status: str = "",
+    workflow_version: int = 0,
+    workflow_id: str = "",
     num_limit: Optional[int] = None,  # Deprecated attribute: maximum number of items to return
     label: str = "",
     page: int = 1,
     pageSize: int = 20,
     current_user: User_Model = Depends(get_current_authenticated_user)
 ) -> models.ExecutionCollectionResponse:
-        
+    
     if page < 1:
         page = 1
     if pageSize < 1:
@@ -1131,7 +1132,7 @@ def get_executions(
     if num_limit is not None:
         log.warning("The 'num_limit' parameter is deprecated. Please use 'pageSize' instead.")
         pageSize = num_limit
-        
+    
     output = []
     filtering = {}
     if status:
@@ -1142,7 +1143,7 @@ def get_executions(
         filtering["WorkflowID"] = workflow_id
     if label:
         filtering["label"] = label
-        
+    
     skip = (page - 1) * pageSize
     
     res = (
@@ -1322,6 +1323,122 @@ def get_execution_outputs(uid: str, current_user: User_Model = Depends(get_curre
             raise NotFoundError(f'Database reports no IOData with uid={ex.Outputs}.')
         return models.IODataRecord_Model.model_validate(res).DataSet
     return []
+
+
+@api_router.get("/executions/{uid}/inputs_with_edm", tags=["Executions"])
+def get_execution_inputs_with_edm(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionInputsCollectionResponse:
+    ex = get_execution(uid, current_user=current_user).entity # checks perms already
+    if ex.Inputs: 
+        res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Inputs)})
+        if res is None:
+            raise NotFoundError(f'Database reports no IOData with uid={ex.Inputs}.')
+        
+        data = models.IODataRecord_Model.model_validate(res).DataSet
+        for item in data:
+            if item.EDMPath is not None:
+                try:
+                    splitted = item.EDMPath.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
+
+                    # find base object info
+                    info = None
+                    for i in ex.EDMMapping:
+                        if i.Name == base_object_name:
+                            info = i
+
+                    # get the desired object
+                    if info is not None:
+                        if info.id is not None:
+                            edm_data = dms_api_path_get(
+                                db=info.DBName,
+                                type=info.EDMEntity,
+                                id=info.id,
+                                path=object_path,
+                            )
+
+                            if edm_data is not None:
+                                if item.Type == 'mupif.Property':
+                                    obj = edm.getEDMPropertyInstance(edm_data=edm_data, data_id=item.Type_ID, value_type=item.ValueType)
+                                    item.Object = obj.to_db_dict()
+
+                                if item.Type == 'mupif.String':
+                                    obj = edm.getEDMStringInstance(edm_data=edm_data, data_id=item.Type_ID, value_type=item.ValueType)
+                                    item.Object = obj.to_db_dict()
+
+                except Exception as e:
+                    print(e)
+        return models.ExecutionInputsCollectionResponse(
+            collection=data,
+        )
+    return models.ExecutionInputsCollectionResponse(
+        collection=[],
+    )
+
+
+@api_router.get("/executions/{uid}/outputs_with_edm", tags=["Executions"])
+def get_execution_outputs_with_edm(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionOutputsCollectionResponse:
+    ex = get_execution(uid, current_user=current_user).entity # checks perms already
+    if ex.Outputs:
+        res = db.IOData.find_one({'_id': bson.objectid.ObjectId(ex.Outputs)})
+        if res is None:
+            raise NotFoundError(f'Database reports no IOData with uid={ex.Outputs}.')
+        
+        data = models.IODataRecord_Model.model_validate(res).DataSet
+        
+        for item in data:
+            if item.EDMPath is not None:
+                try:
+                    # Split path to separate base object name from the internal object path
+                    splitted = item.EDMPath.split('.', 1)
+                    base_object_name = splitted[0]
+                    object_path = splitted[1]
+
+                    # Find base object info in EDMMapping
+                    info = None
+                    for i in ex.EDMMapping:
+                        if i.Name == base_object_name:
+                            info = i
+
+                    # If mapping exists and has a valid ID, fetch the data from DMS
+                    if info is not None and info.id is not None:
+                        edm_data = dms_api_path_get(
+                            db=info.DBName,
+                            type=info.EDMEntity,
+                            id=info.id,
+                            path=object_path
+                        )
+
+                        if edm_data is not None:
+                            # Handle Property types
+                            if item.Type == 'mupif.Property':
+                                obj = edm.getEDMPropertyInstance(
+                                    edm_data=edm_data, 
+                                    data_id=item.Type_ID, 
+                                    value_type=item.ValueType
+                                )
+                                item.Object = obj.to_db_dict()
+
+                            # Handle String types
+                            if item.Type == 'mupif.String':
+                                obj = edm.getEDMStringInstance(
+                                    edm_data=edm_data, 
+                                    data_id=item.Type_ID, 
+                                    value_type=item.ValueType
+                                )
+                                item.Object = obj.to_db_dict()
+
+                except Exception as e:
+                    # In a production environment, consider using a proper logger
+                    print(f"Error resolving output EDMPath: {e}")
+                    
+        return models.ExecutionOutputsCollectionResponse(
+            collection=data,
+        )
+    return models.ExecutionOutputsCollectionResponse(
+        collection=[],
+    )
+
 
 @api_router.get("/executions/{uid}/livelog/{num}", tags=["Executions"])
 def get_execution_livelog(uid: str, num: int, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[str]:

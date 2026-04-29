@@ -37,3 +37,4 @@ from . import schedulerstat
 from . import error
 from . import restApiControl
 from . import my_email
+from . import edm

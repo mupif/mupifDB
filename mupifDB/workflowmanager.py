@@ -13,6 +13,7 @@ import mupif.pyroutil
 import logging
 
 from mupifDB import models
+from mupifDB import edm
 import pydantic
 from typing import Literal,Any,List
 
@@ -172,47 +173,14 @@ def checkInputs(eid):
     return True
 
 
-# ##################################################
-# Instantiate data from EDM
-
-def getEDMPropertyInstance(edm_data, data_id, value_type):
-    obj = None
-    if value_type in ['Scalar', 'Vector', 'Tensor']:
-        value = edm_data.get('value', None)
-        unit = edm_data.get('unit', '')
-        obj = mupif.ConstantProperty.from_db_dict({
-            "Value": value,
-            "DataID": data_id,
-            "ValueType": value_type,
-            "Unit": unit,
-            "Time": None
-        })
-    elif  value_type in ['ScalarArray', 'VectorArray', 'TensorArray']:
-        raise ValueError('Handling of Onto input Property of ValueType %s is not implemented' % value_type)
-    return obj
-
-
-def getEDMStringInstance(edm_data, data_id, value_type):
-    value = edm_data.get('value', None)
-    unit = edm_data.get('unit', '')
-    obj = mupif.String.from_db_dict({
-        "Value": value,
-        "DataID": data_id,
-        "ValueType": value_type
-    })
-    return obj
-
-
-def getEDMTemporalPropertyInstance(edm_data, data_id, value_type):
-    obj = mupif.DbDictable.from_db_dict(edm_data, dialect='edm')
-    return obj
-
-
 def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_output=False, edm_path=None, edm_base_objects={}, value_type=None, edm_list=False):
     if linked_output:
         inp_record = client.getExecutionOutputRecordItem(eid, name, obj_id)
     else:
         inp_record = client.getExecutionInputRecordItem(eid, name, obj_id)
+
+    if inp_record is None:
+        raise ValueError('Input record with name %s and obj_id %s not found for execution %s' % (name, obj_id, eid))
 
     op = inp_record.EDMPath
     if op is not None:
@@ -231,17 +199,17 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
 
         if object_type == 'mupif.Property':
             edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
-            obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            obj = edm.getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type == 'mupif.String':
             edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
-            obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            obj = edm.getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type == 'mupif.TemporalProperty':
             edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
-            obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            obj = edm.getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
         elif object_type.startswith('mupif.DataList') and edm_list is True:
@@ -254,7 +222,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 stage = 0
                 for e_id in edm_ids:
                     edm_data = client.getEDMData(edm_dbname, edm_entity, e_id, object_path)
-                    obj = getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+                    obj = edm.getEDMPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
                     if cur / tot * 100 >= stage:
@@ -268,7 +236,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 stage = 0
                 for e_id in edm_ids:
                     edm_data = client.getEDMData(edm_dbname, edm_entity, e_id, object_path)
-                    obj = getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+                    obj = edm.getEDMStringInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
                     if cur / tot * 100 >= stage:
@@ -282,7 +250,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
                 stage = 0
                 for e_id in edm_ids:
                     edm_data = client.getEDMData(edm_dbname, edm_entity, e_id, object_path)
-                    obj = getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+                    obj = edm.getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
                     obj_list.append(obj)
                     cur += 1
                     if cur / tot * 100 >= stage:
@@ -295,7 +263,7 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
             app.set(datalist_instance, app_obj_id)
 
         else:
-            raise ValueError('Handling of Onto io param of type %s is not implemented' % object_type)
+            raise ValueError('Handling of EDM io param of type %s is not implemented' % object_type)
 
     else:
         if inp_record is not None:

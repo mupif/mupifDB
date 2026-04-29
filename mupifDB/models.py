@@ -346,7 +346,12 @@ class ExecutionCollectionResponse(BaseModel):
 
 class CreateNewExecutionEntityResponse(ExecutionEntityResponse):
     inserted_id: str
-    pass
+
+class ExecutionInputsCollectionResponse(BaseModel):
+    collection: List[IODataRecordItem_Model]
+
+class ExecutionOutputsCollectionResponse(BaseModel):
+    collection: List[IODataRecordItem_Model]
 
 # Users
 

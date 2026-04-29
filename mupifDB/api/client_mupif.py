@@ -223,14 +223,14 @@ def getExecutionInputRecord(weid) -> List[models.IODataRecordItem_Model]:
 def getExecutionOutputRecord(weid) -> List[models.IODataRecordItem_Model]:
     return [models.IODataRecordItem_Model.model_validate(record) for record in rGet(f"{API_PREFIX}executions/{weid}/outputs/", headers=getRequestHeaders())]
 
-def getExecutionInputRecordItem(weid, name, obj_id):
+def getExecutionInputRecordItem(weid, name, obj_id) -> Optional[models.IODataRecordItem_Model]:
     io_data = getExecutionInputRecord(weid)
     for elem in io_data:
         if elem.Name == name and elem.ObjID == obj_id:
             return elem
 
 
-def getExecutionOutputRecordItem(weid, name, obj_id):
+def getExecutionOutputRecordItem(weid, name, obj_id) -> Optional[models.IODataRecordItem_Model]:
     io_data = getExecutionOutputRecord(weid)
     for elem in io_data:
         if elem.Name == name and elem.ObjID == obj_id:
