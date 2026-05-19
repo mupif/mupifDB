@@ -1361,6 +1361,11 @@ def get_execution_inputs_with_edm(uid: str, current_user: User_Model = Depends(g
                         if i.Name == base_object_name:
                             info = i
 
+                    if info is not None and info.id:
+                        item.edmEntityId = info.id if info else None
+                        item.edmEntityType = info.EDMEntity if info else None
+                        item.edmEntityDatabase = info.DBName if info else None
+
                     # get the desired object
                     if info is not None:
                         if info.id is not None:
@@ -1413,6 +1418,11 @@ def get_execution_outputs_with_edm(uid: str, current_user: User_Model = Depends(
                     for i in ex.EDMMapping:
                         if i.Name == base_object_name:
                             info = i
+
+                    if info is not None and info.id:
+                        item.edmEntityId = info.id if info else None
+                        item.edmEntityType = info.EDMEntity if info else None
+                        item.edmEntityDatabase = info.DBName if info else None
 
                     # If mapping exists and has a valid ID, fetch the data from DMS
                     if info is not None and info.id is not None:
