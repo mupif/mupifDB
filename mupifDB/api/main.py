@@ -1206,6 +1206,13 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
             res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(inputsId)})
             if res_io is not None:
                 res['InputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+                for item in res['InputsData']:
+                    if item.EDMPath:
+                        target_name = item.EDMPath.split('.')[0]
+                        edmRecord = next((m for m in res['EDMMapping'] if m['Name'] == target_name), None)
+                        item.edmEntityId = edmRecord['id'] if edmRecord else None
+                        item.edmEntityType = edmRecord['EDMEntity'] if edmRecord else None
+                        item.edmEntityDatabase = edmRecord['DBName'] if edmRecord else None
         except Exception as e:
             print(e)
     if outputsId is not None:
@@ -1213,6 +1220,13 @@ def get_execution(uid: str, current_user: User_Model = Depends(get_current_authe
             res_io = db.IOData.find_one({'_id': bson.objectid.ObjectId(outputsId)})
             if res_io is not None:
                 res['OutputsData'] = models.IODataRecord_Model.model_validate(res_io).DataSet
+                for item in res['OutputsData']:
+                    if item.EDMPath:
+                        target_name = item.EDMPath.split('.')[0]
+                        edmRecord = next((m for m in res['EDMMapping'] if m['Name'] == target_name), None)
+                        item.edmEntityId = edmRecord['id'] if edmRecord else None
+                        item.edmEntityType = edmRecord['EDMEntity'] if edmRecord else None
+                        item.edmEntityDatabase = edmRecord['DBName'] if edmRecord else None
         except Exception as e:
             print(e)
     # execLog = res.get('ExecutionLog', None)
