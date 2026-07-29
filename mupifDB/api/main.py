@@ -2062,15 +2062,17 @@ def get_status2(current_user: User_Model = Depends(get_current_authenticated_use
     except:
         nameserverStatus = 'Failed'
     # get Scheduler status
-    schedulerStatus = 'Failed'
-    query = ns.yplookup(meta_any={"type:scheduler"}) # type: ignore
-    try:
-        for name, (uri, metadata) in query.items():
-            s = Pyro5.api.Proxy(uri)
-            st = s.getStatistics()
-            schedulerStatus = 'OK'
-    except Exception as e:
-        print(str(e))
+    schedulerStatus = 'Unknown'
+    if ns is not None:
+        schedulerStatus = 'Failed'
+        query = ns.yplookup(meta_any={"type:scheduler"}) # type: ignore
+        try:
+            for name, (uri, metadata) in query.items():
+                s = Pyro5.api.Proxy(uri)
+                st = s.getStatistics()
+                schedulerStatus = 'OK'
+        except Exception as e:
+            print(str(e))
 
     # get DMS status
     if (client):
