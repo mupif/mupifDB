@@ -1,4 +1,4 @@
-mupif
+git+https://github.com/mupif/mupif.git@master
 pygal
 python-pidfile
 pymongo
@@ -20,12 +20,12 @@ uvicorn[standard]
 fastapi-cache2==0.2.1
 python-multipart
 networkx
-astropy
-rich
+astropy==6.1.7
+rich==15.0.0
 pytest-rich
-pytest
+pytest==9.1.1
 pytest-xprocess
-requests
+requests==2.34.2
 parsy
 attrdict3
 asteval
@@ -35,13 +35,13 @@ rotate-backups
 # pydantic > 2.6
 pydantic==2.9.2
 # for some reason not installed from mupif's deps??
-numpydantic
-colorlog
+numpydantic==1.6.5
+colorlog==6.12.0
 typing_extensions
 oauthlib
 requests_oauthlib
 sphinxcontrib-openapi
 sphinx-rtd-theme
-myst-nb
+myst-nb==1.4.0
 python-jose
 passlib
