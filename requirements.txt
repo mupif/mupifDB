@@ -20,7 +20,7 @@ uvicorn[standard]
 fastapi-cache2==0.2.1
 python-multipart
 networkx
-astropy==6.1.7
+astropy==8.0.1
 rich==15.0.0
 pytest-rich
 pytest==9.1.1
