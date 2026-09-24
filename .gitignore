@@ -3,6 +3,7 @@ __pycache__
 .ipynb_checkpoints
 .pytest_cache
 .idea
+.vscode
 *~
 mupifDB/dev/*
 mupifDB/dev_configs/*
