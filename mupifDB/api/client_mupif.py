@@ -2,16 +2,30 @@ import pydantic
 import json
 import datetime
 import re
+import os
 import requests
 from .. import models
 from .client_util import *
 from rich import print_json
 from rich.pretty import pprint
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
 thisDir = os.path.dirname(os.path.abspath(__file__))
 
 API_PREFIX = "api/"
+
+# --------------------------------------------------
+# Helper for Pydantic / generic serializable data
+# --------------------------------------------------
+
+def _dump(data: Any) -> Any:
+    if isinstance(data, pydantic.BaseModel):
+        return data.model_dump(mode='json')
+    if isinstance(data, list):
+        return [_dump(item) for item in data]
+    if isinstance(data, dict):
+        return {k: _dump(v) for k, v in data.items()}
+    return data
 
 # --------------------------------------------------
 # Authentication
@@ -25,11 +39,11 @@ if API_CREDENTIALS_FILE is not None and os.path.exists(API_CREDENTIALS_FILE):
         credentials = json.load(json_data_file)
         api_credentials = {'username': credentials['username'], 'password': credentials['password']}
 
-bearer_token: dict[str,Any] = {}
+bearer_token: dict[str, Any] = {}
 bearer_token_expires_at: float = 0
 
-def getAuthToken() -> dict[str,Any] | None:
-    if API_CREDENTIALS_FILE is None or (api_credentials['username']=='' and api_credentials['password']==''):
+def getAuthToken() -> dict[str, Any] | None:
+    if API_CREDENTIALS_FILE is None or (api_credentials['username'] == '' and api_credentials['password'] == ''):
         return None
 
     global bearer_token
@@ -38,7 +52,7 @@ def getAuthToken() -> dict[str,Any] | None:
     time_secs = time_now.timestamp()
     if time_secs > bearer_token_expires_at - 10:
         try:
-            headers={
+            headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Accept-Charset': 'UTF-8',
                 'Accept': 'application/json',
@@ -48,7 +62,6 @@ def getAuthToken() -> dict[str,Any] | None:
                 "username": api_credentials['username'],
                 "password": api_credentials['password'],
             }, headers=headers)
-            # print(response)
             bearer_token = response
             bearer_token_expires_at = 0
             if 'expires_at' in bearer_token:
@@ -59,16 +72,15 @@ def getAuthToken() -> dict[str,Any] | None:
             print(f"Error obtaining auth token: {e}")
             return None
 
-    elif time_secs > bearer_token_expires_at - 15*60:
+    elif time_secs > bearer_token_expires_at - 15 * 60:
         try:
-            headers={
+            headers = {
                 'Content-Type': 'application/json',
                 'Accept-Charset': 'UTF-8',
                 'Accept': 'application/json',
                 'Authorization': f"Bearer {bearer_token['access_token']}"
             }
             response = rPost(f"{API_PREFIX}refresh_token", headers=headers)
-            # print(response)
             bearer_token = response
             bearer_token_expires_at = 0
             if 'expires_at' in bearer_token:
@@ -81,7 +93,7 @@ def getAuthToken() -> dict[str,Any] | None:
 
     return bearer_token
 
-def getRequestHeaders(content_type: str | None = None) -> dict[str,str]:
+def getRequestHeaders(content_type: str | None = None) -> dict[str, str]:
     headers = {'Accept-Charset': 'UTF-8'}
     if content_type is not None:
         headers['Content-type'] = content_type
@@ -102,7 +114,7 @@ def getUsecaseRecord(ucid):
     return rGet(f"{API_PREFIX}usecases/{ucid}", headers=getRequestHeaders())['entity']
 
 def insertUsecaseRecord(ucid, description):
-    return rPost(f"{API_PREFIX}usecases/", data=json.dumps({"ucid": ucid, "Description": description}), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}usecases/", json={"ucid": ucid, "Description": description}, headers=getRequestHeaders())
 
 
 # --------------------------------------------------
@@ -163,59 +175,62 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
         print(f"An unexpected error occurred: {e}")
 
 
-
 # --------------------------------------------------
 # Executions
 # --------------------------------------------------
 
 pydantic.validate_call(validate_return=True)
-def getExecutionRecords(workflow_id: str|None=None, workflow_version: int|None=None, label: str|None=None, num_limit: int|None=None, status: str|None=None) -> List[models.WorkflowExecution_Model]:
+def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None) -> List[models.WorkflowExecution_Model]:
     query = f"{API_PREFIX}executions?noparam"
-    if workflow_version is not None and workflow_version<0: workflow_version=None
-    for n,a in [('num_limit',num_limit),('label',label),('workflow_id',workflow_id),('workflow_version',workflow_version),('status',status)]:
-        if a is not None: query += f"&{n}={str(a)}"
+    if workflow_version is not None and workflow_version < 0:
+        workflow_version = None
+    for n, a in [('num_limit', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status)]:
+        if a is not None:
+            query += f"&{n}={str(a)}"
     return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)['collection']]
-
 
 pydantic.validate_call(validate_return=True)
 def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
     return models.WorkflowExecution_Model.model_validate(rGet(f"{API_PREFIX}executions/{weid}", headers=getRequestHeaders())['entity'])
-def getScheduledExecutions(num_limit: int|None=None):
+
+def getScheduledExecutions(num_limit: int | None = None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-def getPendingExecutions(num_limit: int|None=None):
+def getPendingExecutions(num_limit: int | None = None):
     return getExecutionRecords(status="Pending", num_limit=num_limit)
 
 def scheduleExecution(execution_id: str):
     return rPatch(f"{API_PREFIX}executions/{execution_id}/schedule", headers=getRequestHeaders())
 
 def setExecutionParameter(execution_id: str, param: str, value: Any, val_type="str"):
-    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_param", data=json.dumps({"key": str(param), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_param", json={"key": str(param), "value": _dump(value)}, headers=getRequestHeaders())
 
 def setExecutionOntoBaseObjectID(execution_id, name, value):
-    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_id/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_id/", json={"name": str(name), "value": _dump(value)}, headers=getRequestHeaders())
 
 def setExecutionOntoBaseObjectIDMultiple(execution_id, data):
-    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_id_multiple/", data=json.dumps({"data": data}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_id_multiple/", json={"data": _dump(data)}, headers=getRequestHeaders())
+
 def setExecutionOntoBaseObjectIDs(execution_id, name, value):
-    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_ids/", data=json.dumps({"name": str(name), "value": value}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_ids/", json={"name": str(name), "value": _dump(value)}, headers=getRequestHeaders())
 
 def setExecutionAttemptsCount(execution_id, val):
     return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 
 def setExecutionStatus(execution_id: str, status: models.ExecutionStatus_Literal, revertPending=False):
-    if status=='Created': setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
-    elif status=='Pending' and not revertPending:
+    if status == 'Created':
+        setExecutionParameter(execution_id, "SubmittedDate", str(datetime.datetime.now()))
+    elif status == 'Pending' and not revertPending:
         setExecutionAttemptsCount(execution_id, 0)
     return setExecutionParameter(execution_id, "Status", status)
 
 def createExecution(wid: str, version: int, ip: str, no_edm=False):
-    wec=models.WorkflowExecutionCreate_Model(wid=wid,version=version,ip=ip,no_edm=no_edm)
-    return rPost(f"{API_PREFIX}executions/create/", data=wec.model_dump_json(), headers=getRequestHeaders())
+    wec = models.WorkflowExecutionCreate_Model(wid=wid, version=version, ip=ip, no_edm=no_edm)
+    return rPost(f"{API_PREFIX}executions/create/", json=wec.model_dump(mode='json'), headers=getRequestHeaders())
 
 pydantic.validate_call(validate_return=True)
 def insertExecution(m: models.WorkflowExecution_Model):
-    return rPost(f"{API_PREFIX}executions/", data=m.model_dump_json(), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}executions/", json=m.model_dump(mode='json'), headers=getRequestHeaders())
 
 def getExecutionInputRecord(weid) -> List[models.IODataRecordItem_Model]:
     return [models.IODataRecordItem_Model.model_validate(record) for record in rGet(f"{API_PREFIX}executions/{weid}/inputs/", headers=getRequestHeaders())]
@@ -229,7 +244,6 @@ def getExecutionInputRecordItem(weid, name, obj_id) -> Optional[models.IODataRec
         if elem.Name == name and elem.ObjID == obj_id:
             return elem
 
-
 def getExecutionOutputRecordItem(weid, name, obj_id) -> Optional[models.IODataRecordItem_Model]:
     io_data = getExecutionOutputRecord(weid)
     for elem in io_data:
@@ -240,22 +254,26 @@ def getExecutionOutputRecordItem(weid, name, obj_id) -> Optional[models.IODataRe
 # --------------------------------------------------
 # IO Data
 # --------------------------------------------------
+
 pydantic.validate_call(validate_return=True)
 def getIODataRecord(iod_id: str):
     return models.IODataRecord_Model.model_validate(rGet(f"{API_PREFIX}iodata/{iod_id}", headers=getRequestHeaders()))
 
 pydantic.validate_call(validate_return=True)
 def insertIODataRecord(data: models.IODataRecord_Model):
-    return rPost(f"{API_PREFIX}iodata/", data=data.model_dump_json(), headers=getRequestHeaders())
+    return rPost(f"{API_PREFIX}iodata/", json=data.model_dump(mode='json'), headers=getRequestHeaders())
+
 def setExecutionInputLink(weid, name, obj_id, link_eid, link_name, link_obj_id):
-    return rPatch(f"{API_PREFIX}executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{weid}/input_item/{name}/{obj_id}/", json={"link": {"ExecID": link_eid, "Name": link_name, "ObjID": link_obj_id}}, headers=getRequestHeaders())
 
 # TODO: validate input
 def setExecutionInputObject(weid, name, obj_id, object_dict):
-    return rPatch(f"{API_PREFIX}executions/{weid}/input_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{weid}/input_item/{name}/{obj_id}/", json={"object": _dump(object_dict)}, headers=getRequestHeaders())
+
 # TODO: validate input
 def setExecutionOutputObject(weid, name, obj_id, object_dict):
-    return rPatch(f"{API_PREFIX}executions/{weid}/output_item/{name}/{obj_id}/", data=json.dumps({"object": object_dict}), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}executions/{weid}/output_item/{name}/{obj_id}/", json={"object": _dump(object_dict)}, headers=getRequestHeaders())
+
 def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
     return rGet(f"{API_PREFIX}property_array_data/{file_id}/{i_start}/{i_count}/", headers=getRequestHeaders())
 
@@ -263,7 +281,8 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
-def getBinaryFileByID(fid) -> Tuple[bytes,str]:
+
+def getBinaryFileByID(fid) -> Tuple[bytes, str]:
     response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders())
     d = response.headers['Content-Disposition']
     filename = re.findall("filename=(.+)", d)[0]
@@ -276,6 +295,7 @@ def uploadBinaryFile(binary_data) -> str:
 # --------------------------------------------------
 # Stat
 # --------------------------------------------------
+
 def getStatus():
     return rGet(f"{API_PREFIX}status/", headers=getRequestHeaders())
 
@@ -285,32 +305,18 @@ def getExecutionStatistics() -> models.MupifDBStatus_Model.ExecutionStatistics_M
 def getStatScheduler():
     return models.MupifDBStatus_Model.Stat_Model.SchedulerStat_Model.model_validate(rGet(f"{API_PREFIX}scheduler_statistics/", headers=getRequestHeaders()))
 
-# # session is the requests module by default (one-off session for each request) but can be passed
-# # a custom requests.Session() object with config such as retries and timeouts.
-# # This feature is implemented only for setStatsScheduler to cleanly handle scheduler startup.
-# def setStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, session: Any=requests):
-#     if runningTasks is not None:
-#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}))
-#     if scheduledTasks is not None:
-#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}))
-#     if load is not None:
-#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}))
-#     if processedTasks is not None:
-#         rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}))
-
-# NOTE: session arg is discarded
-def setStatScheduler(*args, session = None, **kw):
-    return updateStatScheduler(*args,**kw)
+def setStatScheduler(*args, session=None, **kw):
+    return updateStatScheduler(*args, **kw)
 
 def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
     if runningTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.runningTasks", "value": runningTasks}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.runningTasks", "value": _dump(runningTasks)}, headers=getRequestHeaders())
     if scheduledTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.scheduledTasks", "value": scheduledTasks}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.scheduledTasks", "value": _dump(scheduledTasks)}, headers=getRequestHeaders())
     if load is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.load", "value": load}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.load", "value": _dump(load)}, headers=getRequestHeaders())
     if processedTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", data=json.dumps({"key": "scheduler.processedTasks", "value": processedTasks}), headers=getRequestHeaders())
+        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.processedTasks", "value": _dump(processedTasks)}, headers=getRequestHeaders())
 
 
 # --------------------------------------------------
@@ -318,8 +324,9 @@ def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, proce
 # --------------------------------------------------
 
 pydantic.validate_call(validate_return=True)
-def getSettings(maybe_init_db: bool=False) -> models.Settings_Model:
-    if maybe_init_db: rGet(f"{API_PREFIX}database/maybe_init", headers=getRequestHeaders())
+def getSettings(maybe_init_db: bool = False) -> models.Settings_Model:
+    if maybe_init_db:
+        rGet(f"{API_PREFIX}database/maybe_init", headers=getRequestHeaders())
     return models.Settings_Model.model_validate(rGet(f"{API_PREFIX}settings", headers=getRequestHeaders()))
 
 
@@ -328,38 +335,33 @@ def getSettings(maybe_init_db: bool=False) -> models.Settings_Model:
 # --------------------------------------------------
 
 def getEDMDataArray(DBName, Type):
-    response = rGet(f"{API_PREFIX}EDM/{DBName}/{Type}", headers=getRequestHeaders())
-    return response.json()
+    return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}", headers=getRequestHeaders())
 
 def getEDMData(DBName, Type, ID, path):
-    if ID == '' or ID is None: return None
+    if ID == '' or ID is None:
+        return None
     return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}/?path={path}", headers=getRequestHeaders())
 
-
 def setEDMData(DBName, Type, ID, path, data):
-    return rPatch(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}", data=json.dumps({"path": str(path), "data": data}), headers=getRequestHeaders())
-def createEDMData(DBName, Type, data):
-    return rPost(f"{API_PREFIX}EDM/{DBName}/{Type}", data=json.dumps(data), headers=getRequestHeaders())
+    return rPatch(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}", json={"path": str(path), "data": _dump(data)}, headers=getRequestHeaders())
 
+def createEDMData(DBName, Type, data):
+    return rPost(f"{API_PREFIX}EDM/{DBName}/{Type}", json=_dump(data), headers=getRequestHeaders())
 
 def cloneEDMData(DBName, Type, ID, shallow=[]):
     return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}/clone", params={"shallow": ' '.join(shallow)}, headers=getRequestHeaders())
 
-
 def getSafeLinks(DBName, Type, ID, paths=[]):
     return rGet(f"{API_PREFIX}EDM/{DBName}/{Type}/{ID}/safe-links", params={"paths": ' '.join(paths)}, headers=getRequestHeaders())
 
-
 def getEDMEntityIDs(DBName, Type, filter=None):
-    return rPut(f"{API_PREFIX}EDM/{DBName}/{Type}/find", data=json.dumps({"filter": (filter if filter else {})}), headers=getRequestHeaders())
+    return rPut(f"{API_PREFIX}EDM/{DBName}/{Type}/find", json={"filter": (filter if filter else {})}, headers=getRequestHeaders())
 
 def uploadEDMBinaryFile(DBName, binary_data) -> str:
     return rPost(f"{API_PREFIX}EDM/{DBName}/blob/upload", files={"blob": binary_data}, headers=getRequestHeaders())
 
-
-def getEDMBinaryFileByID(DBName, fid) -> Tuple[bytes,str]:
+def getEDMBinaryFileByID(DBName, fid) -> Tuple[bytes, str]:
     response = rGetRaw(f"{API_PREFIX}EDM/{DBName}/blob/{fid}", headers=getRequestHeaders())
     d = response.headers['Content-Disposition']
     filename = re.findall("filename=(.+)", d)[0]
     return response.content, filename
-
