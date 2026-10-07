@@ -22,7 +22,7 @@ def setRESTserver(r: str) -> None:
     global RESTserver, RestServerMuPIF
     RESTserver=RESTserverMuPIF=r+'/'
 
-_defaultTimeout=4
+_defaultTimeout=(4.0, 12.0)
 
 class NotFoundResponse(Exception):
     """

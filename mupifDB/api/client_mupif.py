@@ -283,7 +283,7 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 # --------------------------------------------------
 
 def getBinaryFileByID(fid) -> Tuple[bytes, str]:
-    response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders())
+    response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders(), timeout=(4.0, 600.0))
     d = response.headers['Content-Disposition']
     filename = re.findall("filename=(.+)", d)[0]
     return response.content, filename

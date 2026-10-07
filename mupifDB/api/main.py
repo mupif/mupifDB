@@ -1886,10 +1886,11 @@ def get_file(
         while chunk := foundfile.read(CHUNK_SIZE):
             yield chunk
 
-    safe_filename = urllib.parse.quote(foundfile.filename or f"file_{uid}")
+    clean_filename = os.path.basename(foundfile.filename or f"file_{uid}").replace('"', '')
+    encoded_filename = urllib.parse.quote(clean_filename)
 
     headers = {
-        "Content-Disposition": f"attachment; filename*=utf-8''{safe_filename}",
+        "Content-Disposition": f'attachment; filename="{clean_filename}"; filename*=utf-8\'\'{encoded_filename}',
         "Content-Length": str(foundfile.length),
     }
 
