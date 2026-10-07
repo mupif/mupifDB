@@ -1650,6 +1650,12 @@ def checkInput(execution, name, obj_id, object_type, data_id, edm_path=None, edm
                 except:
                     return False
 
+            elif object_type == 'mupif.PyroFile':
+                file_id = inp_record.Object.get('FileID', None)
+                if file_id is not None:
+                    # now just a formal check, actual file loading will not be done here
+                    return True
+
             elif object_type == 'mupif.HeavyStruct':
                 file_id = inp_record.Object.get('FileID', None)
                 if file_id is not None:
