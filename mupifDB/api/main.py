@@ -29,6 +29,7 @@ import inspect
 import gridfs
 import typing
 import io
+import urllib.parse
 import bson, bson.objectid
 from bson.errors import InvalidId
 from bson.objectid import ObjectId
@@ -1861,17 +1862,53 @@ async def get_temp_dir():
     finally:
         del tdir
 
+CHUNK_SIZE = 1024 * 1024  # 1 MB chunks
 
 @api_router.get("/file/{uid}", tags=["Files"])
-def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
+def get_file(
+    uid: str,
+    current_user: User_Model = Depends(get_current_authenticated_user),
+):
+    try:
+        oid = bson.objectid.ObjectId(uid)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid UID format.")
+
     fs = gridfs.GridFS(db)
-    foundfile = fs.get(bson.objectid.ObjectId(uid))
-    if not foundfile: raise NotFoundError('Database reports no file with {uid=}.')
-    # open the corresponding record in fs.files to check perms
-    perms.ensure(models.GridFSFile_Model.model_validate(db.get_collection('fs.files').find_one({'_id': bson.objectid.ObjectId(uid)})))
-    wfile = io.BytesIO(foundfile.read())
-    fn = foundfile.filename
-    return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
+    try:
+        foundfile = fs.get(oid)
+    except gridfs.errors.NoFile:
+        raise HTTPException(status_code=404, detail=f"Database reports no file with {uid=}.")
+
+    perms.ensure(models.GridFSFile_Model.model_validate(foundfile._file))
+
+    def iterfile():
+        while chunk := foundfile.read(CHUNK_SIZE):
+            yield chunk
+
+    safe_filename = urllib.parse.quote(foundfile.filename or f"file_{uid}")
+
+    headers = {
+        "Content-Disposition": f"attachment; filename*=utf-8''{safe_filename}",
+        "Content-Length": str(foundfile.length),
+    }
+
+    return StreamingResponse(
+        iterfile(),
+        media_type=getattr(foundfile, "content_type", "application/octet-stream") or "application/octet-stream",
+        headers=headers,
+    )
+
+# @api_router.get("/file/{uid}", tags=["Files"])
+# def get_file(uid: str, tdir=Depends(get_temp_dir), current_user: User_Model = Depends(get_current_authenticated_user)):
+#     fs = gridfs.GridFS(db)
+#     foundfile = fs.get(bson.objectid.ObjectId(uid))
+#     if not foundfile: raise NotFoundError('Database reports no file with {uid=}.')
+#     # open the corresponding record in fs.files to check perms
+#     perms.ensure(models.GridFSFile_Model.model_validate(db.get_collection('fs.files').find_one({'_id': bson.objectid.ObjectId(uid)})))
+#     wfile = io.BytesIO(foundfile.read())
+#     fn = foundfile.filename
+#     return StreamingResponse(wfile, headers={"Content-Disposition": "attachment; filename=" + fn})
 
 # TODO: needs parent as parameter, so that perms can be checked
 @api_router.post("/file", tags=["Files"])
