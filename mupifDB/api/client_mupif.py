@@ -111,6 +111,21 @@ def getAuthToken() -> dict[str, Any] | None:
 
     return bearer_token
 
+def _reauthenticate() -> dict[str, str] | None:
+    """
+    Drop the cached access token and log in again (hook for 401 responses, see ``client_util``).
+
+    :return: the new ``Authorization`` header, or None if no credentials are set or login failed
+    """
+    global bearer_token, bearer_token_expires_at
+    bearer_token = {}
+    bearer_token_expires_at = 0
+    token = getAuthToken()
+    return {'Authorization': f"Bearer {token['access_token']}"} if token else None
+
+from . import client_util as _client_util
+_client_util.onUnauthorized = _reauthenticate
+
 def getRequestHeaders(content_type: str | None = None) -> dict[str, str]:
     headers = {'Accept-Charset': 'UTF-8'}
     if content_type is not None:
