@@ -228,3 +228,105 @@ def test_exit_code_mapping(exitCode, status):
     """
     from mupifDB import workflowscheduler as ws
     assert ws.statusForExitCode(exitCode) == status
+
+
+# ---------------------------------------------------------------------------------------------
+# scheduler pool worker (executeWorkflow): run in-process against fakes of the REST API, the
+# statistics monitor, workflow staging and the workflow subprocess
+# ---------------------------------------------------------------------------------------------
+
+class _FakeMonitor:
+    """Stands in for the Pyro proxy of SchedulerMonitor; statistics are not checked here."""
+
+    def __getattr__(self, name):
+        return lambda *args, **kw: None
+
+
+@pytest.fixture
+def worker(monkeypatch):
+    """
+    Return a namespace to drive :func:`mupifDB.workflowscheduler.executeWorkflow` with fakes.
+
+    Attributes: ``record`` (execution record returned by the fake REST API, or an exception to
+    raise), ``subprocessResult`` (exit code of the fake workflow subprocess, or an exception to
+    raise) and ``statuses`` (list of ``(status, kwargs)`` set through the REST API).
+    """
+    from mupifDB import workflowscheduler as ws
+    env = types.SimpleNamespace(statuses=[], subprocessResult=0,
+                                record=types.SimpleNamespace(Status='Scheduled', WorkflowID='wf', WorkflowVersion=1, dbID='E1', Attempts=0))
+
+    def getExecutionRecord(weid):
+        if isinstance(env.record, Exception):
+            raise env.record
+        return env.record
+
+    def call(*args, **kw):
+        if isinstance(env.subprocessResult, Exception):
+            raise env.subprocessResult
+        return env.subprocessResult
+
+    rc = ws.restApiControl
+    monkeypatch.setattr(rc, 'getExecutionRecord', getExecutionRecord)
+    monkeypatch.setattr(rc, 'getWorkflowRecord', lambda wid, version: types.SimpleNamespace(modulename='fakewf'))
+    monkeypatch.setattr(rc, 'setExecutionStatus', lambda weid, status, **kw: env.statuses.append((status, kw)))
+    monkeypatch.setattr(rc, 'setExecutionAttemptsCount', lambda weid, n: None)
+    monkeypatch.setattr(ws.my_email, 'sendEmailAboutExecutionStatus', lambda weid: None)
+    monkeypatch.setattr(ws, 'executeWorkflow_copyInputs', lambda *args: None)
+    monkeypatch.setattr(ws, 'copyLogToDB', lambda *args: None)
+    monkeypatch.setattr(ws.Pyro5.api, 'Proxy', lambda uri: _FakeMonitor())
+    monkeypatch.setattr(ws.subprocess, 'call', call)
+    monkeypatch.setattr(ws, 'ns_uri', 'PYRO:Pyro.NameServer@127.0.0.1:1')
+    env.run = lambda: ws.executeWorkflow('E1')
+    return env
+
+
+def test_worker_success(worker):
+    """A workflow subprocess exiting with 0 takes the execution Running -> Finished."""
+    worker.run()
+    assert [s for s, kw in worker.statuses] == ['Running', 'Finished']
+
+
+def test_worker_error_before_launch_requeues(worker):
+    """
+    An error before the workflow subprocess starts returns the execution to Pending.
+
+    Regression for finding #4: the worker logged the error and left the execution Scheduled, where
+    the main loop (which only looks at Pending executions) never picked it up again.
+    """
+    worker.record = RuntimeError('REST API unreachable')
+    worker.run()
+    assert worker.statuses == [('Pending', {'revertPending': True})]
+
+
+def test_worker_error_after_launch_fails(worker):
+    """An error once the workflow subprocess was launched marks the execution Failed."""
+    worker.subprocessResult = OSError('cannot execute python')
+    worker.run()
+    assert [s for s, kw in worker.statuses] == ['Running', 'Failed']
+
+
+def test_worker_leaves_unscheduled_execution_alone(worker):
+    """An execution that is not Scheduled any more (changed meanwhile) is neither run nor modified."""
+    worker.record.Status = 'Created'
+    worker.run()
+    assert worker.statuses == []
+
+
+def test_worker_unreachable_monitor_does_not_change_outcome(worker, monkeypatch):
+    """
+    A failing statistics call must not turn a finished execution into a failed one.
+
+    This happens when the scheduler process is killed while a worker still runs its workflow: the
+    worker survives, but the statistics monitor (in the killed process) is gone.
+    """
+    import Pyro5.errors
+    from mupifDB import workflowscheduler as ws
+
+    class _DeadMonitor:
+        def __getattr__(self, name):
+            def call(*args):
+                raise Pyro5.errors.CommunicationError('cannot connect')
+            return call
+    monkeypatch.setattr(ws.Pyro5.api, 'Proxy', lambda uri: _DeadMonitor())
+    worker.run()
+    assert [s for s, kw in worker.statuses] == ['Running', 'Finished']

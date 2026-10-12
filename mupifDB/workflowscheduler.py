@@ -281,14 +281,59 @@ def copyLogToDB (we_id, workflowLogName):
         log.error(repr(e))
 
 
+def updateMonitor(monitor, method: str, *args) -> None:
+    """
+    Report to the statistics monitor; best effort, never raises.
+
+    Statistics must not change the outcome of an execution: e.g. when the scheduler process was
+    killed while its workers kept running, the monitor is gone, and a failing statistics call would
+    otherwise turn a finished execution into a failed one.
+
+    :param monitor: Pyro proxy of :class:`SchedulerMonitor`
+    :param method: name of the monitor method to call
+    :param args: arguments of the call
+    """
+    try:
+        getattr(monitor, method)(*args)
+    except Exception:
+        log.exception(f'Statistics update {method}{args} failed (ignored).')
+
+
+class NotScheduledError(Exception):
+    """The execution handed to a worker is no longer in the ``Scheduled`` state; it is left alone."""
+
+
 def executeWorkflow(we_id: str) -> None:
+    """
+    Run execution *we_id* in this pool worker; never let an execution stay ``Scheduled``.
+
+    Errors are handled here because the pool would only log them: an error before the workflow
+    subprocess was launched (REST API unreachable, records missing, ...) returns the execution to
+    ``Pending`` so that it is retried, an error after the launch marks it ``Failed``. An execution
+    that is not ``Scheduled`` any more (changed by someone else meanwhile) is not touched.
+
+    :param we_id: execution ID; the execution was set to ``Scheduled`` before it was enqueued
+    """
+    progress = {'launched': False}
     try:
         log.info("executeWorkflow invoked")
-        return executeWorkflow_inner1(we_id)
-    except Exception as e:
+        return executeWorkflow_inner1(we_id, progress)
+    except NotScheduledError:
+        log.exception("Execution %s is not Scheduled any more, not running it." % we_id)
+    except Exception:
         log.exception("Execution of workflow %s failed." % we_id)
+        try:
+            if progress['launched']:
+                restApiControl.setExecutionStatus(we_id, 'Failed')
+                my_email.sendEmailAboutExecutionStatus(we_id)
+            else:
+                restApiControl.setExecutionStatus(we_id, 'Pending', revertPending=True)
+        except Exception:
+            # REST API unreachable: nothing more can be done from here, the record is recovered
+            # when the scheduler restarts (orphaned Scheduled/Running executions)
+            log.exception("Could not update status of execution %s after the failure." % we_id)
 
-def executeWorkflow_inner1(we_id: str) -> None:
+def executeWorkflow_inner1(we_id: str, progress: dict) -> None:
     we_rec = restApiControl.getExecutionRecord(we_id)
     if we_rec is None:
         log.error("Workflow Execution record %s not found" % we_id)
@@ -307,13 +352,12 @@ def executeWorkflow_inner1(we_id: str) -> None:
 
     # check if status is "Scheduled"
     if we_rec.Status == 'Scheduled':
-        return executeWorkflow_inner2(we_id,we_rec,workflow_record)
+        return executeWorkflow_inner2(we_id,we_rec,workflow_record,progress)
     else:
-        log.error("WEID %s not scheduled for execution" % we_id)
-        raise KeyError("WEID %s not scheduled for execution" % we_id)
+        raise NotScheduledError("WEID %s not scheduled for execution (status %s)" % (we_id, we_rec.Status))
 
-def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
-    '''Process workflow which is already scheduled'''
+def executeWorkflow_inner2(we_id: str, we_rec, workflow_record, progress: dict) -> None:
+    '''Process workflow which is already scheduled; sets progress['launched'] when the workflow subprocess starts'''
     _mon=Pyro5.api.Proxy(SchedulerMonitor.URI)
     wid = we_rec.WorkflowID
     completed = 1  # todo check
@@ -340,7 +384,7 @@ def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
         # execute
         log.info("Executing we_id %s, tempdir %s" % (we_id, tempDir))
         # update status
-        _mon.updateRunning(we_id,wid)
+        updateMonitor(_mon, 'updateRunning', we_id, wid)
         # updateStatRunning(lock, schedulerStat, we_id, wid)
         #runningJobs[we_id]=wid # for runtime monitoring
         restApiControl.setExecutionStatus(we_id,'Running')
@@ -361,6 +405,7 @@ def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
             env['MUPIF_NS'] = ns_uri
             env['API_CREDENTIALS_FILE'] = os.environ.get('API_CREDENTIALS_FILE', "None")
 
+            progress['launched'] = True
             completed = subprocess.call(cmd, cwd=tempDir, stderr=subprocess.STDOUT, stdout=workflowLog, env=env)
             workflowLog.write(textwrap.dedent(f'''
                 {ll} WORKFLOW FINISHED at {(t1:=datetime.datetime.now()).isoformat(timespec='seconds')} {ll}
@@ -383,7 +428,7 @@ def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
             log.info("Copying log files was not successful")
 
         # update status
-        _mon.updateFinished(completed,we_id)
+        updateMonitor(_mon, 'updateFinished', completed, we_id)
         # updateStatFinished(lock, schedulerStat, completed, we_id)
         # del runningJobs[we_id] # remove we_id from running jobs; for monitoring
     status = statusForExitCode(completed)
