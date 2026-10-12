@@ -76,6 +76,20 @@ class ResourceBudget:
         return self.OK
 
 
+def threadProxy(ns):
+    """
+    Return a nameserver proxy usable in the calling thread.
+
+    A Pyro proxy belongs to the thread that created (or last claimed) it, and refuses calls from
+    other threads; the scheduler queries model servers from its main loop and from job threads.
+
+    :param ns: nameserver proxy (or a stand-in without ``_pyroUri``, returned as is)
+    :return: a new proxy of the same nameserver
+    """
+    import Pyro5.api
+    return Pyro5.api.Proxy(ns._pyroUri) if hasattr(ns, '_pyroUri') else ns
+
+
 def modelServerFreeSlots(ns, jobmanager: str) -> int | None:
     """
     Ask a jobmanager (model server) registered in the nameserver how many more jobs it can run now.
@@ -86,7 +100,53 @@ def modelServerFreeSlots(ns, jobmanager: str) -> int | None:
     """
     import mupif as mp
     try:
-        return int(mp.pyroutil.connectModelServer(ns, jobmanager).getNumberOfFreeJobs())
+        return int(mp.pyroutil.connectModelServer(threadProxy(ns), jobmanager).getNumberOfFreeJobs())
     except Exception:
         log.exception(f'Cannot get free job slots of jobmanager {jobmanager}')
         return None
+
+
+def pyroLocation(uri: str) -> str:
+    """
+    Return the address of the Pyro daemon serving an object: ``PYRO:obj_x@host:port`` -> ``host:port``.
+
+    :param uri: Pyro URI
+    :return: the part after ``@`` (the whole string if there is none)
+    """
+    return uri.split('@', 1)[-1]
+
+
+def terminateExecutionModelJobs(ns, jobmanagers: list[str], loggerURI: str) -> list[str]:
+    """
+    Terminate the model-server jobs of one execution.
+
+    The models of an execution log to a log receiver in the Pyro daemon of its execution script;
+    the jobmanager reports that receiver as the ``remoteLogUri`` of each job. The execution record
+    stores the URI of the script's receiver as ``loggerURI``. Jobs are matched by the daemon address
+    (host:port) of these URIs, not the whole URI: the workflow may register a receiver of its own in
+    the same daemon (it does when the ``Execution.Log_URI`` it was given is lost, see the mupif
+    metadata merge). The address is unique among running execution scripts.
+
+    Normally the execution script terminates its models itself; this cleans up after a script that
+    died (killed, crashed, stopped while blocked in a call to a model), whose jobs would otherwise
+    keep their slots on the model server indefinitely.
+
+    :param ns: Pyro nameserver proxy
+    :param jobmanagers: jobmanagers used by the workflow of the execution
+    :param loggerURI: ``loggerURI`` of the execution
+    :return: keys of the jobs terminated
+    """
+    import mupif as mp
+    location = pyroLocation(loggerURI)
+    ns = threadProxy(ns)
+    terminated = []
+    for name in sorted(set(jobmanagers)):
+        try:
+            server = mp.pyroutil.connectModelServer(ns, name)
+            for job in server.getStatus():
+                if job.remoteLogUri and pyroLocation(job.remoteLogUri) == location:
+                    server.terminateJob(job.key)
+                    terminated.append(job.key)
+        except Exception:
+            log.exception(f'Cannot clean up jobs of jobmanager {name}')
+    return terminated

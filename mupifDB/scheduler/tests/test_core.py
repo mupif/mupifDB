@@ -67,8 +67,9 @@ def env(tmp_path, monkeypatch):
     Build a scheduler over an in-memory database.
 
     The namespace returned has ``backend`` (FakeBackend with workflow ``wf`` on jobmanager
-    ``CVUT.demo01``), ``runner``, ``freeSlots`` (jobmanager -> slots, 100 by default), ``monitor`` and
-    ``scheduler`` (``max_jobs=3``), plus ``drain()`` waiting for all job threads.
+    ``CVUT.demo01``), ``runner``, ``freeSlots`` (jobmanager -> slots, 100 by default), ``monitor``,
+    ``cleanups`` (calls to terminate model-server jobs) and ``scheduler`` (``max_jobs=3``), plus
+    ``drain()`` waiting for all job threads.
     """
     from mupifDB import restApiControl
     monkeypatch.setattr(restApiControl, 'setStatScheduler', lambda **kw: None)
@@ -78,7 +79,9 @@ def env(tmp_path, monkeypatch):
     e.backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
     config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12)
     e.monitor = SchedulerMonitor(None, capacity=config.max_jobs)
-    e.scheduler = Scheduler(config, e.backend, e.runner, freeJobSlots=lambda jm: e.freeSlots.get(jm, 100), monitor=e.monitor)
+    e.cleanups = []
+    e.scheduler = Scheduler(config, e.backend, e.runner, freeJobSlots=lambda jm: e.freeSlots.get(jm, 100), monitor=e.monitor,
+                            terminateModelJobs=lambda jobmanagers, uri: e.cleanups.append((jobmanagers, uri)) or ['1@x'])
 
     def drain():
         if e.runner.gate is not None:
@@ -289,3 +292,26 @@ def test_job_stopped_before_launch_is_not_started(env):
     env.scheduler.runJob(job)
     assert env.runner.launched == [] and env.backend.statuses('E0') == ['Pending']
     assert env.backend.executions['E0'].Attempts == 2
+
+
+def test_leftover_model_jobs_are_terminated(env):
+    """
+    After the workflow process ends, model-server jobs logging to the execution's loggerURI are terminated.
+
+    Finding #17: a killed workflow left its model jobs running, occupying model-server slots
+    indefinitely. Without a loggerURI (the script died before storing it) there is nothing to match.
+    """
+    env.backend.addExecution('E0', loggerURI='PYRO:log-E0')
+    env.backend.addExecution('E1')
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.cleanups == [(['CVUT.demo01'], 'PYRO:log-E0')]
+
+
+def test_recovery_terminates_model_jobs_of_running_executions(env, monkeypatch):
+    """Executions left Running by a killed scheduler get their model-server jobs terminated before being requeued."""
+    monkeypatch.setattr(core, 'runningExecutionProcesses', lambda: set())
+    env.backend.addExecution('R1', status='Running', loggerURI='PYRO:log-R1')
+    env.backend.addExecution('S1', status='Scheduled', loggerURI='PYRO:log-S1')
+    env.scheduler.recoverInterruptedExecutions()
+    assert env.cleanups == [(['CVUT.demo01'], 'PYRO:log-R1')]

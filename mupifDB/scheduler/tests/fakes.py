@@ -47,13 +47,14 @@ class FakeBackend:
         self.workflows[(wid, version)] = rec
         return rec
 
-    def addExecution(self, weid: str, wid: str = 'wf', version: int = 1, status: str = 'Pending', attempts: int = 0) -> Any:
+    def addExecution(self, weid: str, wid: str = 'wf', version: int = 1, status: str = 'Pending', attempts: int = 0, loggerURI: str | None = None) -> Any:
         """
         Add an execution; executions are submitted in the order they are added.
 
         :return: the execution record
         """
-        rec = types.SimpleNamespace(dbID=weid, Status=status, Attempts=attempts, WorkflowID=wid, WorkflowVersion=version, submitted=next(self._submitted))
+        rec = types.SimpleNamespace(dbID=weid, Status=status, Attempts=attempts, WorkflowID=wid, WorkflowVersion=version, submitted=next(self._submitted),
+                                    loggerURI=loggerURI)
         self.executions[weid] = rec
         return rec
 

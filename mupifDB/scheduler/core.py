@@ -74,7 +74,8 @@ class Scheduler:
     """
 
     def __init__(self, config: SchedulerConfig, backend: ExecutionBackend, runner: JobRunner,
-                 freeJobSlots: Callable[[str], int | None], monitor: SchedulerMonitor):
+                 freeJobSlots: Callable[[str], int | None], monitor: SchedulerMonitor,
+                 terminateModelJobs: Callable[[list[str], str], list[str]] = lambda jobmanagers, loggerURI: []):
         """
         Set up the scheduler; nothing runs until :meth:`run`.
 
@@ -83,12 +84,16 @@ class Scheduler:
         :param runner: runs one execution (see :class:`JobRunner`)
         :param freeJobSlots: ``jobmanager name -> free job slots`` (None if unreachable)
         :param monitor: statistics
+        :param terminateModelJobs: ``(jobmanagers, loggerURI) -> keys of terminated jobs``: terminates
+                                   the model-server jobs of an execution (see
+                                   :func:`~mupifDB.scheduler.resources.terminateExecutionModelJobs`)
         """
         self.config = config
         self.backend = backend
         self.runner = runner
         self.freeJobSlots = freeJobSlots
         self.monitor = monitor
+        self.terminateModelJobs = terminateModelJobs
         #: protects :attr:`jobs`
         self.lock = threading.Lock()
         #: execution ID -> job, for every execution taken and not finished
@@ -255,6 +260,7 @@ class Scheduler:
                 self.monitor.started(weid, rec.WorkflowID)
 
             result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path))
+            self.terminateLeftoverModelJobs(weid, workflow)
             log.warning(f'Workflow execution {weid} {result.status}' + (f' ({result.stopReason})' if result.stopReason else ''))
             self.backend.setStatus(weid, result.status, keepAttempts=(result.status == 'Pending'))
             if result.status != 'Pending':
@@ -293,6 +299,30 @@ class Scheduler:
         else:
             self.monitor.dropped(weid)
 
+    def terminateLeftoverModelJobs(self, weid: str, workflow: Any = None) -> None:
+        """
+        Terminate model-server jobs still allocated for an execution whose workflow process has ended.
+
+        Normally there are none: the execution script terminates its models. A script that was
+        killed (or stopped while blocked in a call to a model) leaves them running, occupying slots
+        on the model servers (finding #17). Best effort: errors are logged.
+
+        :param weid: execution ID
+        :param workflow: workflow record of the execution (read if not given)
+        """
+        try:
+            rec = self.backend.getExecution(weid)
+            loggerURI = getattr(rec, 'loggerURI', None)
+            if not loggerURI:
+                return
+            if workflow is None:
+                workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
+            jobmanagers = [m.Jobmanager for m in workflow.Models if m.Jobmanager]
+            if jobmanagers and (terminated := self.terminateModelJobs(jobmanagers, loggerURI)):
+                log.warning(f'{weid}: terminated model-server jobs left by its workflow: {terminated}')
+        except Exception:
+            log.exception(f'{weid}: could not clean up its model-server jobs')
+
     # --- startup --------------------------------------------------------------------------------
 
     def recoverInterruptedExecutions(self) -> None:
@@ -302,8 +332,9 @@ class Scheduler:
         Executions in these states belong to the scheduler (there is a single scheduler per
         deployment), so at startup they can only be leftovers of a previous run that crashed or was
         killed. They are returned to ``Pending`` (keeping their attempt count) and go through the
-        normal scheduling. An execution whose workflow process is still alive on this host is left
-        alone: it outlived the previous scheduler and finishes on its own.
+        normal scheduling; the model-server jobs of ``Running`` ones are terminated first. An
+        execution whose workflow process is still alive on this host is left alone: it outlived the
+        previous scheduler and finishes on its own.
         """
         log.info('Recovering executions interrupted by a previous scheduler run…')
         alive = runningExecutionProcesses()
@@ -318,6 +349,8 @@ class Scheduler:
                     log.info(f'{rec.dbID} is {status}, its workflow process is still running; left alone')
                     continue
                 log.warning(f'{rec.dbID} was left {status} by a previous scheduler run; returning it to Pending')
+                if status == 'Running':
+                    self.terminateLeftoverModelJobs(rec.dbID)
                 try:
                     self.backend.setStatus(rec.dbID, 'Pending', keepAttempts=True)
                 except Exception:

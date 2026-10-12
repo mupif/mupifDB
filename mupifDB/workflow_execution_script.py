@@ -178,11 +178,13 @@ def main():
         workflow_class = getattr(moduleImport, workflow_record.classname)
         #
 
+        # before initialize(), which allocates the models: they log to logUri, which is how the
+        # scheduler finds (and terminates) model jobs left behind if this script dies abnormally
+        mupifDB.restApiControl.setExecutionParameter(weid, 'loggerURI', logUri)
         workflow = workflow_class()
         workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record.UseCase, 'Task_ID': execution_record.Task_ID, 'Log_URI': logUri}})
         wfUri = str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid, 'workflowURI', wfUri)
-        mupifDB.restApiControl.setExecutionParameter(weid, 'loggerURI', logUri)
         mupifDB.workflowmanager.mapInputs(workflow, weid)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, weid, workflow.getExecutionTargetTime())

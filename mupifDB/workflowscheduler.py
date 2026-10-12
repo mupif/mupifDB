@@ -30,7 +30,7 @@ from mupifDB.scheduler.backend import RestBackend
 from mupifDB.scheduler.config import SchedulerConfig
 from mupifDB.scheduler.core import Scheduler
 from mupifDB.scheduler.monitor import SchedulerMonitor
-from mupifDB.scheduler.resources import modelServerFreeSlots
+from mupifDB.scheduler.resources import modelServerFreeSlots, terminateExecutionModelJobs
 from mupifDB.scheduler.runner import JobRunner
 
 log = logging.getLogger('scheduler')
@@ -52,7 +52,8 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     """
     monitor = SchedulerMonitor(config.stat_file, capacity=config.max_jobs)
     runner = JobRunner(config, nsUri=str(ns._pyroUri))
-    scheduler = Scheduler(config, RestBackend(), runner, freeJobSlots=lambda jm: modelServerFreeSlots(ns, jm), monitor=monitor)
+    scheduler = Scheduler(config, RestBackend(), runner, freeJobSlots=lambda jm: modelServerFreeSlots(ns, jm), monitor=monitor,
+                          terminateModelJobs=lambda jobmanagers, loggerURI: terminateExecutionModelJobs(ns, jobmanagers, loggerURI))
     monitor.onStop = scheduler.stop
     # copy the statistics of the previous run to the database before anything changes
     monitor.persist()
