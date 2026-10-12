@@ -60,39 +60,16 @@ def isNoResourcesError(err: BaseException | None) -> bool:
 
 
 def downloadWorkflowFiles(eid):
-    import zipfile
+    """
+    Download the workflow package of execution *eid* into the current directory (``--download_workflow``).
+
+    :param eid: execution ID
+    :raises mupifDB.scheduler.staging.StagingError: if the workflow package cannot be used
+    """
+    from mupifDB.scheduler.staging import stageWorkflow
     we_rec = mupifDB.restApiControl.getExecutionRecord(eid)
-    workflowVersion = int(we_rec.WorkflowVersion)
-    wid = we_rec.WorkflowID
-    workflow_record = mupifDB.restApiControl.getWorkflowRecord(wid=wid, version=workflowVersion)
-
-    python_script_filename = workflow_record.modulename + ".py"
-
-    fc, fn = mupifDB.restApiControl.getBinaryFileByID(workflow_record.GridFSID)
-    file_path = f'./{fn}'
-    with open(file_path, "wb") as f:
-        f.write(fc)
-        f.close()
-
-    if fn.split('.')[-1] == 'py':
-        log.info("downloaded .py file..")
-        if fn == python_script_filename:
-            log.info("Filename check OK")
-        else:
-            log.info("Filename check FAILED")
-
-    elif fn.split('.')[-1] == 'zip':
-        log.info("downloaded .zip file, extracting..")
-        log.info(fn)
-        zf = zipfile.ZipFile(file_path, mode='r')
-        filenames = zipfile.ZipFile.namelist(zf)
-        log.info("Zipped files:")
-        log.info(filenames)
-        zf.extractall(path='./')
-        if python_script_filename in filenames:
-            log.info("Filename check OK")
-        else:
-            log.error("Filename check FAILED")
+    workflow_record = mupifDB.restApiControl.getWorkflowRecord(wid=we_rec.WorkflowID, version=int(we_rec.WorkflowVersion))
+    stageWorkflow(workflow_record, '.')
 
 
 log = logging.getLogger('workflow_execution_script')

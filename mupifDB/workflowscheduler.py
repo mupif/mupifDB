@@ -11,7 +11,6 @@ import subprocess
 import threading
 import enum
 import pidfile
-import zipfile
 import ctypes
 import json
 import jsonpickle
@@ -439,38 +438,17 @@ def statusForExitCode(exitCode: int) -> Literal['Finished', 'Failed', 'Pending']
 
 
 def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> None:
-    python_script_filename = workflow_record.modulename + ".py"
+    """
+    Prepare the working directory of an execution: workflow package and execution script.
 
-    fc, fn = restApiControl.getBinaryFileByID(workflow_record.GridFSID)
-    with open(tempDir + '/' + fn, "wb") as f:
-        f.write(fc)
-        f.close()
-
-    if fn.split('.')[-1] == 'py':
-        log.info("downloaded .py file..")
-        if fn == python_script_filename:
-            log.info("Filename check OK")
-        else:
-            log.info("Filename check FAILED")
-
-    elif fn.split('.')[-1] == 'zip':
-        log.info("downloaded .zip file, extracting..")
-        log.info(fn)
-        zf = zipfile.ZipFile(tempDir + '/' + fn, mode='r')
-        filenames = zipfile.ZipFile.namelist(zf)
-        log.info("Zipped files:")
-        log.info(filenames)
-        zf.extractall(path=tempDir)
-        if python_script_filename in filenames:
-            log.info("Filename check OK")
-        else:
-            log.error("Filename check FAILED")
-
-    else:
-        log.error("Unsupported file extension")
-
+    :param we_id: execution ID
+    :param workflow_record: record of the workflow to run
+    :param tempDir: working directory of the execution
+    :param execScript: path where ``workflow_execution_script.py`` is copied
+    :raises mupifDB.scheduler.staging.StagingError: if the workflow package cannot be used
+    """
+    stageWorkflow(workflow_record, tempDir)
     log.info("Copying executor script.")
-
     shutil.copy(mupifDBModDir+'/workflow_execution_script.py', execScript)
 
 
@@ -515,6 +493,7 @@ def freeJobSlots(jobmanager: str) -> int | None:
 
 
 from mupifDB.scheduler.resources import ResourceBudget
+from mupifDB.scheduler.staging import stageWorkflow
 
 
 #: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
