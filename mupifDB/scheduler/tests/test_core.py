@@ -92,6 +92,7 @@ def env(tmp_path, monkeypatch):
         if e.runner.gate is not None:
             e.runner.gate.set()
         e.scheduler.executor.shutdown(wait=True)
+        e.scheduler.notifier.shutdown(wait=True)
     e.drain = drain
     yield e
     drain()
@@ -454,3 +455,40 @@ def test_log_records_carry_the_execution(env, caplog):
     assert tagged and any('Finished' in r.getMessage() for r in tagged)
     assert names == ['job:E0']
     assert all(getattr(r, 'weid', None) is None for r in caplog.records if 'taken' in r.getMessage())
+
+
+def test_notifications_do_not_hold_job_slots(env):
+    """
+    A slow notification (e-mail) does not keep the job slot busy; shutdown waits for it [S12].
+
+    The owner was notified from the job thread, through an SMTP connection without a timeout.
+    """
+    env.backend.addExecution('E0')
+    sent = threading.Event()
+    original = env.backend.notifyOwner
+
+    def slowNotify(weid):
+        time.sleep(1)
+        original(weid)
+        sent.set()
+    env.backend.notifyOwner = slowNotify
+    env.scheduler.schedulePass()
+    for _ in range(100):
+        if not env.scheduler.jobs:
+            break
+        time.sleep(0.02)
+    assert not env.scheduler.jobs and env.backend.status('E0') == 'Finished' and not sent.is_set()
+    env.scheduler.shutdown()
+    assert sent.is_set() and env.backend.notified == ['E0']
+
+
+def test_notification_errors_are_logged(env, caplog):
+    """A failing notification is logged; the execution's outcome is not affected."""
+    env.backend.addExecution('E0')
+
+    def fail(weid):
+        raise OSError('SMTP server unreachable')
+    env.backend.notifyOwner = fail
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.backend.status('E0') == 'Finished' and 'could not notify the owner' in caplog.text

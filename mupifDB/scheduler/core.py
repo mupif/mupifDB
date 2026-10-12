@@ -133,6 +133,8 @@ class Scheduler:
         #: execution ID -> (monotonic time before which it is not tried again, consecutive transient failures)
         self.backoff: dict[str, tuple[float, int]] = {}
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=config.max_jobs, thread_name_prefix='job')
+        #: sends notifications to owners (e-mail) without holding up the job threads
+        self.notifier = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='notify')
 
     # --- main loop ------------------------------------------------------------------------------
 
@@ -186,6 +188,7 @@ class Scheduler:
             for job in remaining:
                 job.stop('shutdown')
         self.executor.shutdown(wait=True)
+        self.notifier.shutdown(wait=True)
         self.monitor.persist()
         log.info('Scheduler shut down')
 
@@ -272,7 +275,7 @@ class Scheduler:
                     self.backoff.pop(weid, None)
                 try:
                     self.backend.setStatus(weid, 'Created')
-                    self.backend.notifyOwner(weid)
+                    self.notify(weid)
                 except Exception:
                     log.exception(f'{weid}: could not return it to Created')
                 continue
@@ -353,7 +356,7 @@ class Scheduler:
                     self.backoff.pop(weid, None)
             self.backend.setStatus(weid, result.status, keepAttempts=(result.status == 'Pending'))
             if result.status != 'Pending':
-                self.backend.notifyOwner(weid)
+                self.notify(weid)
             self.monitor.finished(weid, result.status)
         except NotScheduledError:
             log.exception(f'Execution {weid} is not Scheduled any more, not running it.')
@@ -370,6 +373,22 @@ class Scheduler:
                 self.jobs.pop(weid, None)
             thread.name = threadName
             currentExecution.reset(token)
+
+    def notify(self, weid: str) -> None:
+        """
+        Notify the owner of an execution about its new status, in the background [S12].
+
+        Notifications (an e-mail, through a REST call and an SMTP server) are sent one at a time by
+        :attr:`notifier`, so that a slow mail server does not keep a job slot busy. Errors are logged.
+
+        :param weid: execution ID
+        """
+        def send():
+            try:
+                self.backend.notifyOwner(weid)
+            except Exception:
+                log.exception(f'{weid}: could not notify the owner')
+        self.notifier.submit(send)
 
     def checkInputs(self, weid: str) -> None:
         """
@@ -427,7 +446,7 @@ class Scheduler:
         try:
             if launched or permanent:
                 self.backend.setStatus(weid, 'Failed')
-                self.backend.notifyOwner(weid)
+                self.notify(weid)
             else:
                 self.deferRetry(weid)
                 self.backend.setStatus(weid, 'Pending', keepAttempts=True)
