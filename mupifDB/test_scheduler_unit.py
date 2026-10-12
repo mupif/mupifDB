@@ -633,3 +633,23 @@ def test_monitor_fresh_start(statMonitor):
     monitor, call = statMonitor
     monitor.stat.sync()
     assert len(monitor.stat.hist48h.load) == monitor.stat.hist48h.count
+
+
+def test_copy_log_to_db(monkeypatch, tmp_path, caplog):
+    """
+    The workflow log is uploaded and linked to the execution, without echoing it into the scheduler log.
+
+    Regression for finding #14: every line of the workflow log was repeated in the scheduler log.
+    """
+    import logging
+    from mupifDB import workflowscheduler as ws
+    logFile = tmp_path / 'workflow.log'
+    logFile.write_text('first line of the workflow\nsecond line\n')
+    uploads, params = [], []
+    monkeypatch.setattr(ws.restApiControl, 'uploadBinaryFile', lambda f: uploads.append(f.read()) or 'FILE1')
+    monkeypatch.setattr(ws.restApiControl, 'setExecutionParameter', lambda weid, key, val: params.append((weid, key, val)))
+    with caplog.at_level(logging.DEBUG):
+        ws.copyLogToDB('E1', str(logFile))
+    assert uploads == [b'first line of the workflow\nsecond line\n']
+    assert params == [('E1', 'ExecutionLog', 'FILE1')]
+    assert 'first line of the workflow' not in caplog.text

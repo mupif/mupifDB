@@ -308,9 +308,16 @@ class SchedulerMonitor(object):
 
 
 def copyLogToDB (we_id, workflowLogName):
+    """
+    Upload the workflow log to the database and link it to the execution as ``ExecutionLog``.
+
+    The log is stored as a file only; it is not repeated line by line in the scheduler's own log,
+    where it only duplicated the workflow output (users read it from the execution record).
+
+    :param we_id: execution ID
+    :param workflowLogName: path of the log file written by the workflow subprocess
+    """
     try:
-        with open(workflowLogName,'r') as f:
-            for l in f: log.info('WORKFLOW LOG: '+l[:-1])
         log.info("Copying log files to database")
         with open(workflowLogName, 'rb') as f:
             logID = restApiControl.uploadBinaryFile(f)
