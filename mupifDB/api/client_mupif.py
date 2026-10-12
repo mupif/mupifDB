@@ -42,8 +42,26 @@ if API_CREDENTIALS_FILE is not None and os.path.exists(API_CREDENTIALS_FILE):
 bearer_token: dict[str, Any] = {}
 bearer_token_expires_at: float = 0
 
+def setAPICredentials(username: str, password: str) -> None:
+    """
+    Set the REST API account after import, replacing what was read from ``API_CREDENTIALS_FILE``.
+
+    The credentials file is read once, when this module is imported; code that cannot set the
+    environment early enough (e.g. tests inside the ``mupifDB`` package, which pytest imports
+    together with the package) uses this function instead. Any cached access token is dropped,
+    so the next request logs in with the new account.
+
+    :param username: account name (e-mail) used for ``/login``
+    :param password: account password
+    """
+    global api_credentials, bearer_token, bearer_token_expires_at
+    api_credentials = {'username': username, 'password': password}
+    bearer_token = {}
+    bearer_token_expires_at = 0
+
 def getAuthToken() -> dict[str, Any] | None:
-    if API_CREDENTIALS_FILE is None or (api_credentials['username'] == '' and api_credentials['password'] == ''):
+    # no account configured (neither API_CREDENTIALS_FILE nor setAPICredentials): send requests without a token
+    if api_credentials['username'] == '' and api_credentials['password'] == '':
         return None
 
     global bearer_token
