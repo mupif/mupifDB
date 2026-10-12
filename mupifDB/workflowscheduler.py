@@ -514,59 +514,7 @@ def freeJobSlots(jobmanager: str) -> int | None:
         return None
 
 
-class ResourceBudget:
-    """
-    Free jobmanager slots for one scheduling pass.
-
-    The number of free slots of each jobmanager is read once per pass (on first use) and every
-    execution enqueued in the pass takes one slot per model it needs. Without this, all pending
-    executions of a pass were checked against the same free slots -- the slots are only taken
-    when the workflow subprocess allocates its models -- so many more executions were started than
-    the model servers could serve. Slots taken by executions enqueued in an earlier pass but not
-    started yet are not known here; such an execution finds no free slot when it starts, exits with
-    code 2 and is returned to Pending.
-    """
-
-    #: results of :meth:`reserve`
-    OK, BUSY, UNAVAILABLE = 'ok', 'busy', 'unavailable'
-
-    def __init__(self):
-        #: jobmanager name -> free slots left in this pass (None: jobmanager not reachable)
-        self.free: dict[str, int | None] = {}
-        #: (workflow ID, version) -> jobmanagers needed (see workflowJobmanagers), cached for the pass
-        self.workflows: dict[tuple, list[str]] = {}
-
-    def reserve(self, wid: str, version: int) -> str:
-        """
-        Take the slots needed by one execution of the given workflow, if all are available.
-
-        :param wid: workflow ID of the execution
-        :param version: workflow version
-        :return: :attr:`OK` if the slots were taken (the execution may be started); :attr:`BUSY` if
-                 the jobmanagers are reachable but have too few free slots (the execution just has
-                 to wait); :attr:`UNAVAILABLE` if a jobmanager or the workflow record cannot be
-                 reached (a real problem: counted as a failed attempt by the caller)
-        """
-        key = (wid, int(version))
-        if key not in self.workflows:
-            try:
-                self.workflows[key] = workflowJobmanagers(wid, version)
-            except Exception:
-                log.exception(f'Cannot read models of workflow {wid} version {version}')
-                return self.UNAVAILABLE
-        needed: dict[str, int] = {}
-        for jm in self.workflows[key]:
-            needed[jm] = needed.get(jm, 0) + 1
-        for jm in needed:
-            if jm not in self.free:
-                self.free[jm] = freeJobSlots(jm)
-        if any(self.free[jm] is None for jm in needed):
-            return self.UNAVAILABLE
-        if any(self.free[jm] < n for jm, n in needed.items()):
-            return self.BUSY
-        for jm, n in needed.items():
-            self.free[jm] -= n
-        return self.OK
+from mupifDB.scheduler.resources import ResourceBudget
 
 
 #: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
@@ -627,7 +575,8 @@ def scheduler_schedule_pending(pool):
         pending_executions = []
 
     monitor=Pyro5.api.Proxy(SchedulerMonitor.URI)
-    budget = ResourceBudget()
+    # late binding (lambdas), so that tests can replace the two functions of this module
+    budget = ResourceBudget(lambda wid, version: workflowJobmanagers(wid, version), lambda jm: freeJobSlots(jm))
 
     for wed in pending_executions:
         weid = wed.dbID
