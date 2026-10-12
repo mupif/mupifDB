@@ -608,17 +608,14 @@ def scheduler_schedule_pending(pool):
         else:
             time.sleep(2)
             if checkExecutionResources(weid):
-                # add the correspoding weid to the pool, change status to scheduled
-                res = False
+                # change status to Scheduled, then add the corresponding weid to the pool; a worker
+                # only runs Scheduled executions, so there is no point in enqueuing one whose status
+                # could not be changed -- it stays Pending and is tried again in the next iteration
                 try:
-                    res = restApiControl.setExecutionStatus(weid,'Scheduled')
-                except Exception as e:
-                    log.exception('')
-
-                if not res:
-                    log.info("Could not update execution status")
-                else:
-                    log.info("Updated status of execution")
+                    restApiControl.setExecutionStatus(weid,'Scheduled')
+                except Exception:
+                    log.exception(f'Could not set {weid} to Scheduled; not enqueuing it')
+                    continue
 
                 result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                 # log.info(result.get())

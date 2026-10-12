@@ -367,3 +367,65 @@ def test_running_execution_processes(tmp_path):
         proc.kill()
         proc.wait()
     assert 'unit-test-weid' not in ws.runningExecutionProcesses()
+
+
+# ---------------------------------------------------------------------------------------------
+# one iteration of the main loop (scheduler_schedule_pending) against fakes of the REST API,
+# the resource check, the statistics monitor and the worker pool
+# ---------------------------------------------------------------------------------------------
+
+class _FakePool:
+    """Worker pool stand-in: records the execution IDs handed to it."""
+
+    def __init__(self):
+        self.enqueued = []
+
+    def apply_async(self, fn, args, **kw):
+        self.enqueued.append(args[0])
+
+
+@pytest.fixture
+def schedulingPass(monkeypatch):
+    """
+    Return a namespace to run one :func:`scheduler_schedule_pending` pass with fakes.
+
+    Attributes: ``pending`` (records returned as Pending), ``resources`` (set of execution IDs whose
+    resources are available; all by default), ``failStatusFor`` (execution IDs whose status update
+    raises), ``statuses`` (list of ``(weid, status)`` set), ``pool`` (the fake pool) and ``run()``.
+    """
+    from mupifDB import workflowscheduler as ws
+    env = types.SimpleNamespace(pending=[], resources=None, failStatusFor=set(), statuses=[], pool=_FakePool())
+
+    def setExecutionStatus(weid, status, **kw):
+        if weid in env.failStatusFor:
+            raise RuntimeError('REST API error')
+        env.statuses.append((weid, status))
+
+    monkeypatch.setattr(ws.restApiControl, 'getPendingExecutions', lambda **kw: list(env.pending))
+    monkeypatch.setattr(ws.restApiControl, 'setExecutionStatus', setExecutionStatus)
+    monkeypatch.setattr(ws.restApiControl, 'setExecutionAttemptsCount', lambda weid, n: None)
+    monkeypatch.setattr(ws.restApiControl, 'getExecutionRecord', lambda weid: next(r for r in env.pending if r.dbID == weid))
+    monkeypatch.setattr(ws, 'checkExecutionResources', lambda weid: env.resources is None or weid in env.resources)
+    monkeypatch.setattr(ws.Pyro5.api, 'Proxy', lambda uri: _FakeMonitor())
+    monkeypatch.setattr(ws.time, 'sleep', lambda sec: None)
+    env.run = lambda: ws.scheduler_schedule_pending(env.pool)
+    return env
+
+
+def _pendingRecord(weid, attempts=0):
+    """Pending execution record as returned by the REST API (only the fields the scheduler reads)."""
+    return types.SimpleNamespace(dbID=weid, Attempts=attempts, WorkflowID='Workflow01', WorkflowVersion=1)
+
+
+def test_failed_status_update_is_not_enqueued(schedulingPass):
+    """
+    An execution whose change to Scheduled fails stays Pending and is not handed to the pool.
+
+    Regression for finding #5 (non-atomic status change): the execution was enqueued even when
+    setting it Scheduled failed; the worker then found it not Scheduled and dropped it.
+    """
+    schedulingPass.pending = [_pendingRecord('E1'), _pendingRecord('E2')]
+    schedulingPass.failStatusFor = {'E1'}
+    schedulingPass.run()
+    assert schedulingPass.pool.enqueued == ['E2']
+    assert schedulingPass.statuses == [('E2', 'Scheduled')]
