@@ -208,21 +208,24 @@ def wait(reports: list[ExecutionReport], timeout: float, poll: float, settle: fl
         time.sleep(poll)
 
 
-def maxConcurrency(reports: list[ExecutionReport]) -> int:
+def maxConcurrency(reports: list[ExecutionReport], tolerance: float = 0.) -> int:
     """
     Compute the largest number of executions that were running at the same instant.
 
     Uses the ``StartDate``/``EndDate`` interval of each execution (set by the REST API when the
     status changes to ``Running`` and to ``Finished``/``Failed``). Executions without both dates
-    are ignored.
+    are ignored. The end date is set only after the scheduler has stored the log, while the
+    model-server slot is free once the workflow ends; *tolerance* shortens every interval by that
+    much, so that an execution starting in this short gap does not count as overlapping.
 
     :param reports: finished executions
+    :param tolerance: seconds subtracted from the end of every interval
     :return: maximum overlap of the running intervals
     """
     events = []
     for rep in reports:
         if rep.start and rep.end:
-            events += [(rep.start, 1), (rep.end, -1)]
+            events += [(rep.start, 1), (max(rep.start, rep.end - datetime.timedelta(seconds=tolerance)), -1)]
     # at equal timestamps process ends before starts, so back-to-back jobs do not count as overlapping
     events.sort(key=lambda e: (e[0], e[1]))
     cur = best = 0
@@ -255,7 +258,7 @@ def check(args: argparse.Namespace, reports: list[ExecutionReport], completed: b
     for rep in reports:
         if rep.status in ('Finished', 'Failed') and not rep.has_log:
             failures.append(f'{rep.weid}: no ExecutionLog stored')
-    if args.max_concurrent is not None and (mc := maxConcurrency(reports)) > args.max_concurrent:
+    if args.max_concurrent is not None and (mc := maxConcurrency(reports, args.overlap_tolerance)) > args.max_concurrent:
         failures.append(f'{mc} executions ran concurrently, at most {args.max_concurrent} allowed')
     if args.check_order:
         started = sorted((r for r in reports if r.start), key=lambda r: r.start)
@@ -299,6 +302,8 @@ def main() -> int:
                     help='required final status of every execution (default: %(default)s)')
     ap.add_argument('--max-concurrent', type=int, default=None, metavar='N', help='fail if more than N executions ran at once')
     ap.add_argument('--check-order', action='store_true', help='fail if executions did not start in submission order')
+    ap.add_argument('--overlap-tolerance', type=float, default=1., metavar='S',
+                    help='for --max-concurrent: ignore overlaps shorter than S seconds (time to store the log, default: %(default)s)')
     ap.add_argument('--timeout', type=float, default=300., help='seconds to wait for all executions (default: %(default)s)')
     ap.add_argument('--poll', type=float, default=1., help='polling interval in seconds (default: %(default)s)')
     ap.add_argument('--settle', type=float, default=3., help='wait before re-reading final states, in seconds (default: %(default)s)')
