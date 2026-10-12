@@ -32,6 +32,7 @@ from mupifDB.scheduler.core import Scheduler
 from mupifDB.scheduler.monitor import SchedulerMonitor
 from mupifDB.scheduler.resources import modelServerFreeSlots, terminateExecutionModelJobs
 from mupifDB.scheduler.runner import JobRunner
+from mupifDB.scheduler.staging import PackageCache, stageWorkflow
 
 log = logging.getLogger('scheduler')
 log.setLevel(logging.INFO)
@@ -51,7 +52,8 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     :return: the scheduler, ready to :meth:`~mupifDB.scheduler.core.Scheduler.run`
     """
     monitor = SchedulerMonitor(config.stat_file, capacity=config.max_jobs)
-    runner = JobRunner(config, nsUri=str(ns._pyroUri))
+    cache = PackageCache(config.cache_dir or os.path.join(config.work_dir, 'mupifDB-package-cache'), config.cache_max_bytes) if config.cache_max_bytes else None
+    runner = JobRunner(config, nsUri=str(ns._pyroUri), stage=lambda record, directory: stageWorkflow(record, directory, cache=cache))
     scheduler = Scheduler(config, RestBackend(), runner, freeJobSlots=lambda jm: modelServerFreeSlots(ns, jm), monitor=monitor,
                           terminateModelJobs=lambda jobmanagers, loggerURI: terminateExecutionModelJobs(ns, jobmanagers, loggerURI))
     monitor.onStop = scheduler.stop

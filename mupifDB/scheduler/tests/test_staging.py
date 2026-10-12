@@ -1,12 +1,15 @@
 """Tests of :func:`mupifDB.scheduler.staging.stageWorkflow` with an in-memory package store."""
 
 import io
+import os
+import threading
+import time
 import types
 import zipfile
 
 import pytest
 
-from mupifDB.scheduler.staging import StagingError, stageWorkflow
+from mupifDB.scheduler.staging import PackageCache, StagingError, stageWorkflow
 
 _RECORD = types.SimpleNamespace(GridFSID='F1', modulename='mywf')
 
@@ -70,3 +73,63 @@ def test_server_file_name_cannot_escape(tmp_path):
     (tmp_path / 'work').mkdir()
     path = stageWorkflow(_RECORD, tmp_path / 'work', _fetch(b'x=1\n', '../../mywf.py'))
     assert path == tmp_path / 'work' / 'mywf.py' and path.exists()
+
+
+def _countingFetch(content, name, delay=0.):
+    """Fake download counting its calls (``fetch.calls``), optionally slow."""
+    def fetch(fileId):
+        fetch.calls.append(fileId)
+        time.sleep(delay)
+        return content, name
+    fetch.calls = []
+    return fetch
+
+
+def test_cache_downloads_each_package_once(tmp_path):
+    """
+    With the cache, a package is downloaded once however many executions use it [S10].
+
+    Each execution used to download its workflow package again.
+    """
+    cache = PackageCache(tmp_path / 'cache', maxBytes=1 << 20)
+    fetch = _countingFetch(_zip({'mywf.py': b'x=1\n'}), 'mywf.zip')
+    for i in range(3):
+        (tmp_path / f'w{i}').mkdir()
+        assert stageWorkflow(_RECORD, tmp_path / f'w{i}', fetch, cache=cache).read_bytes() == b'x=1\n'
+    assert fetch.calls == ['F1']
+
+
+def test_cache_concurrent_jobs_download_once(tmp_path):
+    """Job threads staging the same package at the same time download it once."""
+    cache = PackageCache(tmp_path / 'cache', maxBytes=1 << 20)
+    fetch = _countingFetch(b'x=1\n', 'mywf.py', delay=0.2)
+    results = []
+
+    def stage(i):
+        d = tmp_path / f'w{i}'
+        d.mkdir()
+        results.append(stageWorkflow(_RECORD, d, fetch, cache=cache).exists())
+    threads = [threading.Thread(target=stage, args=(i,)) for i in range(4)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert results == [True] * 4 and fetch.calls == ['F1']
+
+
+def test_cache_prunes_least_recently_used(tmp_path):
+    """Above its size limit the cache removes the least recently used packages, never the one just used."""
+    cache = PackageCache(tmp_path / 'cache', maxBytes=250)
+    fetch = _countingFetch(b'x' * 100, 'mywf.py')
+    for fileId in ('A', 'B'):
+        cache.get(fileId, fetch)
+    old = time.time() - 100
+    os.utime(tmp_path / 'cache' / 'A', (old, old))
+    cache.get('B', fetch)                                    # B recently used
+    cache.get('C', fetch)                                    # 300 bytes > 250: A goes
+    assert sorted(os.listdir(tmp_path / 'cache')) == ['B', 'C']
+
+
+def test_cache_rejects_invalid_file_id(tmp_path):
+    """A file ID cannot address anything outside the cache directory."""
+    cache = PackageCache(tmp_path / 'cache', maxBytes=1 << 20)
+    with pytest.raises(StagingError):
+        cache.get('../escape', _countingFetch(b'', 'x.py'))
