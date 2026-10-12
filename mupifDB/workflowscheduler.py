@@ -45,15 +45,6 @@ LOOP_SLEEP_SEC=20
 # freshly started deployment time to come up; applied in main(), never at import time
 STARTUP_DELAY_SEC=5
 
-# try to import schedulerconfig.py
-authToken = None
-try:
-    import schedulerConfig # type: ignore
-    authKey = schedulerConfig.authToken
-except ImportError:
-    log.info("schedulerConfig import failed")
-
-
 schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"
 
 # Pyro nameserver proxy and its URI (passed to workflow subprocesses as MUPIF_NS); set by main(),
