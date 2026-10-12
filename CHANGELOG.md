@@ -2,6 +2,28 @@
 
 ## Unreleased: workflow scheduler refactoring
 
+### Phase 2: restructured scheduler
+
+The scheduler is now the package `mupifDB/scheduler/` (configuration, core, database backend, runner, staging, resources, statistics); `mupifDB/workflowscheduler.py` remains the entry point. Behaviour changes for users and operators:
+
+- **One process, job threads.** The scheduler is a single process (31 before): executions run in threads, each starting its workflow as a subprocess in its own process group. It takes at most `max_jobs` executions at a time, instead of queueing up to 300 behind its workers.
+- **Configuration by environment variables** `MUPIFDB_SCHEDULER_*` (`python -m mupifDB.scheduler --print-config` lists them). Defaults keep the former behaviour.
+- **Orderly shutdown.** SIGTERM stops the running workflows (they terminate their models) and returns their executions to `Pending`; they run again after the restart. The default shutdown fits supervisor's 10 s stop timeout (`drain_timeout`, `kill_grace`). If the scheduler is killed, its workflows end too and are run again after the restart.
+- **Drain mode** for maintenance (`kill -USR1`, or `setDrain()` over Pyro from the scheduler's host): no new executions, running ones finish.
+- **Workflow timeout.** The `Timeout` of the workflow metadata is stored with the workflow (new field of the workflow record) and enforced; `default_job_timeout` applies to workflows without one.
+- **Missing compulsory inputs** fail an execution before it starts, with a log saying why.
+- **Retries with a growing delay** after transient failures (10 s doubling up to 10 min): an unreachable model server no longer exhausts the attempts of its executions within minutes.
+- **Leftover model-server jobs** of a workflow that died (killed, timed out) are terminated by the scheduler, so model-server slots are not lost.
+- The **execution log is stored before the final status** is set: the execution script no longer sets statuses itself under the scheduler (`--standalone` keeps that for manual runs).
+- **Workflow packages are cached** (`cache_max_bytes`, 1 GiB); a package is downloaded once however many executions use it. Packages are checked when staged (module present, no unsafe archive paths).
+- Optional: working directories of failed executions kept for debugging (`keep_failed_workdirs`); log records tagged with the execution ID; owner notifications sent in the background (SMTP connection with a timeout).
+- Pyro: only `getStatistics()`, `stop()` and `setDrain()` are exposed, and the last two only to callers on the scheduler's host (`stop()` was callable by anyone). `getStatistics()` additionally reports `draining`.
+- Fixed: the REST client misread the file name of every download from `Content-Disposition`; the statistics file is written atomically.
+
+Recommended together with the mupif branch `feature/scheduler-refactor` (commit "meta: merge metadata recursively"). Without it, workflows lose their `Execution` metadata (ID, log URI, ...) in `initialize()`, so model output does not reach the execution's live log. The scheduler itself works with either mupif version.
+
+Development: unit tests moved to `mupifDB/scheduler/tests/` (106 tests, no services needed); API reference `doc/source/scheduler-api.rst` (sphinx autodoc enabled).
+
 ### Phase 1: scheduler bug fixes
 
 Behaviour changes visible to users and operators:

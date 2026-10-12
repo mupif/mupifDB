@@ -32,7 +32,8 @@ release = '0.x'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    # 'sphinx.ext.autodoc',
+    # API reference of the scheduler package (scheduler-api.rst); docstrings use Sphinx fields
+    'sphinx.ext.autodoc',
     # 'sphinxcontrib.apidoc'
     'sphinxcontrib.openapi',
     'myst_nb',
@@ -42,6 +43,9 @@ extensions = [
 import sys, os.path
 
 thisDir=os.path.dirname(os.path.abspath(__file__))
+# make the mupifDB package importable for autodoc
+sys.path.insert(0,os.path.abspath(thisDir+'/../..'))
+autodoc_member_order='bysource'
 
 #apidoc_module_dir=thisDir+'/../../mupif'
 #apidoc_output_dir='api/'
