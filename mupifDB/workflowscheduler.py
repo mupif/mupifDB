@@ -29,13 +29,6 @@ import mupif as mp
 
 import logging
 
-time.sleep(5)
-
-multiprocessing.current_process().name='mupifDB-scheduler'
-
-# show remote traceback when remote calls fail
-sys.excepthook = Pyro5.errors.excepthook
-
 log=logging.getLogger('scheduler') 
 log.setLevel(logging.INFO)
 log.addHandler(restLogger.RestLogHandler())
@@ -47,6 +40,9 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("urllib3").propagate = False
 
 LOOP_SLEEP_SEC=20
+# delay before the scheduler starts working, giving the other services (nameserver, REST API) of a
+# freshly started deployment time to come up; applied in main(), never at import time
+STARTUP_DELAY_SEC=5
 
 # try to import schedulerconfig.py
 authToken = None
@@ -59,8 +55,10 @@ except ImportError:
 
 schedulerStatFile = "/var/lib/mupif/persistent/scheduler-stat.json"
 
-ns = mp.pyroutil.connectNameserver()
-ns_uri = str(ns._pyroUri)
+# Pyro nameserver proxy and its URI (passed to workflow subprocesses as MUPIF_NS); set by main(),
+# before the worker pool is forked, so that workers inherit them
+ns = None
+ns_uri = None
 
 poolsize = 30
 stopFlag = False # set to tru to end main scheduler loop
@@ -572,6 +570,20 @@ def procError(e):   log.error('Error running pool task:',exc_info=e)
 
 
 def main():
+    """
+    Run the scheduler until it is stopped.
+
+    Everything with side effects happens here rather than at import time, so that the module can be
+    imported (e.g. by tests) without sleeping, connecting to the nameserver or renaming the process.
+    """
+    global ns, ns_uri
+    time.sleep(STARTUP_DELAY_SEC)
+    multiprocessing.current_process().name='mupifDB-scheduler'
+    # show remote traceback when remote calls fail
+    sys.excepthook = Pyro5.errors.excepthook
+    ns = mp.pyroutil.connectNameserver()
+    ns_uri = str(ns._pyroUri)
+
     import requests.adapters
     import urllib3
     # FIXME: session not used at all
