@@ -321,11 +321,29 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 # Files
 # --------------------------------------------------
 
+def fileNameFromContentDisposition(value: str) -> str:
+    """
+    Extract the file name from a ``Content-Disposition`` header (RFC 6266).
+
+    The REST API sends both forms, ``filename="name"; filename*=utf-8\'\'name``; the extended
+    form (percent-encoded, any charset) is preferred, then the quoted or plain ``filename``.
+
+    :param value: header value, e.g. ``attachment; filename="files.zip"; filename*=utf-8\'\'files.zip``
+    :return: the file name, or an empty string if the header names none
+    """
+    import urllib.parse
+    m = re.search(r"filename\*\s*=\s*([^']*)'[^']*'([^;]+)", value)
+    if m:
+        return urllib.parse.unquote(m.group(2).strip(), encoding=m.group(1) or 'utf-8')
+    m = re.search(r'filename\s*=\s*"((?:[^"\\]|\\.)*)"', value)
+    if m:
+        return m.group(1)
+    m = re.search(r'filename\s*=\s*([^;]+)', value)
+    return m.group(1).strip() if m else ''
+
 def getBinaryFileByID(fid) -> Tuple[bytes, str]:
     response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders(), timeout=(4.0, 600.0))
-    d = response.headers['Content-Disposition']
-    filename = re.findall("filename=(.+)", d)[0]
-    return response.content, filename
+    return response.content, fileNameFromContentDisposition(response.headers['Content-Disposition'])
 
 def uploadBinaryFile(binary_data) -> str:
     return rPost(f"{API_PREFIX}file/", files={"file": binary_data}, headers=getRequestHeaders())
