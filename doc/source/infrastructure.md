@@ -106,4 +106,4 @@ The database is never accessed directly by clients, it is only used through the 
 
 ### Scheduler
 
-Scheduler is periodically checking for jobs submitted to the database; it interacts with the database, and is an independent background process which is normally not interacted with.
+Scheduler is periodically checking for jobs submitted to the database; it interacts with the database, and is an independent background process which is normally not interacted with. See [](scheduler.md) for how it works, its configuration and how to test it.
