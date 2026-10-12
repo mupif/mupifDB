@@ -106,6 +106,8 @@ class Scheduler:
         self.jobs: dict[str, Job] = {}
         #: set to end the main loop; also interrupts its sleep
         self.stopEvent = threading.Event()
+        #: set while draining: no new executions are taken, running ones continue (see :meth:`setDrain`)
+        self.draining = threading.Event()
         #: execution ID -> (monotonic time before which it is not tried again, consecutive transient failures)
         self.backoff: dict[str, tuple[float, int]] = {}
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=config.max_jobs, thread_name_prefix='job')
@@ -165,6 +167,19 @@ class Scheduler:
         self.monitor.persist()
         log.info('Scheduler shut down')
 
+    def setDrain(self, on: bool) -> None:
+        """
+        Switch drain mode, e.g. before maintenance [S12].
+
+        While draining, no new executions are taken; running ones continue to their end. Once
+        :attr:`jobs` is empty the scheduler can be stopped without stopping any workflow.
+
+        :param on: drain (True) or resume taking executions (False)
+        """
+        (self.draining.set if on else self.draining.clear)()
+        self.monitor.draining = on
+        log.warning(f'Drain mode {"on: no new executions are taken" if on else "off: taking executions again"}')
+
     def freeSlots(self) -> int:
         """Return how many more executions can be taken now."""
         with self.lock:
@@ -212,6 +227,8 @@ class Scheduler:
 
         :return: number of executions taken
         """
+        if self.draining.is_set():
+            return 0
         free = self.freeSlots()
         if free <= 0:
             return 0

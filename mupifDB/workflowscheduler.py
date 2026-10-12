@@ -57,6 +57,7 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     scheduler = Scheduler(config, RestBackend(), runner, freeJobSlots=lambda jm: modelServerFreeSlots(ns, jm), monitor=monitor,
                           terminateModelJobs=lambda jobmanagers, loggerURI: terminateExecutionModelJobs(ns, jobmanagers, loggerURI))
     monitor.onStop = scheduler.stop
+    monitor.onDrain = scheduler.setDrain
     # copy the statistics of the previous run to the database before anything changes
     monitor.persist()
     monitor.runServer(ns)
@@ -65,10 +66,11 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
 
 def installSignalHandlers(scheduler: Scheduler) -> None:
     """
-    Shut the scheduler down in an orderly way on SIGTERM (service manager) and SIGINT (Ctrl-C).
+    Shut the scheduler down in an orderly way on SIGTERM (service manager) and SIGINT (Ctrl-C); toggle drain mode on SIGUSR1.
 
-    The main loop ends and :meth:`~mupifDB.scheduler.core.Scheduler.shutdown` stops the running
-    workflows; their executions run again after the restart.
+    On SIGTERM/SIGINT the main loop ends and :meth:`~mupifDB.scheduler.core.Scheduler.shutdown`
+    stops the running workflows; their executions run again after the restart. SIGUSR1 switches
+    drain mode (:meth:`~mupifDB.scheduler.core.Scheduler.setDrain`) on and off.
 
     :param scheduler: the scheduler to stop
     """
@@ -77,6 +79,10 @@ def installSignalHandlers(scheduler: Scheduler) -> None:
         scheduler.stop()
     signal.signal(signal.SIGTERM, handler)
     signal.signal(signal.SIGINT, handler)
+
+    def toggleDrain(signum, frame):
+        scheduler.setDrain(not scheduler.draining.is_set())
+    signal.signal(signal.SIGUSR1, toggleDrain)
 
 
 def main(config: SchedulerConfig | None = None) -> None:

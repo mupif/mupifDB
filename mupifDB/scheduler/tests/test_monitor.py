@@ -70,11 +70,11 @@ def test_stop_calls_back(tmp_path, synced):
     assert stopped == [1] and removed == ['mupif.scheduler']
 
 
-def test_only_two_methods_exposed():
-    """Over Pyro the monitor offers reading the statistics and stopping, not the update methods."""
+def test_only_control_methods_exposed():
+    """Over Pyro the monitor offers reading the statistics, stopping and drain mode, not the update methods."""
     from Pyro5.server import _get_exposed_members
     exposed = _get_exposed_members(SchedulerMonitor(None, capacity=1), only_exposed=True)['methods']
-    assert exposed == {'getStatistics', 'stop'}
+    assert exposed == {'getStatistics', 'stop', 'setDrain'}
 
 
 @pytest.mark.parametrize('address,allowed', [('127.0.0.1', True), ('10.255.7.9', False)])

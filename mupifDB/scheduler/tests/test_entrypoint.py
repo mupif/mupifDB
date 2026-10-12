@@ -49,7 +49,7 @@ def test_sigterm_stops_the_scheduler():
     from mupifDB import workflowscheduler as ws
     stopped = []
     scheduler = type('S', (), {'stop': lambda self: stopped.append(1)})()
-    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGUSR1)}
     try:
         ws.installSignalHandlers(scheduler)
         os.kill(os.getpid(), signal.SIGTERM)
@@ -58,3 +58,31 @@ def test_sigterm_stops_the_scheduler():
         for sig, h in previous.items():
             signal.signal(sig, h)
     assert stopped == [1]
+
+
+def test_sigusr1_toggles_drain():
+    """SIGUSR1 switches drain mode on and off."""
+    import signal
+    import threading
+    from mupifDB import workflowscheduler as ws
+    calls = []
+
+    class S:
+        draining = threading.Event()
+
+        def stop(self):
+            pass
+
+        def setDrain(self, on):
+            calls.append(on)
+            (self.draining.set if on else self.draining.clear)()
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGUSR1)}
+    try:
+        ws.installSignalHandlers(S())
+        for _ in range(2):
+            os.kill(os.getpid(), signal.SIGUSR1)
+            time.sleep(0.1)
+    finally:
+        for sig, h in previous.items():
+            signal.signal(sig, h)
+    assert calls == [True, False]

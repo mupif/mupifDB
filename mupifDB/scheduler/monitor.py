@@ -4,8 +4,8 @@ Statistics monitor of a running scheduler, readable over Pyro.
 The scheduler updates the statistics in-process (its job threads call :meth:`SchedulerMonitor.enqueued`
 and the other update methods). Over Pyro the monitor is registered in the nameserver as
 ``mupif.scheduler`` with metadata ``type:scheduler``; it exposes only :meth:`~SchedulerMonitor.getStatistics`
-(read by the monitoring pages, e.g. ``mupif.monitor.schedulerInfo``) and :meth:`~SchedulerMonitor.stop`
-(callers on the scheduler's host only).
+(read by the monitoring pages, e.g. ``mupif.monitor.schedulerInfo``), and :meth:`~SchedulerMonitor.stop`
+and :meth:`~SchedulerMonitor.setDrain` (callers on the scheduler's host only).
 
 Counters (see :class:`~mupifDB.scheduler.stats.SchedulerStat`): ``scheduled`` counts executions taken
 by the scheduler and not started yet, ``running`` those whose workflow process runs, ``processed`` =
@@ -87,6 +87,10 @@ class SchedulerMonitor:
         # size the history lists (empty in a new SchedulerStat) before anything is stored in them
         self.stat.advanceTime()
         self.ns = None
+        #: drain mode of the scheduler (reported in the statistics)
+        self.draining = False
+        #: called by :meth:`setDrain` with the new state (set by the scheduler)
+        self.onDrain: Callable[[bool], None] = lambda on: None
 
     # --- updates by the scheduler (in-process, not exposed over Pyro) -------------------------
 
@@ -177,6 +181,7 @@ class SchedulerMonitor:
             finishedTasks48=s.hist48h.finished,
             failedTasks48=s.hist48h.failed,
             load48=s.hist48h.load,
+            draining=self.draining,
         )
 
     @Pyro5.api.expose
@@ -187,6 +192,18 @@ class SchedulerMonitor:
         self.onStop()
         if self.ns is not None:
             self.ns.remove(NS_NAME)
+
+    @Pyro5.api.expose
+    @localCallerOnly
+    def setDrain(self, on: bool) -> None:
+        """
+        Switch the scheduler's drain mode (callers on the scheduler's host only).
+
+        While draining, the scheduler takes no new executions and lets running ones finish.
+
+        :param on: True to drain, False to resume
+        """
+        self.onDrain(bool(on))
 
     def registerPyro(self, *, daemon, ns, uri, appName, exclusiveDaemon):
         """Accept the registration callback of :func:`mupif.pyroutil.runServer` (nothing to do)."""

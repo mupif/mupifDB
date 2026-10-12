@@ -416,3 +416,23 @@ def test_final_outcome_clears_the_delay(env, clock):
     env.scheduler.schedulePass()
     env.drain()
     assert env.backend.status('E0') == 'Finished' and 'E0' not in env.scheduler.backoff
+
+
+def test_drain_mode(env):
+    """While draining, no executions are taken; running ones finish; resuming takes executions again [S12]."""
+    env.backend.addExecution('E0')
+    env.backend.addExecution('E1')
+    env.runner.gate = threading.Event()
+    env.scheduler.config.max_jobs = 3
+    assert env.scheduler.schedulePass() == 2
+    env.backend.addExecution('E2')
+    env.scheduler.setDrain(True)
+    assert env.scheduler.schedulePass() == 0 and env.monitor.getStatistics()['draining'] is True
+    env.runner.gate.set()
+    for _ in range(100):
+        if not env.scheduler.jobs:
+            break
+        time.sleep(0.02)
+    assert env.backend.status('E0') == 'Finished' and env.backend.status('E2') == 'Pending'
+    env.scheduler.setDrain(False)
+    assert env.scheduler.schedulePass() == 1
