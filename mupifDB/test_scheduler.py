@@ -1,7 +1,11 @@
 import pytest
 import sys
+import os
+import json
 import time
 import socket
+import shutil
+import tempfile
 from xprocess import ProcessStarter
 from rich.pretty import pprint
 from rich import print_json
@@ -22,9 +26,22 @@ pprint(PORTS)
 MUPIFDB_REST_SERVER='http://localhost:'+PORTS['restApi']
 #import os
 #os.environ['MUPIFDB_REST_SERVER']=MUPIFDB_REST_SERVER
+
+# mongod binary: $MUPIFDB_TEST_MONGOD, else the one on $PATH, else the traditional system location
+MONGOD=os.environ.get('MUPIFDB_TEST_MONGOD') or shutil.which('mongod') or '/usr/bin/mongod'
+
+# The REST API requires authentication. The test account is registered (and made admin, so that it
+# may upload workflows) by the restApi fixture. The scheduler subprocess reads it from the file
+# given by API_CREDENTIALS_FILE; this process gets it via setAPICredentials, because pytest imports
+# this module as mupifDB.test_scheduler, i.e. the REST client is already imported at this point.
+API_CREDENTIALS={'username':'scheduler-test@localhost','password':'scheduler-test-password'}
+API_CREDENTIALS_FILE=os.path.join(tempfile.mkdtemp(prefix='mupifdb-test-'),'api-credentials.json')
+with open(API_CREDENTIALS_FILE,'w') as f: json.dump(API_CREDENTIALS,f)
+
 import mupifDB
 from mupifDB import restApiControl
 restApiControl.setRESTserver(MUPIFDB_REST_SERVER)
+restApiControl.setAPICredentials(**API_CREDENTIALS)
 
 #import mupif as mp
 #mupifExamplesDir=mp.__path__[0]+'/examples/'
@@ -47,7 +64,7 @@ def nameserver(xprocess):
 @pytest.fixture
 def mongodb(xprocess):
     class Starter(ProcessStarter):
-        args = [ '/usr/bin/mongod', '--port', PORTS['mongodb'], '--noauth', '--dbpath=./', '--logpath=/dev/stdout', '--logappend' ]
+        args = [ MONGOD, '--port', PORTS['mongodb'], '--noauth', '--dbpath=./', '--logpath=/dev/stdout', '--logappend' ]
         timeout = 5
         max_read_lines = 100
         pattern = '"ctx":"listener","msg":"Waiting for connections"'
@@ -68,6 +85,9 @@ def restApi(xprocess,mongodb,nameserver):
             'MUPIFDB_RESTAPI_PORT':PORTS['restApi'],
             'MUPIFDB_REST_SERVER':MUPIFDB_REST_SERVER,
             'PYTHONPATH':mupifDB.__path__[0]+'/..',
+            # fixed JWT key: without it every API restart (each test restarts the fixture) picks a
+            # random key and invalidates the access token the client has cached
+            'APP_SECRET_KEY':'mupifdb-test-jwt-key',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
         args = [ sys.executable, 'main.py', '--log-level','debug' ]
@@ -76,8 +96,20 @@ def restApi(xprocess,mongodb,nameserver):
         pattern = 'Application startup complete.'
         terminate_on_interrupt = True
     xprocess.ensure("restApi",Starter)
+    _createTestAccount()
     yield
     xprocess.getinfo("restApi").terminate()
+
+def _createTestAccount():
+    '''
+    Register the test account (see API_CREDENTIALS) through the REST API and grant it admin
+    rights directly in MongoDB, which is the only way to obtain an admin without an existing one.
+    Idempotent: an already registered account is left as it is.
+    '''
+    import requests, pymongo
+    requests.post(MUPIFDB_REST_SERVER+'/api/register',data=API_CREDENTIALS,timeout=10)
+    db=pymongo.MongoClient('mongodb://localhost:'+PORTS['mongodb'],directConnection=True).MuPIF
+    db.user.update_one({'mail':API_CREDENTIALS['username']},{'$set':{'rights_admin':True}})
 
 @pytest.fixture
 def scheduler(xprocess,restApi):
@@ -88,13 +120,14 @@ def scheduler(xprocess,restApi):
             'MUPIF_NS':f'localhost:'+PORTS['nameserver'],
             'MUPIF_LOG_LEVEL':'DEBUG',
             'MUPIFDB_REST_SERVER':MUPIFDB_REST_SERVER,
+            'API_CREDENTIALS_FILE':API_CREDENTIALS_FILE,
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
         args = [ sys.executable, '-c', 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=.5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' ]
         timeout = 10
         max_read_lines = 500
-        # pattern = 'Entering main loop to check for Pending executions'
-        pattern = 'procInit called'
+        # logged once the scheduler is ready to pick up executions
+        pattern = 'Entering main loop to check for Pending executions'
         terminate_on_interrupt = True
     xprocess.ensure("scheduler",Starter)
     yield
