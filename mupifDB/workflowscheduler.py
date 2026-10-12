@@ -76,7 +76,7 @@ class SchedulerStat(mp.BareData):
     class JobInfo(mp.BareData):
         we_id: str
         wid: str
-        status: Literal['Running','Finished','Failed']
+        status: Literal['Running','Finished','Failed','Pending']  # Pending: returned to the queue (no resources)
         started: datetime.datetime
         finished: Optional[datetime.datetime]
     lastJobs: List[JobInfo]=[]
@@ -96,7 +96,7 @@ class SchedulerStat(mp.BareData):
             def m(seq,n): seq[:]=seq[n:]+min(n,self.count)*[0] # modify in-place
             m(self.processed,n); m(self.pooled,n); m(self.finished,n); m(self.failed,n); m(self.load,n)
         def selfCheck(self):
-            if set([len(s) for s in (self.processed,self.pooled,self.finished,self.failed)])!=set([self.count]): self.reset()
+            if set([len(s) for s in (self.processed,self.pooled,self.finished,self.failed,self.load)])!=set([self.count]): self.reset()
         def advance(self):
             self.selfCheck()
             per=int(time.time()//self.interval)
@@ -111,7 +111,7 @@ class SchedulerStat(mp.BareData):
     def lastJobNew(self, job: JobInfo, max=5) -> None:
         self.lastJobs.append(job)
         self.lastJobs=self.lastJobs[-max:]
-    def lastJobDone(self, we_id, status: Literal['Finished','Failed'], finished: datetime.datetime):
+    def lastJobDone(self, we_id, status: Literal['Finished','Failed','Pending'], finished: datetime.datetime):
         match=[j for j in self.lastJobs if j.we_id==we_id]
         if not match: return # job already gone
         if len(match)>1:
@@ -124,13 +124,18 @@ class SchedulerStat(mp.BareData):
         self.load=int(100*self.tasks.running*1./poolsize)
         self.hist48h.load[-1]=self.load
     def sync(self):
+        """Update the load and copy the counters to the database; best effort, never raises."""
         self.updateLoad()
-        restApiControl.setStatScheduler(
-            runningTasks=self.tasks.running,
-            scheduledTasks=self.tasks.scheduled,
-            processedTasks=self.tasks.processed,
-            load=self.load
-        )
+        try:
+            restApiControl.setStatScheduler(
+                runningTasks=self.tasks.running,
+                scheduledTasks=self.tasks.scheduled,
+                processedTasks=self.tasks.processed,
+                load=self.load
+            )
+        except Exception:
+            # statistics must not break scheduling (a failure here used to end the main loop)
+            log.exception('Could not store scheduler statistics in the database')
     @staticmethod
     def load_from_file(f):
         with open(f,'r') as f: return SchedulerStat.model_validate_json(f.read())
@@ -178,6 +183,12 @@ class SchedulerMonitor(object):
                 self.stat=SchedulerStat.load_from_file(schedulerStatFile)
             except:
                 log.exception(f'Failure reading persistent schedule statistics from {schedulerStatFile}, starting from scratch.')
+        # the totals and the history carry over from the previous run, but nothing is queued or
+        # running in this new process yet
+        self.stat.tasks.running=0
+        self.stat.tasks.scheduled=0
+        # size the history lists (empty in a new SchedulerStat) before anything is stored in them
+        self.stat.advanceTime()
 
     def runServer(self):
         log.info("SchedulerMonitor: runningServer")
@@ -190,8 +201,9 @@ class SchedulerMonitor(object):
     def getStatistics(self,raw=False):
         # raw=True makes it suitable for reconstructing the model on the other side
         # the default raw=False will return data translated to the old format
-        self.advanceTime()
-        s=self.stat
+        with self.lock:
+            self.advanceTime()
+            s=self.stat.model_copy(deep=True)
         if raw: return s.model_dump(mode='json')
         return dict(
             runningTasks     = s.tasks.running,
@@ -229,40 +241,68 @@ class SchedulerMonitor(object):
     def registerPyro(self,*,daemon,ns,uri,appName,exclusiveDaemon): 
         pass
 
-    @pyro_only(no_remote=True)
-    def updateRunning(self,we_id,wid):
-        self.advanceTime()
-        self.stat.tasks.scheduled-=1
-        self.stat.tasks.running+=1
-        self.stat.lastJobNew(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',started=datetime.datetime.now(),finished=None))
-        self.stat.sync()
+    # The update methods below are called by the main loop and by the pool workers (other
+    # processes, hence through Pyro) and keep these invariants: "scheduled" counts executions
+    # handed to the pool but not started, "running" those whose workflow subprocess runs;
+    # "processed" = "finished" + "failed" counts executions that reached a final status. Pyro
+    # serves calls from several threads, so every update holds the lock.
 
     @pyro_only(no_remote=True)
-    def updateScheduled(self,numPending: int):
-        self.advanceTime()
-        self.stat.tasks.scheduled=numPending
-        self.stat.hist48h.pooled[-1]+=numPending
-        self.stat.sync()
+    def updateEnqueued(self,we_id):
+        """An execution was handed to the worker pool."""
+        with self.lock:
+            self.stat.advanceTime()
+            self.stat.tasks.scheduled+=1
+            self.stat.hist48h.pooled[-1]+=1
+            self.stat.sync()
+
+    @pyro_only(no_remote=True)
+    def updateDropped(self,we_id):
+        """An enqueued execution ended before its workflow subprocess was started."""
+        with self.lock:
+            self.stat.advanceTime()
+            self.stat.tasks.scheduled=max(0,self.stat.tasks.scheduled-1)
+            self.stat.sync()
+
+    @pyro_only(no_remote=True)
+    def updateRunning(self,we_id,wid):
+        """The workflow subprocess of an enqueued execution is starting."""
+        with self.lock:
+            self.stat.advanceTime()
+            self.stat.tasks.scheduled=max(0,self.stat.tasks.scheduled-1)
+            self.stat.tasks.running+=1
+            self.stat.lastJobNew(SchedulerStat.JobInfo(we_id=we_id,wid=wid,status='Running',started=datetime.datetime.now(),finished=None))
+            self.stat.sync()
 
     @pyro_only(no_remote=True)
     def updateFinished(self,retCode,we_id):
-        self.advanceTime()
-        self.stat.tasks.running-=1
-        self.stat.tasks.processed+=1
-        self.stat.hist48h.processed[-1]+=1
-        if retCode==0:
-            self.stat.tasks.finished+=1
-            self.stat.hist48h.finished[-1]+=1
-        else:
-            self.stat.tasks.failed+=1
-            self.stat.hist48h.failed[-1]+=1
-        self.stat.lastJobDone(we_id=we_id,status=('Finished' if retCode==0 else 'Failed'),finished=datetime.datetime.now())
-        self.stat.sync()
+        """
+        The workflow subprocess ended with exit code *retCode*.
+
+        The outcome follows :func:`statusForExitCode`: an execution returned to Pending (no
+        resources) is not counted as processed, an execution killed by a signal counts as failed.
+        """
+        status=statusForExitCode(retCode)
+        with self.lock:
+            self.stat.advanceTime()
+            self.stat.tasks.running=max(0,self.stat.tasks.running-1)
+            if status!='Pending':
+                self.stat.tasks.processed+=1
+                self.stat.hist48h.processed[-1]+=1
+                if status=='Finished':
+                    self.stat.tasks.finished+=1
+                    self.stat.hist48h.finished[-1]+=1
+                else:
+                    self.stat.tasks.failed+=1
+                    self.stat.hist48h.failed[-1]+=1
+            self.stat.lastJobDone(we_id=we_id,status=status,finished=datetime.datetime.now())
+            self.stat.sync()
 
     @pyro_only(no_remote=True)
     def persistStat(self):
-        self.advanceTime()
-        self.stat.save_to_file(schedulerStatFile)
+        with self.lock:
+            self.stat.advanceTime()
+            self.stat.save_to_file(schedulerStatFile)
 
 
 
@@ -320,8 +360,11 @@ def executeWorkflow(we_id: str) -> None:
         return executeWorkflow_inner1(we_id, progress)
     except NotScheduledError:
         log.exception("Execution %s is not Scheduled any more, not running it." % we_id)
+        updateMonitor(Pyro5.api.Proxy(SchedulerMonitor.URI), 'updateDropped', we_id)
     except Exception:
         log.exception("Execution of workflow %s failed." % we_id)
+        if not progress['launched']:
+            updateMonitor(Pyro5.api.Proxy(SchedulerMonitor.URI), 'updateDropped', we_id)
         try:
             if progress['launched']:
                 restApiControl.setExecutionStatus(we_id, 'Failed')
@@ -501,8 +544,8 @@ def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> None
 def stopPool(var_pool):
     try:
         log.info("Stopping the scheduler, waiting for workers to terminate")
-        # @TODO: do not reset processedTasks, continue counting
-        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0)
+        # nothing runs once the pool is gone; the processed total carries over to the next run
+        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0)
         var_pool.close()  # close pool
         var_pool.join()  # wait for completion
         log.info("All tasks finished, exiting")
@@ -651,7 +694,6 @@ def scheduler_schedule_pending(pool):
         pending_executions = []
 
     monitor=Pyro5.api.Proxy(SchedulerMonitor.URI)
-    monitor.updateScheduled(len(pending_executions))
     budget = ResourceBudget()
 
     for wed in pending_executions:
@@ -678,6 +720,7 @@ def scheduler_schedule_pending(pool):
                     continue
 
                 result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
+                updateMonitor(monitor, 'updateEnqueued', weid)
                 # log.info(result.get())
                 log.info(f"WEID {weid} added to the execution pool")
             elif resources == ResourceBudget.BUSY:
@@ -745,16 +788,11 @@ def main():
     session = requests.Session()
     for proto in ('http://', 'https://'):
         session.mount(proto, adapter)
-    #
-    # @bp: do we want to reset processedTasks to zero? Perhaps keeping it ?
-    #
-    try:
-        restApiControl.setStatScheduler(runningTasks=0, scheduledTasks=0, load=0, processedTasks=0, session=session)
-    except Exception as e:
-        log.error(repr(e))
+    # (the statistics in the database are set from the persisted ones when the monitor starts)
 
     if 1:
         _monitor = SchedulerMonitor(ns)
+        _monitor.stat.sync()
         SchedulerMonitor.URI=_monitor.runServer()
         monitor=Pyro5.api.Proxy(SchedulerMonitor.URI)
 

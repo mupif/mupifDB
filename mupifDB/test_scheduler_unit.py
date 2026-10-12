@@ -508,3 +508,128 @@ def test_pass_takes_oldest_pending_first(schedulingPass):
     """
     schedulingPass.run()
     assert [q.get('sort') for q in schedulingPass.pendingQueries] == ['SubmittedDate']
+
+
+# ---------------------------------------------------------------------------------------------
+# statistics (SchedulerStat, SchedulerMonitor)
+# ---------------------------------------------------------------------------------------------
+
+def test_stat_hist_advance(monkeypatch):
+    """The 48 h history shifts by whole hours, resets after long gaps and refuses to go back in time."""
+    from mupifDB import workflowscheduler as ws
+    now = [100 * 3600 + 10]
+    monkeypatch.setattr(ws.time, 'time', lambda: now[0])
+    h = ws.SchedulerStat.Hist(interval=3600, count=4)
+    h.advance()                                     # initializes the lists
+    h.processed[-1] = 5
+    now[0] += 60
+    h.advance()                                     # same hour: nothing moves
+    assert h.processed == [0, 0, 0, 5]
+    now[0] += 2 * 3600
+    h.advance()
+    assert h.processed == [0, 5, 0, 0]
+    now[0] += 10 * 3600                             # gap longer than the history
+    h.advance()
+    assert h.processed == [0, 0, 0, 0]
+    now[0] -= 3 * 3600
+    with pytest.raises(RuntimeError):
+        h.advance()
+
+
+def test_stat_hist_selfcheck_includes_load():
+    """A history with a load list of the wrong length (e.g. from an old stat file) is reset (finding #9)."""
+    from mupifDB import workflowscheduler as ws
+    h = ws.SchedulerStat.Hist(interval=3600, count=3, processed=[1, 2, 3], pooled=[1, 2, 3], finished=[1, 2, 3], failed=[0, 0, 0], load=[1.])
+    h.selfCheck()
+    assert h.load == [0, 0, 0] and h.processed == [0, 0, 0]
+
+
+@pytest.fixture
+def statMonitor(monkeypatch, tmp_path):
+    """
+    Return ``(monitor, call)`` where ``call(method, *args)`` invokes a ``pyro_only`` method directly.
+
+    The monitor persists to a temporary file, and the copy of the counters into the database is
+    recorded in ``monitor.synced`` instead of being sent to the REST API.
+    """
+    from mupifDB import workflowscheduler as ws
+    monkeypatch.setattr(ws, 'schedulerStatFile', str(tmp_path / 'stat.json'))
+    synced = []
+    monkeypatch.setattr(ws.restApiControl, 'setStatScheduler', lambda **kw: synced.append(kw))
+    monitor = ws.SchedulerMonitor(_FakeNameserver())
+    monitor.synced = synced
+
+    def call(method, *args):
+        # bypass the pyro_only check (which requires a Pyro call context)
+        return getattr(ws.SchedulerMonitor, method).__wrapped__(monitor, *args)
+    return monitor, call
+
+
+def test_monitor_accounting(statMonitor):
+    """
+    Counters follow executions through the pool: enqueued -> running -> final or requeued.
+
+    Regression for finding #9: "scheduled" was overwritten with the size of the pending backlog
+    (and then decremented, going negative), "pooled" re-counted the same backlog every pass, and an
+    execution returned to Pending for lack of resources was counted as failed.
+    """
+    monitor, call = statMonitor
+    for weid in ('E1', 'E2', 'E3', 'E4'):
+        call('updateEnqueued', weid)
+    call('updateRunning', 'E1', 'wf')
+    call('updateRunning', 'E2', 'wf')
+    call('updateRunning', 'E3', 'wf')
+    call('updateDropped', 'E4')                     # failed before its subprocess started
+    call('updateFinished', 0, 'E1')
+    call('updateFinished', -9, 'E2')                # killed by a signal: failed
+    call('updateFinished', 2, 'E3')                 # no resources: back to Pending, not processed
+    t = monitor.stat.tasks
+    assert (t.scheduled, t.running, t.processed, t.finished, t.failed) == (0, 0, 2, 1, 1)
+    h = monitor.stat.hist48h
+    assert (h.pooled[-1], h.processed[-1], h.finished[-1], h.failed[-1]) == (4, 2, 1, 1)
+    assert [j.status for j in monitor.stat.lastJobs] == ['Finished', 'Failed', 'Pending']
+    call('updateDropped', 'E5')                     # never negative
+    assert monitor.stat.tasks.scheduled == 0
+
+
+def test_monitor_survives_database_errors(monkeypatch, statMonitor):
+    """A failure to store the statistics in the database does not propagate (finding #16)."""
+    from mupifDB import workflowscheduler as ws
+    monitor, call = statMonitor
+
+    def setStatScheduler(**kw):
+        raise RuntimeError('401 Unauthorized')
+    monkeypatch.setattr(ws.restApiControl, 'setStatScheduler', setStatScheduler)
+    call('updateEnqueued', 'E1')
+    assert monitor.stat.tasks.scheduled == 1
+
+
+def test_monitor_restart_keeps_totals(statMonitor):
+    """
+    Totals and history survive a restart; per-process counters start from zero.
+
+    The scheduler used to reset processedTasks to 0 in the database at every start and stop.
+    """
+    from mupifDB import workflowscheduler as ws
+    monitor, call = statMonitor
+    call('updateEnqueued', 'E1')
+    call('updateRunning', 'E1', 'wf')
+    call('updateFinished', 0, 'E1')
+    call('updateEnqueued', 'E2')
+    call('updateRunning', 'E2', 'wf')               # still running when the scheduler stops
+    call('persistStat')
+    restarted = ws.SchedulerMonitor(_FakeNameserver())
+    t = restarted.stat.tasks
+    assert (t.processed, t.finished, t.running, t.scheduled) == (1, 1, 0, 0)
+
+
+def test_monitor_fresh_start(statMonitor):
+    """
+    A monitor started without a statistics file can store its statistics right away.
+
+    The history lists are empty until the time is first advanced; storing the load into them
+    failed with IndexError on a fresh installation.
+    """
+    monitor, call = statMonitor
+    monitor.stat.sync()
+    assert len(monitor.stat.hist48h.load) == monitor.stat.hist48h.count
