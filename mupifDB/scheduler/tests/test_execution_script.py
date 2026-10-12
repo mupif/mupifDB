@@ -50,7 +50,7 @@ class _FakeWorkflow:
 @pytest.fixture
 def execScript(monkeypatch):
     """
-    Return ``run(fail=None) -> (exit code, [statuses set through the REST API])``.
+    Return ``run(fail=None, standalone=True) -> (exit code, [statuses set through the REST API])``.
 
     Runs :func:`mupifDB.workflow_execution_script.main` for execution ``E1`` of a fake workflow
     (module ``fakewf`` injected into ``sys.modules``) with all external services faked.
@@ -70,8 +70,9 @@ def execScript(monkeypatch):
     monkeypatch.setitem(sys.modules, 'fakewf', types.SimpleNamespace(FakeWorkflow=_FakeWorkflow))
     monkeypatch.setattr(sys, 'argv', ['workflow_execution_script.py', '-eid', 'E1'])
 
-    def run(fail=None):
+    def run(fail=None, standalone=True):
         monkeypatch.setattr(_FakeWorkflow, 'fail', fail)
+        monkeypatch.setattr(sys, 'argv', ['workflow_execution_script.py', '-eid', 'E1'] + (['--standalone'] if standalone else []))
         statuses.clear()
         with pytest.raises(SystemExit) as exc:
             es.main()
@@ -142,3 +143,14 @@ def test_exec_script_other_pyro_error_fails(execScript):
     import Pyro5.errors
     err = Pyro5.errors.CommunicationError('connection to model server lost')
     assert execScript(fail=('initialize', err)) == (1, ['Running', 'Failed'])
+
+
+@pytest.mark.parametrize('fail,code', [(None, 0), (('solve', RuntimeError('boom')), 1), (('initialize', __import__('mupif').ModelServerNoResourcesException('full')), 2)])
+def test_exec_script_under_scheduler_sets_no_status(execScript, fail, code):
+    """
+    Started by the scheduler (without --standalone), the script reports only through its exit code.
+
+    The scheduler sets the status after storing the log; the script used to set Finished itself,
+    so for a moment executions were Finished without their log.
+    """
+    assert execScript(fail=fail, standalone=False) == (code, [])

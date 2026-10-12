@@ -6,7 +6,9 @@ runs ``python workflow_execution_script.py -eid <execution ID>`` there. The scri
 workflow class, maps the execution inputs from the database onto the workflow, solves it, and maps
 the outputs back to the database.
 
-The process exit code tells the scheduler how the execution ended:
+The process exit code tells the scheduler how the execution ended; the scheduler alone sets the
+status of the execution (it stores the log first). When the script is run by hand, ``--standalone``
+makes it set the status itself (``Running`` at the start, then ``Finished`` or ``Failed``):
 
 * ``0`` -- the workflow finished;
 * ``1`` -- the workflow failed;
@@ -93,18 +95,26 @@ def main():
     logUri = str(daemon.register(mp.pyrolog.PyroLogReceiver(tailHandler=tailHandler)))
 
     workflow = None
+    args = None
+
+    def setStatus(weid, status):
+        # only when run by hand: under the scheduler, the exit code reports the outcome
+        if args is not None and args.standalone:
+            mupifDB.restApiControl.setExecutionStatus(str(weid), status)
+
     weid = None
     try:
         parser = argparse.ArgumentParser()
         parser.add_argument('-eid', '--executionID', required=True, dest="id")
         parser.add_argument('-download_workflow', '--download_workflow', required=False, dest="download", default=False)
+        parser.add_argument('--standalone', action='store_true', help='run without the scheduler: set the execution status from this script')
         args = parser.parse_args()
         weid = args.id
 
         if args.download:
             downloadWorkflowFiles(weid)
 
-        mupifDB.restApiControl.setExecutionStatus(weid, 'Running')
+        setStatus(weid, 'Running')
         
         # add REST logging handler for this weid, add 'weid' field to every message automatically
         # (a "from" import: "import mupifDB.restLogger" would make mupifDB a local name of main())
@@ -119,7 +129,7 @@ def main():
         workflow_record = mupifDB.restApiControl.getWorkflowRecord(execution_record.WorkflowID, execution_record.WorkflowVersion)
         if workflow_record is None:
             log.error("Workflow not found")
-            mupifDB.restApiControl.setExecutionStatus(weid, 'Failed')
+            setStatus(weid, 'Failed')
             sys.exit(1)
 
         #
@@ -152,17 +162,17 @@ def main():
             # execution to Pending (exit code 2) so that it is retried when resources are free
             log.error('Not enough resources')
             sys.exit(2)
-        mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
+        setStatus(weid, 'Failed')
         sys.exit(1)
 
     except:
         log.info("Unknown error")
         if workflow is not None:
             workflow.terminate()
-        mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
+        setStatus(weid, 'Failed')
         sys.exit(1)
 
-    mupifDB.restApiControl.setExecutionStatus(weid, 'Finished')
+    setStatus(weid, 'Finished')
     sys.exit(0)
 
 
