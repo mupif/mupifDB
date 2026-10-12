@@ -222,6 +222,26 @@ class TestFoo:
             (log.error if exe.Status!='Finished' else log.info)(logContent.decode('utf-8'))
         assert exe.Status=='Finished'
         assert logContent is not None
+    def test_03_pending_sorted_oldest_first(self,restApi):
+        '''
+        GET /executions returns records in the requested order.
+
+        Regression for finding #7: the API always sorted newest first, so the scheduler started the
+        most recently submitted executions first and could starve old ones; it now asks for
+        sort=SubmittedDate (oldest first), while the default order stays newest first.
+        '''
+        wid=wfmini01.MiniWorkflow1().metadata.ID
+        try: restApiControl.getWorkflowRecord(wid,-1)
+        except Exception: restApiControl.postWorkflowFiles('useCase1',wfmini01.__file__,[])
+        weids=[]
+        for i in range(3):
+            weid=restApiControl.createExecution(wid,version=1,ip='localhost')['inserted_id']
+            restApiControl.scheduleExecution(weid)
+            weids.append(weid)
+        def order(**kw): return [e.dbID for e in restApiControl.getExecutionRecords(status='Pending',num_limit=1000,**kw) if e.dbID in weids]
+        assert order(sort='SubmittedDate')==weids
+        assert order(sort='-SubmittedDate')==weids[::-1]
+        assert order()==weids[::-1]
     def test_02_web(self,scheduler,web):
         server='http://localhost:'+PORTS['web']
         import requests

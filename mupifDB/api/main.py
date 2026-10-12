@@ -1122,9 +1122,17 @@ def get_executions(
     label: str = "",
     page: int = 1,
     pageSize: int = 20,
+    sort: Literal['CreatedDate', '-CreatedDate', 'SubmittedDate', '-SubmittedDate'] = '-CreatedDate',
     current_user: User_Model = Depends(get_current_authenticated_user)
 ) -> models.ExecutionCollectionResponse:
-    
+    """
+    List executions, optionally filtered, one page at a time.
+
+    *sort* names the field to order by, ascending, or descending with a leading ``-``. The default
+    (newest created first) suits listings for users; the scheduler takes pending executions oldest
+    submitted first (``SubmittedDate``), so that old executions are not starved by newer ones.
+    """
+
     if page < 1:
         page = 1
     if pageSize < 1:
@@ -1149,7 +1157,7 @@ def get_executions(
     
     res = (
         db.WorkflowExecutions.find(filtering)
-        .sort('CreatedDate', -1)
+        .sort(sort.lstrip('-'), -1 if sort.startswith('-') else 1)
         .skip(skip)
         .limit(pageSize)
     )

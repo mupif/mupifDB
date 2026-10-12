@@ -198,11 +198,17 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
 # --------------------------------------------------
 
 pydantic.validate_call(validate_return=True)
-def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None) -> List[models.WorkflowExecution_Model]:
+def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None, sort: str | None = None) -> List[models.WorkflowExecution_Model]:
+    """
+    List execution records matching the given filters.
+
+    :param sort: order of the records: ``CreatedDate`` or ``SubmittedDate``, ascending, or descending
+                 with a leading ``-``; None uses the API default (``-CreatedDate``, newest first)
+    """
     query = f"{API_PREFIX}executions?noparam"
     if workflow_version is not None and workflow_version < 0:
         workflow_version = None
-    for n, a in [('num_limit', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status)]:
+    for n, a in [('num_limit', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status), ('sort', sort)]:
         if a is not None:
             query += f"&{n}={str(a)}"
     return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)['collection']]
@@ -214,8 +220,8 @@ def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
 def getScheduledExecutions(num_limit: int | None = None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-def getPendingExecutions(num_limit: int | None = None):
-    return getExecutionRecords(status="Pending", num_limit=num_limit)
+def getPendingExecutions(num_limit: int | None = None, sort: str | None = None):
+    return getExecutionRecords(status="Pending", num_limit=num_limit, sort=sort)
 
 def scheduleExecution(execution_id: str):
     return rPatch(f"{API_PREFIX}executions/{execution_id}/schedule", headers=getRequestHeaders())
