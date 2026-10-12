@@ -19,7 +19,7 @@ def calls(monkeypatch):
             return result
         return f
     for name in ('getPendingExecutions', 'getExecutionRecords', 'getExecutionRecord', 'getWorkflowRecord',
-                 'setExecutionStatus', 'setExecutionAttemptsCount', 'setExecutionParameter'):
+                 'setExecutionStatus', 'setExecutionAttemptsCount', 'setExecutionParameter', 'checkExecutionInputs'):
         monkeypatch.setattr(restApiControl, name, recorder(name, []))
     monkeypatch.setattr(restApiControl, 'uploadBinaryFile', lambda f: made.append(('uploadBinaryFile', (f.read(),), {})) or 'LOG1')
     monkeypatch.setattr(my_email, 'sendEmailAboutExecutionStatus', recorder('sendEmailAboutExecutionStatus'))
@@ -35,6 +35,7 @@ def test_rest_backend_calls(calls, tmp_path):
     b.executionsWithStatus('Running', 10)
     b.getExecution('E1')
     b.getWorkflow('wf', '2')
+    b.inputsComplete('E1')
     b.setStatus('E1', 'Pending', keepAttempts=True)
     b.setAttempts('E1', 3)
     b.storeLog('E1', log)
@@ -44,6 +45,7 @@ def test_rest_backend_calls(calls, tmp_path):
         ('getExecutionRecords', (), {'status': 'Running', 'num_limit': 10}),
         ('getExecutionRecord', ('E1',), {}),
         ('getWorkflowRecord', ('wf', 2), {}),
+        ('checkExecutionInputs', ('E1',), {}),
         ('setExecutionStatus', ('E1', 'Pending'), {'revertPending': True}),
         ('setExecutionAttemptsCount', ('E1', 3), {}),
         ('uploadBinaryFile', (b'output',), {}),

@@ -30,6 +30,8 @@ class FakeBackend:
         self.logs: dict[str, bytes] = {}
         #: execution IDs whose owner was notified, in order
         self.notified: list[str] = []
+        #: execution IDs whose compulsory inputs are not all set
+        self.incomplete: set[str] = set()
         #: method name -> function(*args) returning an exception to raise, or None
         self.failures: dict[str, Callable[..., Exception | None]] = {}
         self._submitted = itertools.count()
@@ -104,6 +106,12 @@ class FakeBackend:
         with self.lock:
             self._maybeFail('getWorkflow', wid, version)
             return self.workflows[(wid, int(version))]
+
+    def inputsComplete(self, weid: str) -> bool:
+        """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.inputsComplete`; executions in :attr:`incomplete` lack inputs."""
+        with self.lock:
+            self._maybeFail('inputsComplete', weid)
+            return weid not in self.incomplete
 
     def setStatus(self, weid: str, status: str, keepAttempts: bool = False) -> None:
         """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.setStatus`."""

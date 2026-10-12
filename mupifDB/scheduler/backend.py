@@ -58,6 +58,14 @@ class ExecutionBackend(Protocol):
         :return: the record
         """
 
+    def inputsComplete(self, weid: str) -> bool:
+        """
+        Tell whether all compulsory inputs of an execution are set.
+
+        :param weid: execution ID
+        :return: true if the execution can run
+        """
+
     def setStatus(self, weid: str, status: SchedulerStatus, keepAttempts: bool = False) -> None:
         """
         Change the status of an execution (the REST API also sets the matching dates).
@@ -114,6 +122,11 @@ class RestBackend:
         """See :meth:`ExecutionBackend.getWorkflow`."""
         from mupifDB import restApiControl
         return restApiControl.getWorkflowRecord(wid, int(version))
+
+    def inputsComplete(self, weid: str) -> bool:
+        """See :meth:`ExecutionBackend.inputsComplete`."""
+        from mupifDB import restApiControl
+        return restApiControl.checkExecutionInputs(weid)
 
     def setStatus(self, weid: str, status: SchedulerStatus, keepAttempts: bool = False) -> None:
         """See :meth:`ExecutionBackend.setStatus`."""

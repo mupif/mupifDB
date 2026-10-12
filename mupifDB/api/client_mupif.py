@@ -238,6 +238,15 @@ def getScheduledExecutions(num_limit: int | None = None):
 def getPendingExecutions(num_limit: int | None = None, sort: str | None = None):
     return getExecutionRecords(status="Pending", num_limit=num_limit, sort=sort)
 
+def checkExecutionInputs(execution_id: str) -> bool:
+    """
+    Ask the REST API whether all compulsory inputs of an execution are set.
+
+    :param execution_id: execution ID
+    :return: true if the execution has all its compulsory inputs
+    """
+    return bool(rGet(f"{API_PREFIX}executions/{execution_id}/check_inputs", headers=getRequestHeaders()))
+
 def scheduleExecution(execution_id: str):
     return rPatch(f"{API_PREFIX}executions/{execution_id}/schedule", headers=getRequestHeaders())
 

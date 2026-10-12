@@ -332,3 +332,26 @@ def test_job_timeout(env, workflowTimeout, default, expected):
     env.scheduler.schedulePass()
     env.drain()
     assert env.runner.timeouts['E0'] == expected
+
+
+def test_incomplete_inputs_fail_before_launch(env):
+    """
+    An execution whose compulsory inputs are not set fails without running, with a log saying why [S3].
+
+    It used to be started and failed inside the workflow, with a traceback in the log.
+    """
+    env.backend.addExecution('E0')
+    env.backend.incomplete.add('E0')
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.backend.statuses('E0') == ['Scheduled', 'Failed'] and env.runner.launched == []
+    assert b'compulsory inputs are not set' in env.backend.logs['E0'] and env.backend.notified == ['E0']
+
+
+def test_input_check_failure_does_not_block(env):
+    """If the input check itself fails (e.g. REST API briefly unreachable), the execution runs anyway."""
+    env.backend.addExecution('E0')
+    env.backend.failures['inputsComplete'] = lambda weid: RuntimeError('timeout')
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.backend.status('E0') == 'Finished'

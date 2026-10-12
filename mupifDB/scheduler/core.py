@@ -17,7 +17,8 @@ Status changes made here (database access through :class:`~mupifDB.scheduler.bac
 * ``Running -> Pending``: no free model-server slot when the workflow started, or the scheduler is
   shutting down; the execution is run again later (attempt count kept);
 * ``Scheduled -> Pending``: the job thread failed before starting the workflow (e.g. REST API
-  unreachable); ``Scheduled -> Failed``: the workflow package cannot be used;
+  unreachable); ``Scheduled -> Failed``: the workflow package cannot be used, or compulsory inputs
+  are not set (a short log tells the owner why);
 * at startup ``Scheduled | Running -> Pending``: executions interrupted by a previous run of the
   scheduler (see :meth:`Scheduler.recoverInterruptedExecutions`).
 
@@ -48,6 +49,10 @@ RECOVERY_LIMIT = 100000
 
 class NotScheduledError(Exception):
     """The execution handed to a job thread is no longer in the ``Scheduled`` state; it is left alone."""
+
+
+class InputsIncompleteError(Exception):
+    """Compulsory inputs of the execution are not set; running it cannot succeed."""
 
 
 def runningExecutionProcesses() -> set[str]:
@@ -251,6 +256,7 @@ class Scheduler:
                 self.monitor.dropped(weid)
                 return
             workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
+            self.checkInputs(weid)
 
             def onLaunch():
                 nonlocal launched
@@ -270,12 +276,51 @@ class Scheduler:
         except NotScheduledError:
             log.exception(f'Execution {weid} is not Scheduled any more, not running it.')
             self.monitor.dropped(weid)
+        except InputsIncompleteError as e:
+            log.warning(f'Execution {weid} failed: {e}')
+            self.storeMessageLog(weid, f'The execution was not started: {e}')
+            self._recover(weid, launched, permanent=True)
         except Exception as e:
             log.exception(f'Execution of workflow {weid} failed.')
             self._recover(weid, launched, permanent=isinstance(e, StagingError))
         finally:
             with self.lock:
                 self.jobs.pop(weid, None)
+
+    def checkInputs(self, weid: str) -> None:
+        """
+        Make sure the compulsory inputs of an execution are set before its workflow is started [S3].
+
+        A failure of the check itself (e.g. REST API briefly unreachable) is only logged: the run
+        proceeds, and the execution script reports missing inputs as a workflow error.
+
+        :param weid: execution ID
+        :raises InputsIncompleteError: if some compulsory input is not set
+        """
+        try:
+            complete = self.backend.inputsComplete(weid)
+        except Exception:
+            log.exception(f'{weid}: could not check its inputs; running it anyway')
+            return
+        if not complete:
+            raise InputsIncompleteError('some compulsory inputs are not set')
+
+    def storeMessageLog(self, weid: str, message: str) -> None:
+        """
+        Store a short message as the log of an execution that did not run, so that its owner sees why.
+
+        :param weid: execution ID
+        :param message: text of the log
+        """
+        import tempfile
+        from pathlib import Path
+        try:
+            with tempfile.TemporaryDirectory(dir=self.config.work_dir, prefix='mupifDB') as tmp:
+                path = Path(tmp) / 'scheduler.log'
+                path.write_text(message + '\n')
+                self.backend.storeLog(weid, path)
+        except Exception:
+            log.exception(f'{weid}: could not store the message log')
 
     def jobTimeout(self, workflow: Any) -> float:
         """
