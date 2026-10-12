@@ -653,3 +653,30 @@ def test_copy_log_to_db(monkeypatch, tmp_path, caplog):
     assert uploads == [b'first line of the workflow\nsecond line\n']
     assert params == [('E1', 'ExecutionLog', 'FILE1')]
     assert 'first line of the workflow' not in caplog.text
+
+
+def test_loop_survives_iteration_error(monkeypatch, tmp_path):
+    """
+    An error in one iteration of the main loop is logged and the loop continues.
+
+    Regression for finding #16: one failed REST call (e.g. 401 after the REST API restarted with
+    a new JWT key) propagated out of the loop and ended the scheduler.
+    """
+    from mupifDB import workflowscheduler as ws
+    monkeypatch.setattr(ws, 'LOOP_SLEEP_SEC', 0.05)
+    monkeypatch.setattr(ws, 'stopEvent', ws.threading.Event())
+    iterations = []
+
+    def schedulePending(pool):
+        iterations.append(1)
+        if len(iterations) == 1:
+            raise RuntimeError('401 Unauthorized')
+        ws.stopEvent.set()
+
+    class _Monitor:
+        def persistStat(self):
+            pass
+
+    monkeypatch.setattr(ws, 'scheduler_schedule_pending', schedulePending)
+    ws.runLoop(pool=None, monitor=_Monitor())
+    assert len(iterations) == 2

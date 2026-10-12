@@ -765,10 +765,16 @@ def runLoop(pool, monitor) -> None:
     :param monitor: Pyro proxy of the :class:`SchedulerMonitor`, used to persist the statistics
     """
     while not stopEvent.is_set():
-        # add new executions (Pending)
-        scheduler_schedule_pending(pool)
-        # lazy update of persistent statistics, done in main thread thus thread safe
-        monitor.persistStat()
+        try:
+            # add new executions (Pending)
+            scheduler_schedule_pending(pool)
+            # lazy update of persistent statistics, done in main thread thus thread safe
+            monitor.persistStat()
+        except Exception:
+            # e.g. REST API or nameserver temporarily unreachable: an error in one iteration must
+            # not end the scheduler (executions already in the pool keep running); try again in
+            # the next iteration
+            log.exception('Error in scheduler iteration; continuing with the next one')
         # returns early when a stop is requested
         stopEvent.wait(LOOP_SLEEP_SEC)
 
