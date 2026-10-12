@@ -12,6 +12,8 @@ API_CREDENTIALS_FILE ?=
 MUPIF_DIR ?= ../mupif
 # extra arguments for tools/scheduler_smoketest.py, e.g. SMOKETEST_ARGS="--count 12 --delay 15 --max-concurrent 4"
 SMOKETEST_ARGS ?= --register --count 3 --delay 2
+# files which must have complete docstrings (checked by "make lint-docs"); extended as code gets documented
+DOCLINT_PATHS = tools/scheduler_smoketest.py tools/mongo_replset_init.py
 
 .PHONY: $(TASKS)
 run: $(TASKS)
@@ -48,7 +50,11 @@ modelserver13:
 smoketest:
 	API_CREDENTIALS_FILE=$(API_CREDENTIALS_FILE) MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIF_LOG_LEVEL=WARNING $(PYTHON) tools/scheduler_smoketest.py $(SMOKETEST_ARGS)
 
-.PHONY: modelserver13 smoketest
+# Docstring check of the files listed in DOCLINT_PATHS (needs ruff)
+lint-docs:
+	ruff check --config tools/ruff-docstrings.toml $(DOCLINT_PATHS)
+
+.PHONY: modelserver13 smoketest lint-docs
 
 kill:
 	# fuser -k 11001/tcp; fuser -k 11002/tcp; fuser -k 11003/tcp; fuser -k 11004/tcp || true
