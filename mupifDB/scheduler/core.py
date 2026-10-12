@@ -29,6 +29,7 @@ protected by the monitor's own lock.
 """
 
 import concurrent.futures
+import contextvars
 import logging
 import random
 import threading
@@ -43,6 +44,27 @@ from .runner import Job, JobRunner
 from .staging import StagingError
 
 log = logging.getLogger('scheduler')
+
+#: execution handled by the current job thread (None elsewhere), added to log records by :class:`ExecutionLogFilter`
+currentExecution: contextvars.ContextVar[str | None] = contextvars.ContextVar('currentExecution', default=None)
+
+
+class ExecutionLogFilter(logging.Filter):
+    """
+    Add the attribute ``weid`` (execution ID, or None) to every log record [S12].
+
+    Log formats can show it (``%(weid)s``), and the REST log handler sends it with the record, so the
+    log of a scheduler can be filtered by execution. Installed on the ``scheduler`` logger.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Set ``record.weid``; never drops a record."""
+        if not hasattr(record, 'weid'):
+            record.weid = currentExecution.get()
+        return True
+
+
+log.addFilter(ExecutionLogFilter())
 
 #: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
 RECOVERY_LIMIT = 100000
@@ -297,6 +319,9 @@ class Scheduler:
         """
         weid = job.weid
         launched = False
+        token = currentExecution.set(weid)
+        thread = threading.current_thread()
+        threadName, thread.name = thread.name, f'job:{weid}'
         try:
             rec = self.backend.getExecution(weid)
             if rec.Status != 'Scheduled':
@@ -343,6 +368,8 @@ class Scheduler:
         finally:
             with self.lock:
                 self.jobs.pop(weid, None)
+            thread.name = threadName
+            currentExecution.reset(token)
 
     def checkInputs(self, weid: str) -> None:
         """

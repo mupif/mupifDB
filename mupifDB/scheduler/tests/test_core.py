@@ -36,6 +36,7 @@ class FakeRunner:
         """Use *logFile* as the log of every run."""
         self.outcomes = {}
         self.timeouts = {}
+        self.onRun = None
         self.gate = None
         self.launched = []
         self.logFile = logFile
@@ -44,6 +45,8 @@ class FakeRunner:
     def run(self, job, workflow, onLaunch, storeLog, timeout=0):
         """Behave like JobRunner.run for the configured outcome."""
         self.timeouts[job.weid] = timeout
+        if self.onRun is not None:
+            self.onRun(job)
         outcome = self.outcomes.get(job.weid, 'Finished')
         if isinstance(outcome, Exception):
             raise outcome
@@ -436,3 +439,18 @@ def test_drain_mode(env):
     assert env.backend.status('E0') == 'Finished' and env.backend.status('E2') == 'Pending'
     env.scheduler.setDrain(False)
     assert env.scheduler.schedulePass() == 1
+
+
+def test_log_records_carry_the_execution(env, caplog):
+    """Log records written while a job runs carry its execution ID (``record.weid``) and the job thread is named after it [S12]."""
+    import logging
+    env.backend.addExecution('E0')
+    names = []
+    env.runner.onRun = lambda job: names.append(threading.current_thread().name)
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        env.scheduler.schedulePass()
+        env.drain()
+    tagged = [r for r in caplog.records if r.name == 'scheduler' and getattr(r, 'weid', None) == 'E0']
+    assert tagged and any('Finished' in r.getMessage() for r in tagged)
+    assert names == ['job:E0']
+    assert all(getattr(r, 'weid', None) is None for r in caplog.records if 'taken' in r.getMessage())
