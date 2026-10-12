@@ -644,7 +644,8 @@ def recoverInterruptedExecutions() -> None:
 def scheduler_schedule_pending(pool):
     # retrieve weids with status "Scheduled" from DB
     try:
-        pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*10)
+        # oldest submitted first: executions are started in the order they were submitted
+        pending_executions = restApiControl.getPendingExecutions(num_limit=poolsize*10, sort='SubmittedDate')
     except Exception as e:
         log.exception('Error checking pending executions')
         pending_executions = []

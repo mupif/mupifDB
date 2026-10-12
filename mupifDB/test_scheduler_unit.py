@@ -398,14 +398,18 @@ def schedulingPass(monkeypatch):
     """
     from mupifDB import workflowscheduler as ws
     env = types.SimpleNamespace(pending=[], jobmanagers={}, freeSlots={}, failStatusFor=set(), statuses=[], attempts={},
-                                slotQueries=[], sleeps=[], pool=_FakePool())
+                                slotQueries=[], sleeps=[], pool=_FakePool(), pendingQueries=[])
 
     def setExecutionStatus(weid, status, **kw):
         if weid in env.failStatusFor:
             raise RuntimeError('REST API error')
         env.statuses.append((weid, status))
 
-    monkeypatch.setattr(ws.restApiControl, 'getPendingExecutions', lambda **kw: list(env.pending))
+    def getPendingExecutions(**kw):
+        env.pendingQueries.append(kw)
+        return list(env.pending)
+
+    monkeypatch.setattr(ws.restApiControl, 'getPendingExecutions', getPendingExecutions)
     monkeypatch.setattr(ws.restApiControl, 'setExecutionStatus', setExecutionStatus)
     monkeypatch.setattr(ws.restApiControl, 'setExecutionAttemptsCount', lambda weid, n: env.attempts.__setitem__(weid, n))
 
@@ -493,3 +497,14 @@ def test_free_job_slots_unreachable(monkeypatch):
         raise Pyro5.errors.NamingError(f'unknown name: {name}')
     monkeypatch.setattr(ws.mp.pyroutil, 'connectModelServer', connectModelServer)
     assert ws.freeJobSlots('CVUT.missing') is None
+
+
+def test_pass_takes_oldest_pending_first(schedulingPass):
+    """
+    The scheduler asks for pending executions oldest submitted first (finding #7).
+
+    The REST API orders by creation date, newest first, unless told otherwise; the pending
+    executions are enqueued in the order received.
+    """
+    schedulingPass.run()
+    assert [q.get('sort') for q in schedulingPass.pendingQueries] == ['SubmittedDate']
