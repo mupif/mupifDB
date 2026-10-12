@@ -535,32 +535,52 @@ def checkExecutionResources(eid):
 
 
 
-def scheduler_startup_execute_scheduled(pool):
-    # import first already scheduled executions
-    try:
-        scheduled_executions = restApiControl.getScheduledExecutions()
-    except Exception as e:
-        log.exception('Error getting scheduled execution:')
-        scheduled_executions = []
+#: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
+RECOVERY_LIMIT = 100000
 
-    for wed in scheduled_executions:
-        log.info(f'{wed.dbID} found as Scheduled')
-        # add the correspoding weid to the pool, change status to scheduled
-        weid = wed.dbID
-        assert weid is not None # make pyright happy
-        # result1 = pool.apply_async(test)
-        # log.info(result1.get())
-        if checkExecutionResources(weid):
-            result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
-            log.info(result)
-            log.info(f"WEID {weid} added to the execution pool")
-        else:
-            log.info(f"WEID {weid} cannot be scheduled due to unavailable resources")
+
+def runningExecutionProcesses() -> set[str]:
+    """
+    Find execution subprocesses alive on this host.
+
+    :return: execution IDs of all running ``workflow_execution_script.py -eid <ID>`` processes
+    """
+    import psutil
+    weids = set()
+    for proc in psutil.process_iter(['cmdline']):
+        cmd = proc.info['cmdline'] or []
+        if any(c.endswith('workflow_execution_script.py') for c in cmd) and '-eid' in cmd[:-1]:
+            weids.add(cmd[cmd.index('-eid') + 1])
+    return weids
+
+
+def recoverInterruptedExecutions() -> None:
+    """
+    Return executions left ``Scheduled`` or ``Running`` by a previous scheduler run to ``Pending``.
+
+    Executions in these states belong to the scheduler (there is a single scheduler per
+    deployment), so at startup they can only be leftovers of a previous run that crashed or was
+    killed: queued in its worker pool but never started, or interrupted while running. They are
+    returned to ``Pending`` (keeping their attempt count) and go through the normal scheduling.
+    An execution whose workflow process is still alive on this host is left alone: the worker of a
+    killed scheduler survives and finishes it.
+    """
+    alive = runningExecutionProcesses()
+    for status in ('Scheduled', 'Running'):
+        try:
+            records = restApiControl.getExecutionRecords(status=status, num_limit=RECOVERY_LIMIT)
+        except Exception:
+            log.exception(f'Could not list {status} executions to recover')
+            continue
+        for rec in records:
+            if rec.dbID in alive:
+                log.info(f'{rec.dbID} is {status}, its workflow process is still running; left alone')
+                continue
+            log.warning(f'{rec.dbID} was left {status} by a previous scheduler run; returning it to Pending')
             try:
-                we_rec = restApiControl.getExecutionRecord(weid)
-                restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
-            except Exception as e:
-                log.exception('Error running scheduled execution {weid=}:')
+                restApiControl.setExecutionStatus(rec.dbID, 'Pending', revertPending=True)
+            except Exception:
+                log.exception(f'Could not return {rec.dbID} to Pending')
 
 
 def scheduler_schedule_pending(pool):
@@ -696,8 +716,8 @@ def main():
                 sys.excepthook = Pyro5.errors.excepthook
 
                 try:
-                    log.info("Importing already scheduled executions…")
-                    scheduler_startup_execute_scheduled(pool)
+                    log.info("Recovering executions interrupted by a previous scheduler run…")
+                    recoverInterruptedExecutions()
                     log.info("Done")
 
                     log.info("Entering main loop to check for Pending executions")

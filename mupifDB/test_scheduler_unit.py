@@ -330,3 +330,40 @@ def test_worker_unreachable_monitor_does_not_change_outcome(worker, monkeypatch)
     monkeypatch.setattr(ws.Pyro5.api, 'Proxy', lambda uri: _DeadMonitor())
     worker.run()
     assert [s for s, kw in worker.statuses] == ['Running', 'Finished']
+
+
+def test_recover_interrupted_executions(monkeypatch):
+    """
+    At startup, Scheduled and Running leftovers return to Pending unless their process still runs.
+
+    Regression for finding #4 (startup part): Scheduled executions found at startup were only
+    re-enqueued when resources happened to be free, otherwise they stayed Scheduled forever;
+    Running ones were not looked at at all.
+    """
+    from mupifDB import workflowscheduler as ws
+    records = {'Scheduled': ['S1'], 'Running': ['R1', 'R2']}
+    statuses = []
+    monkeypatch.setattr(ws.restApiControl, 'getExecutionRecords',
+                        lambda status, num_limit: [types.SimpleNamespace(dbID=weid) for weid in records[status]])
+    monkeypatch.setattr(ws.restApiControl, 'setExecutionStatus', lambda weid, status, **kw: statuses.append((weid, status, kw)))
+    monkeypatch.setattr(ws, 'runningExecutionProcesses', lambda: {'R2'})
+    ws.recoverInterruptedExecutions()
+    assert statuses == [('S1', 'Pending', {'revertPending': True}), ('R1', 'Pending', {'revertPending': True})]
+
+
+def test_running_execution_processes(tmp_path):
+    """The scan finds an execution subprocess by its command line (``... workflow_execution_script.py -eid ID``)."""
+    from mupifDB import workflowscheduler as ws
+    script = tmp_path / 'workflow_execution_script.py'
+    script.write_text('import time\ntime.sleep(60)\n')
+    proc = subprocess.Popen([sys.executable, str(script), '-eid', 'unit-test-weid'])
+    try:
+        for _ in range(50):
+            if 'unit-test-weid' in ws.runningExecutionProcesses():
+                break
+            time.sleep(0.1)
+        assert 'unit-test-weid' in ws.runningExecutionProcesses()
+    finally:
+        proc.kill()
+        proc.wait()
+    assert 'unit-test-weid' not in ws.runningExecutionProcesses()
