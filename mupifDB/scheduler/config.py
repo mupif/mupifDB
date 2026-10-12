@@ -47,6 +47,7 @@ class SchedulerConfig(pydantic.BaseModel):
     default_job_timeout: float = pydantic.Field(0., ge=0, description='Maximum run time of an execution in seconds when its workflow declares none (metadata "Timeout"); 0: no limit.')
     kill_grace: float = pydantic.Field(5., ge=0, description='Seconds a stopped workflow gets between SIGTERM and SIGKILL (to terminate its models).')
     drain_timeout: float = pydantic.Field(0., ge=0, description='On shutdown, seconds to let running workflows finish before they are stopped (their executions then run again after the restart). Shutdown takes up to drain_timeout + kill_grace + a few seconds: keep it below the stop timeout of the service manager (supervisor: stopwaitsecs, default 10).')
+    keep_failed_workdirs: int = pydantic.Field(0, ge=0, description='Number of working directories of failed executions kept in <work_dir>/failed for debugging (0: none).')
     cache_dir: str = pydantic.Field('', description='Directory caching downloaded workflow packages (empty: <work_dir>/mupifDB-package-cache).')
     cache_max_bytes: int = pydantic.Field(1 << 30, ge=0, description='Size of the workflow package cache above which the least recently used packages are removed (0: no cache).')
     stat_file: str = pydantic.Field('/var/lib/mupif/persistent/scheduler-stat.json', description='File keeping the statistics across restarts.')

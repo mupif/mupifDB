@@ -141,7 +141,7 @@ class JobRunner:
         """
         Configure the runner.
 
-        :param config: scheduler settings (``work_dir``, ``kill_grace``)
+        :param config: scheduler settings (``work_dir``, ``kill_grace``, ``keep_failed_workdirs``)
         :param nsUri: URI of the Pyro nameserver, passed to the subprocess as ``MUPIF_NS``
         :param stage: ``(workflow record, directory) -> module path``, see :func:`stageWorkflow`
         :param executionScript: script to run (replaced by tests)
@@ -220,9 +220,35 @@ class JobRunner:
                 storeLog(logFile)
             except Exception:
                 log.exception(f'{job.weid}: could not store the execution log')
-        if job.stopReason is not None:
-            return JobResult(status='Pending' if job.stopReason == 'shutdown' else 'Failed', exitCode=exitCode, stopReason=job.stopReason)
-        return JobResult(status=statusForExitCode(exitCode), exitCode=exitCode)
+            if job.stopReason is not None:
+                result = JobResult(status='Pending' if job.stopReason == 'shutdown' else 'Failed', exitCode=exitCode, stopReason=job.stopReason)
+            else:
+                result = JobResult(status=statusForExitCode(exitCode), exitCode=exitCode)
+            if result.status == 'Failed' and self.config.keep_failed_workdirs > 0:
+                self.keepFailedWorkdir(job.weid, workDir)
+        return result
+
+    def keepFailedWorkdir(self, weid: str, workDir: Path) -> None:
+        """
+        Copy the working directory of a failed execution to ``<work_dir>/failed/<weid>`` for debugging [S12].
+
+        Only the ``keep_failed_workdirs`` most recent copies are kept. Errors are logged and ignored.
+
+        :param weid: execution ID
+        :param workDir: working directory of the execution (removed after the run)
+        """
+        failedDir = Path(self.config.work_dir) / 'failed'
+        try:
+            failedDir.mkdir(parents=True, exist_ok=True)
+            dest = failedDir / weid
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(workDir, dest, symlinks=True)
+            log.warning(f'{weid}: working directory of the failed execution kept in {dest}')
+            kept = sorted((d for d in failedDir.iterdir() if d.is_dir()), key=lambda d: d.stat().st_mtime, reverse=True)
+            for old in kept[self.config.keep_failed_workdirs:]:
+                shutil.rmtree(old, ignore_errors=True)
+        except Exception:
+            log.exception(f'{weid}: could not keep the working directory')
 
     def _wait(self, job: Job, timeout: float = 0) -> int:
         """

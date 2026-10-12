@@ -23,7 +23,8 @@ weid = sys.argv[sys.argv.index('-eid') + 1]
 print('fake execution', weid, 'module present:', os.path.exists('fakewf.py'), flush=True)
 if weid == 'ok':
     sys.exit(0)
-if weid == 'fail':
+if weid.startswith('fail'):
+    open('output.dat', 'w').write('partial result')
     sys.exit(1)
 if weid == 'noresources':
     sys.exit(2)
@@ -161,3 +162,25 @@ def test_timeout_stops_the_workflow(runner, tmp_path):
     result = runner.run(Job(weid='hang', record=None), None, onLaunch=lambda: None, storeLog=lambda p: None, timeout=1)
     assert (result.status, result.stopReason) == ('Failed', 'timeout')
     assert time.time() - t0 < 1 + 0.5 + runner.config.kill_grace + 3
+
+
+def test_keep_failed_workdirs(runner, tmp_path):
+    """
+    With keep_failed_workdirs, the working directories of the last failed executions are kept for debugging [S12].
+
+    Successful executions are not kept; beyond the limit the oldest copies are removed.
+    """
+    runner.config.keep_failed_workdirs = 2
+    failed = tmp_path / 'work' / 'failed'
+    for weid in ('ok', 'fail-1', 'fail-2', 'fail-3'):
+        _run(runner, weid)
+        time.sleep(0.05)                     # distinct modification times
+    assert sorted(os.listdir(failed)) == ['fail-2', 'fail-3']
+    assert (failed / 'fail-3' / 'output.dat').read_text() == 'partial result'
+    assert (failed / 'fail-3' / 'workflow.log').exists()
+
+
+def test_failed_workdirs_not_kept_by_default(runner, tmp_path):
+    """By default nothing is kept."""
+    _run(runner, 'fail')
+    assert not (tmp_path / 'work' / 'failed').exists()
