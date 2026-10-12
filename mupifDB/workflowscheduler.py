@@ -510,29 +510,87 @@ def stopPool(var_pool):
         log.error(repr(e))
 
 
-def checkWorkflowResources(wid, version):
+def workflowJobmanagers(wid: str, version: int) -> list[str]:
+    """
+    List the jobmanagers (model servers) a workflow allocates its models from.
+
+    :param wid: workflow ID
+    :param version: workflow version
+    :return: one entry per model with a remote jobmanager (a jobmanager serving two models of the
+             workflow appears twice); models running locally in the workflow process are omitted
+    :raises Exception: if the workflow record cannot be read
+    """
+    workflow = restApiControl.getWorkflowRecord(wid, int(version))
+    return [m.Jobmanager for m in workflow.Models if m.Jobmanager]
+
+
+def freeJobSlots(jobmanager: str) -> int | None:
+    """
+    Ask a jobmanager how many more jobs it can run now.
+
+    :param jobmanager: name of the jobmanager in the nameserver
+    :return: number of free job slots, or None if the jobmanager is unknown or cannot be reached
+    """
     try:
-        workflow = restApiControl.getWorkflowRecord(wid, int(version))
-        models_md = workflow.Models
-        try:
-            res = mp.Workflow.checkModelRemoteResourcesByMetadata(models_md=models_md)
-            return res
-        except:
-            return False
-    except Exception as e:
-        log.error(repr(e))
-        return False
+        return int(mp.pyroutil.connectModelServer(ns, jobmanager).getNumberOfFreeJobs())
+    except Exception:
+        log.exception(f'Cannot get free job slots of jobmanager {jobmanager}')
+        return None
 
 
-def checkExecutionResources(eid):
-    try:
-        log.info("Checking execution resources")
-        execution = restApiControl.getExecutionRecord(eid)
-        return checkWorkflowResources(execution.WorkflowID, execution.WorkflowVersion)
-    except Exception as e:
-        log.exception('Error in checkExecutionResources')
-        return False
+class ResourceBudget:
+    """
+    Free jobmanager slots for one scheduling pass.
 
+    The number of free slots of each jobmanager is read once per pass (on first use) and every
+    execution enqueued in the pass takes one slot per model it needs. Without this, all pending
+    executions of a pass were checked against the same free slots -- the slots are only taken
+    when the workflow subprocess allocates its models -- so many more executions were started than
+    the model servers could serve. Slots taken by executions enqueued in an earlier pass but not
+    started yet are not known here; such an execution finds no free slot when it starts, exits with
+    code 2 and is returned to Pending.
+    """
+
+    #: results of :meth:`reserve`
+    OK, BUSY, UNAVAILABLE = 'ok', 'busy', 'unavailable'
+
+    def __init__(self):
+        #: jobmanager name -> free slots left in this pass (None: jobmanager not reachable)
+        self.free: dict[str, int | None] = {}
+        #: (workflow ID, version) -> jobmanagers needed (see workflowJobmanagers), cached for the pass
+        self.workflows: dict[tuple, list[str]] = {}
+
+    def reserve(self, wid: str, version: int) -> str:
+        """
+        Take the slots needed by one execution of the given workflow, if all are available.
+
+        :param wid: workflow ID of the execution
+        :param version: workflow version
+        :return: :attr:`OK` if the slots were taken (the execution may be started); :attr:`BUSY` if
+                 the jobmanagers are reachable but have too few free slots (the execution just has
+                 to wait); :attr:`UNAVAILABLE` if a jobmanager or the workflow record cannot be
+                 reached (a real problem: counted as a failed attempt by the caller)
+        """
+        key = (wid, int(version))
+        if key not in self.workflows:
+            try:
+                self.workflows[key] = workflowJobmanagers(wid, version)
+            except Exception:
+                log.exception(f'Cannot read models of workflow {wid} version {version}')
+                return self.UNAVAILABLE
+        needed: dict[str, int] = {}
+        for jm in self.workflows[key]:
+            needed[jm] = needed.get(jm, 0) + 1
+        for jm in needed:
+            if jm not in self.free:
+                self.free[jm] = freeJobSlots(jm)
+        if any(self.free[jm] is None for jm in needed):
+            return self.UNAVAILABLE
+        if any(self.free[jm] < n for jm, n in needed.items()):
+            return self.BUSY
+        for jm, n in needed.items():
+            self.free[jm] -= n
+        return self.OK
 
 
 #: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
@@ -593,6 +651,7 @@ def scheduler_schedule_pending(pool):
 
     monitor=Pyro5.api.Proxy(SchedulerMonitor.URI)
     monitor.updateScheduled(len(pending_executions))
+    budget = ResourceBudget()
 
     for wed in pending_executions:
         weid = wed.dbID
@@ -606,8 +665,8 @@ def scheduler_schedule_pending(pool):
             except Exception as e:
                 log.exception('')
         else:
-            time.sleep(2)
-            if checkExecutionResources(weid):
+            resources = budget.reserve(wed.WorkflowID, wed.WorkflowVersion)
+            if resources == ResourceBudget.OK:
                 # change status to Scheduled, then add the corresponding weid to the pool; a worker
                 # only runs Scheduled executions, so there is no point in enqueuing one whose status
                 # could not be changed -- it stays Pending and is tried again in the next iteration
@@ -620,13 +679,16 @@ def scheduler_schedule_pending(pool):
                 result = pool.apply_async(executeWorkflow, args=(weid,), callback=procFinish, error_callback=procError)
                 # log.info(result.get())
                 log.info(f"WEID {weid} added to the execution pool")
+            elif resources == ResourceBudget.BUSY:
+                # the model servers are working on other executions: wait without using up an
+                # attempt, otherwise a long queue alone would exhaust the attempt limit
+                log.info(f"WEID {weid} waits for free model server slots")
             else:
                 log.info(f"WEID {weid} cannot be scheduled due to unavailable resources")
                 try:
-                    we_rec = restApiControl.getExecutionRecord(weid)
-                    restApiControl.setExecutionAttemptsCount(weid, we_rec.Attempts + 1)
+                    restApiControl.setExecutionAttemptsCount(weid, wed.Attempts + 1)
                 except Exception as e:
-                    log.exception('Failure getting execution record (for execution with resources unavailable)')
+                    log.exception('Failure increasing the attempt count (for execution with resources unavailable)')
 
 
     # display progress (consider use of tqdm)

@@ -389,12 +389,16 @@ def schedulingPass(monkeypatch):
     """
     Return a namespace to run one :func:`scheduler_schedule_pending` pass with fakes.
 
-    Attributes: ``pending`` (records returned as Pending), ``resources`` (set of execution IDs whose
-    resources are available; all by default), ``failStatusFor`` (execution IDs whose status update
-    raises), ``statuses`` (list of ``(weid, status)`` set), ``pool`` (the fake pool) and ``run()``.
+    Attributes: ``pending`` (records returned as Pending), ``jobmanagers`` (workflow ID -> list of
+    jobmanagers its models use; ``['CVUT.demo01']`` by default), ``freeSlots`` (jobmanager -> free
+    slots; 100 by default), ``failStatusFor`` (execution IDs whose status update raises),
+    ``statuses`` (list of ``(weid, status)`` set), ``attempts`` (execution ID -> attempt count set),
+    ``slotQueries`` (jobmanagers asked for free slots), ``sleeps``, ``pool`` (the fake pool) and
+    ``run()``.
     """
     from mupifDB import workflowscheduler as ws
-    env = types.SimpleNamespace(pending=[], resources=None, failStatusFor=set(), statuses=[], pool=_FakePool())
+    env = types.SimpleNamespace(pending=[], jobmanagers={}, freeSlots={}, failStatusFor=set(), statuses=[], attempts={},
+                                slotQueries=[], sleeps=[], pool=_FakePool())
 
     def setExecutionStatus(weid, status, **kw):
         if weid in env.failStatusFor:
@@ -403,11 +407,16 @@ def schedulingPass(monkeypatch):
 
     monkeypatch.setattr(ws.restApiControl, 'getPendingExecutions', lambda **kw: list(env.pending))
     monkeypatch.setattr(ws.restApiControl, 'setExecutionStatus', setExecutionStatus)
-    monkeypatch.setattr(ws.restApiControl, 'setExecutionAttemptsCount', lambda weid, n: None)
-    monkeypatch.setattr(ws.restApiControl, 'getExecutionRecord', lambda weid: next(r for r in env.pending if r.dbID == weid))
-    monkeypatch.setattr(ws, 'checkExecutionResources', lambda weid: env.resources is None or weid in env.resources)
+    monkeypatch.setattr(ws.restApiControl, 'setExecutionAttemptsCount', lambda weid, n: env.attempts.__setitem__(weid, n))
+
+    def freeJobSlots(jobmanager):
+        env.slotQueries.append(jobmanager)
+        return env.freeSlots.get(jobmanager, 100)
+
+    monkeypatch.setattr(ws, 'workflowJobmanagers', lambda wid, version: env.jobmanagers.get(wid, ['CVUT.demo01']))
+    monkeypatch.setattr(ws, 'freeJobSlots', freeJobSlots)
     monkeypatch.setattr(ws.Pyro5.api, 'Proxy', lambda uri: _FakeMonitor())
-    monkeypatch.setattr(ws.time, 'sleep', lambda sec: None)
+    monkeypatch.setattr(ws.time, 'sleep', lambda sec: env.sleeps.append(sec))
     env.run = lambda: ws.scheduler_schedule_pending(env.pool)
     return env
 
@@ -429,3 +438,58 @@ def test_failed_status_update_is_not_enqueued(schedulingPass):
     schedulingPass.run()
     assert schedulingPass.pool.enqueued == ['E2']
     assert schedulingPass.statuses == [('E2', 'Scheduled')]
+
+
+def test_pass_respects_free_slots(schedulingPass):
+    """
+    One pass starts no more executions than the jobmanager has free slots, without sleeping.
+
+    Regression for findings #6 and #8: each pending execution was checked against the same free
+    slots (they are only taken when the workflow allocates its models), so all of them passed the
+    check, while a 2 s sleep per execution made one pass over a long backlog take minutes. The
+    free slots are now read once per pass and consumed by every execution enqueued in it.
+    """
+    schedulingPass.pending = [_pendingRecord(f'E{i}', attempts=1) for i in range(6)]
+    schedulingPass.freeSlots = {'CVUT.demo01': 4}
+    schedulingPass.run()
+    assert schedulingPass.pool.enqueued == ['E0', 'E1', 'E2', 'E3']
+    # the others stay Pending and wait; waiting for a busy model server is not a failed attempt,
+    # otherwise a long queue alone would exhaust the attempt limit
+    assert schedulingPass.attempts == {}
+    assert schedulingPass.slotQueries == ['CVUT.demo01']
+    assert schedulingPass.sleeps == []
+
+
+def test_pass_counts_slots_per_model(schedulingPass):
+    """A workflow with two models on the same jobmanager needs two of its slots; local models need none."""
+    schedulingPass.pending = [_pendingRecord('E0'), _pendingRecord('E1'), _pendingRecord('L0')]
+    schedulingPass.pending[2].WorkflowID = 'local'
+    schedulingPass.jobmanagers = {'Workflow01': ['CVUT.demo01', 'CVUT.demo01'], 'local': []}
+    schedulingPass.freeSlots = {'CVUT.demo01': 3}
+    schedulingPass.run()
+    assert schedulingPass.pool.enqueued == ['E0', 'L0']
+
+
+def test_pass_unreachable_jobmanager(schedulingPass):
+    """
+    An unreachable jobmanager starts nothing and counts as a failed attempt.
+
+    The attempt limit exists for resources that do not become available (after it the execution
+    returns to Created and its owner is notified), unlike a busy jobmanager, which just means wait.
+    """
+    schedulingPass.pending = [_pendingRecord('E0', attempts=3)]
+    schedulingPass.freeSlots = {'CVUT.demo01': None}
+    schedulingPass.run()
+    assert schedulingPass.pool.enqueued == []
+    assert schedulingPass.attempts == {'E0': 4}
+
+
+def test_free_job_slots_unreachable(monkeypatch):
+    """freeJobSlots() reports None instead of raising when the jobmanager cannot be reached."""
+    import Pyro5.errors
+    from mupifDB import workflowscheduler as ws
+
+    def connectModelServer(ns, name):
+        raise Pyro5.errors.NamingError(f'unknown name: {name}')
+    monkeypatch.setattr(ws.mp.pyroutil, 'connectModelServer', connectModelServer)
+    assert ws.freeJobSlots('CVUT.missing') is None
