@@ -166,3 +166,53 @@ def test_exec_script_workflow_error(execScript):
     inside the function would make every earlier use of ``mupifDB`` raise ``UnboundLocalError``.
     """
     assert execScript(fail=('solve', RuntimeError('boom'))) == (1, ['Running', 'Failed'])
+
+
+#: what the workflow actually receives from a full model server (mupif, 2026-10): the server
+#: cannot serialize ModelServerNoResourcesException and Pyro substitutes a generic PyroError
+_PYRO_NO_RESOURCES_MESSAGE = ("Error serializing exception: 'dict' object is not callable. Original exception: "
+                              "<class 'mupif.modelserverbase.ModelServerNoResourcesException'>: ModelServer: no more resources")
+
+
+def _pyroErrorWithRemoteTraceback(text):
+    """Build a PyroError carrying *text* only in its remote traceback, like Pyro does."""
+    import Pyro5.errors
+    err = Pyro5.errors.PyroError('remote call failed')
+    err._pyroTraceback = ['Traceback (most recent call last):\n', text + '\n']
+    return err
+
+
+def _noResourcesErrors():
+    """All forms in which a no-resources error may reach the execution script."""
+    import mupif as mp
+    import Pyro5.errors
+    local = mp.ModelServerNoResourcesException('ModelServer: no more resources')
+    wrapped = RuntimeError('allocating model m1 failed')
+    wrapped.__cause__ = Pyro5.errors.PyroError(_PYRO_NO_RESOURCES_MESSAGE)
+    return {
+        'local': local,
+        'pyro-message': Pyro5.errors.PyroError(_PYRO_NO_RESOURCES_MESSAGE),
+        'pyro-traceback': _pyroErrorWithRemoteTraceback('mupif.modelserverbase.ModelServerNoResourcesException: ModelServer: no more resources'),
+        'wrapped': wrapped,
+    }
+
+
+@pytest.mark.parametrize('form', ['local', 'pyro-message', 'pyro-traceback', 'wrapped'])
+def test_exec_script_no_resources(execScript, form):
+    """
+    A model server without free slots ends the script with exit code 2 and no Failed status.
+
+    Regression for finding #2: the script compared ``type(err) == mp.JobManNoResourcesException``
+    (a deprecated subclass that is never raised, while the error actually arrives as a generic
+    ``PyroError``) and set the status to Failed before exiting, so executions lacking resources
+    were failed instead of being returned to Pending by the scheduler.
+    """
+    code, statuses = execScript(fail=('initialize', _noResourcesErrors()[form]))
+    assert (code, statuses) == (2, ['Running'])
+
+
+def test_exec_script_other_pyro_error_fails(execScript):
+    """A Pyro error not caused by missing resources is an ordinary failure (exit 1, Failed)."""
+    import Pyro5.errors
+    err = Pyro5.errors.CommunicationError('connection to model server lost')
+    assert execScript(fail=('initialize', err)) == (1, ['Running', 'Failed'])

@@ -29,6 +29,36 @@ import mupifDB
 import mupif as mp
 import Pyro5.errors
 
+#: fully qualified name of the exception a model server raises when it has no free job slot
+NO_RESOURCES_EXCEPTION = 'mupif.modelserverbase.ModelServerNoResourcesException'
+
+
+def isNoResourcesError(err: BaseException | None) -> bool:
+    """
+    Tell whether *err* (or an exception it was raised from) means "model server has no free slot".
+
+    The exception is raised on the model server and reaches the workflow through Pyro. Pyro
+    re-raises it locally as the same class when it can serialize it; when it cannot -- which is
+    what happens with :class:`mupif.ModelServerNoResourcesException` (the server reports "Error
+    serializing exception") -- the client gets a generic :class:`Pyro5.errors.PyroError` whose
+    message and remote traceback name the original class. Both forms are recognized, also when
+    wrapped in other exceptions (``raise ... from ...`` or raised while handling it).
+
+    :param err: exception caught around the workflow run
+    :return: true if the execution failed only for lack of resources and should be retried later
+    """
+    seen = set()
+    while err is not None and id(err) not in seen:
+        seen.add(id(err))
+        if isinstance(err, mp.ModelServerNoResourcesException):
+            return True
+        remoteTraceback = ''.join(getattr(err, '_pyroTraceback', None) or [])
+        if NO_RESOURCES_EXCEPTION in str(err) or NO_RESOURCES_EXCEPTION in remoteTraceback:
+            return True
+        err = err.__cause__ or err.__context__
+    return False
+
+
 def downloadWorkflowFiles(eid):
     import zipfile
     we_rec = mupifDB.restApiControl.getExecutionRecord(eid)
@@ -140,9 +170,10 @@ def main():
                 workflow.terminate()
         except:
             pass
-        if type(err) == mp.JobManNoResourcesException:
+        if isNoResourcesError(err):
+            # not a failure of the workflow: leave the status to the scheduler, which returns the
+            # execution to Pending (exit code 2) so that it is retried when resources are free
             log.error('Not enough resources')
-            mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
             sys.exit(2)
         mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
         sys.exit(1)
