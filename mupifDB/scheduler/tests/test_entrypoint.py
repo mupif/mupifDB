@@ -41,3 +41,20 @@ def test_build_wires_the_scheduler(monkeypatch, tmp_path):
         assert scheduler.stopEvent.is_set()
     finally:
         scheduler.executor.shutdown()
+
+
+def test_sigterm_stops_the_scheduler():
+    """SIGTERM (from the service manager) asks the scheduler to shut down in an orderly way instead of killing it."""
+    import signal
+    from mupifDB import workflowscheduler as ws
+    stopped = []
+    scheduler = type('S', (), {'stop': lambda self: stopped.append(1)})()
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        ws.installSignalHandlers(scheduler)
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(0.1)
+    finally:
+        for sig, h in previous.items():
+            signal.signal(sig, h)
+    assert stopped == [1]

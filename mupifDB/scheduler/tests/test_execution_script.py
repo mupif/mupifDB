@@ -6,7 +6,11 @@ workflow class (exit code 0 = Finished, 1 = Failed, 2 = no resources, see the sc
 Moved from ``mupifDB/test_scheduler_unit.py``.
 """
 
+import os
+import signal
+import subprocess
 import sys
+import time
 import types
 
 import pytest
@@ -24,7 +28,8 @@ class _FakeWorkflow:
     Workflow stand-in; class attribute ``fail`` selects where it raises.
 
     ``fail`` is ``None`` (succeed) or a tuple ``(stage, exception)`` with stage ``'initialize'`` or
-    ``'solve'``.
+    ``'solve'``; instead of an exception, ``'SIGTERM'`` makes the workflow send SIGTERM to its own
+    process (as the scheduler does when it stops an execution).
     """
 
     fail = None
@@ -32,6 +37,9 @@ class _FakeWorkflow:
 
     def _maybeFail(self, stage):
         if self.fail and self.fail[0] == stage:
+            if self.fail[1] == 'SIGTERM':
+                os.kill(os.getpid(), signal.SIGTERM)
+                time.sleep(5)          # the signal handler raises before this ends
             raise self.fail[1]
 
     def initialize(self, metadata):
@@ -69,13 +77,20 @@ def execScript(monkeypatch):
     monkeypatch.setattr(mupifDB.workflowmanager, 'mapOutputs', lambda wf, weid, t: None)
     monkeypatch.setitem(sys.modules, 'fakewf', types.SimpleNamespace(FakeWorkflow=_FakeWorkflow))
     monkeypatch.setattr(sys, 'argv', ['workflow_execution_script.py', '-eid', 'E1'])
+    # not started by a scheduler: no parent-death signal
+    monkeypatch.delenv('MUPIFDB_SCHEDULER_PID', raising=False)
+    previousSigterm = signal.getsignal(signal.SIGTERM)
 
     def run(fail=None, standalone=True):
         monkeypatch.setattr(_FakeWorkflow, 'fail', fail)
         monkeypatch.setattr(sys, 'argv', ['workflow_execution_script.py', '-eid', 'E1'] + (['--standalone'] if standalone else []))
         statuses.clear()
-        with pytest.raises(SystemExit) as exc:
-            es.main()
+        try:
+            with pytest.raises(SystemExit) as exc:
+                es.main()
+        finally:
+            # main() installs its SIGTERM handler in this (pytest's) process
+            signal.signal(signal.SIGTERM, previousSigterm)
         return exc.value.code, list(statuses)
     return run
 
@@ -154,3 +169,61 @@ def test_exec_script_under_scheduler_sets_no_status(execScript, fail, code):
     so for a moment executions were Finished without their log.
     """
     assert execScript(fail=fail, standalone=False) == (code, [])
+
+
+def test_exec_script_sigterm_terminates_workflow(execScript, monkeypatch):
+    """
+    SIGTERM (the scheduler stopping the execution) terminates the workflow and its models; exit code 143.
+
+    Terminating the workflow releases its model-server jobs (finding #17, for stopped executions).
+    """
+    monkeypatch.setattr(_FakeWorkflow, 'terminated', 0)
+    assert execScript(fail=('solve', 'SIGTERM'), standalone=False) == (143, [])
+    assert _FakeWorkflow.terminated == 1
+
+
+#: started by the "scheduler" process of test_die_with_scheduler: arms the parent-death signal and sleeps
+_CHILD = '''
+import os, time
+os.environ['MUPIFDB_SCHEDULER_PID'] = str(os.getppid())
+from mupifDB.workflow_execution_script import dieWithScheduler
+dieWithScheduler()
+print('armed', flush=True)
+time.sleep(60)
+'''
+
+#: the "scheduler": starts the child, prints its PID and exits
+_PARENT = '''
+import subprocess, sys
+child = subprocess.Popen([sys.executable, sys.argv[1]], stdout=subprocess.PIPE, text=True)
+assert child.stdout.readline().strip() == 'armed'
+print(child.pid, flush=True)
+'''
+
+
+def test_die_with_scheduler(tmp_path):
+    """
+    The execution script ends when the scheduler that started it dies (e.g. killed with SIGKILL).
+
+    The workflow runs in its own process group, so nothing else would stop it; the restarted
+    scheduler must not find it still running when it runs the execution again. A real parent
+    process starts a child which calls dieWithScheduler() and sleeps; the child must be gone
+    shortly after the parent exits.
+    """
+    (tmp_path / 'child.py').write_text(_CHILD)
+    (tmp_path / 'parent.py').write_text(_PARENT)
+    repo = os.path.dirname(__file__) + '/../../..'
+    out = subprocess.run([sys.executable, str(tmp_path / 'parent.py'), str(tmp_path / 'child.py')], capture_output=True, text=True,
+                         timeout=60, env=dict(os.environ, MUPIF_NS='127.0.0.1:1', PYTHONPATH=os.path.abspath(repo)))
+    childPid = int(out.stdout.strip().splitlines()[-1])
+    for _ in range(50):
+        try:
+            with open(f'/proc/{childPid}/stat') as f:
+                if f.read().split()[2] == 'Z':
+                    break
+        except FileNotFoundError:
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(childPid, signal.SIGKILL)
+        pytest.fail('the child survived its parent')

@@ -13,7 +13,9 @@ makes it set the status itself (``Running`` at the start, then ``Finished`` or `
 * ``0`` -- the workflow finished;
 * ``1`` -- the workflow failed;
 * ``2`` -- a model server had no free resources; the scheduler returns the execution to
-  ``Pending`` so that it is tried again later.
+  ``Pending`` so that it is tried again later;
+* ``143`` -- terminated by SIGTERM: the scheduler stopped the execution (e.g. at shutdown), or the
+  scheduler died. The workflow and its models are terminated before the script exits.
 
 Environment: ``MUPIF_NS`` (nameserver), ``MUPIFDB_REST_SERVER`` and ``API_CREDENTIALS_FILE``
 (REST API access), set by the scheduler.
@@ -27,6 +29,7 @@ import os
 
 import logging
 import argparse
+import signal
 import mupifDB
 import mupif as mp
 import Pyro5.errors
@@ -61,6 +64,41 @@ def isNoResourcesError(err: BaseException | None) -> bool:
     return False
 
 
+class Terminated(BaseException):
+    """Raised in the main thread when the script gets SIGTERM; derived from BaseException, like KeyboardInterrupt."""
+
+
+#: exit code after SIGTERM (128 + 15, as a shell reports it)
+EXIT_TERMINATED = 143
+
+
+def _onSigterm(signum, frame):
+    """Turn SIGTERM into :class:`Terminated`, so that the workflow can be terminated in an orderly way."""
+    raise Terminated()
+
+
+def dieWithScheduler(environ=os.environ) -> None:
+    """
+    Ask the kernel to send SIGTERM to this process when the scheduler that started it dies (Linux only).
+
+    The workflow runs in its own process group, so it would otherwise keep running unattended when
+    the scheduler is killed (e.g. SIGKILL). Its execution stays ``Running`` and is run again by the
+    restarted scheduler, which must not find a second copy still running.
+
+    :param environ: environment; ``MUPIFDB_SCHEDULER_PID`` is the scheduler's process ID (not set:
+                    started by hand, nothing to do)
+    """
+    pid = environ.get('MUPIFDB_SCHEDULER_PID')
+    if not pid or not sys.platform.startswith('linux'):
+        return
+    import ctypes
+    PR_SET_PDEATHSIG = 1
+    ctypes.CDLL(None, use_errno=True).prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+    # the scheduler may have died before the request was made
+    if os.getppid() != int(pid):
+        os.kill(os.getpid(), signal.SIGTERM)
+
+
 def downloadWorkflowFiles(eid):
     """
     Download the workflow package of execution *eid* into the current directory (``--download_workflow``).
@@ -88,6 +126,8 @@ def main():
     time, so that the module can be imported (e.g. by unit tests) without a running nameserver.
     """
     log.info(f'Execution script started with args: {sys.argv}')
+    signal.signal(signal.SIGTERM, _onSigterm)
+    dieWithScheduler()
 
     # connect to nameserver (uses MUPIF_NS env var) so that getDaemon binds the correct network address
     ns = mp.pyroutil.connectNameserver()
@@ -164,6 +204,16 @@ def main():
             sys.exit(2)
         setStatus(weid, 'Failed')
         sys.exit(1)
+
+    except Terminated:
+        log.warning('Terminated (SIGTERM): terminating the workflow and its models')
+        try:
+            if workflow is not None:
+                workflow.terminate()
+        except Exception:
+            log.exception('Terminating the workflow failed')
+        setStatus(weid, 'Failed')
+        sys.exit(EXIT_TERMINATED)
 
     except:
         log.info("Unknown error")

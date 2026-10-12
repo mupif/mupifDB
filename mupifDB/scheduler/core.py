@@ -30,6 +30,7 @@ protected by the monitor's own lock.
 import concurrent.futures
 import logging
 import threading
+import time
 from typing import Any, Callable
 
 from .backend import ExecutionBackend
@@ -115,13 +116,41 @@ class Scheduler:
                 # not end the scheduler (running executions continue); try again in the next one
                 log.exception('Error in scheduler iteration; continuing with the next one')
             self.stopEvent.wait(self.config.poll_interval)
-        log.info('Main loop ended, waiting for running executions')
-        self.executor.shutdown(wait=True)
-        self.monitor.persist()
+        self.shutdown()
 
     def stop(self) -> None:
-        """Ask the main loop to end (it finishes its current pass first)."""
+        """
+        Ask the scheduler to shut down: the main loop ends after its current pass, then :meth:`shutdown` runs.
+
+        Safe to call from a signal handler or another thread.
+        """
         self.stopEvent.set()
+
+    def shutdown(self) -> None:
+        """
+        Finish the running executions: wait up to ``drain_timeout``, then stop the remaining ones.
+
+        A stopped workflow gets SIGTERM (its execution script terminates its models) and SIGKILL after
+        ``kill_grace``; its execution returns to ``Pending`` with its attempt count and runs again
+        after the restart. Returns when every job thread has stored its outcome.
+        """
+        with self.lock:
+            running = len(self.jobs)
+        if running:
+            log.warning(f'Shutting down with {running} running execution(s): waiting up to {self.config.drain_timeout} s')
+            deadline = time.monotonic() + self.config.drain_timeout
+            while time.monotonic() < deadline:
+                with self.lock:
+                    if not self.jobs:
+                        break
+                time.sleep(0.2)
+            with self.lock:
+                remaining = list(self.jobs.values())
+            for job in remaining:
+                job.stop('shutdown')
+        self.executor.shutdown(wait=True)
+        self.monitor.persist()
+        log.info('Scheduler shut down')
 
     def freeSlots(self) -> int:
         """Return how many more executions can be taken now."""
@@ -211,6 +240,11 @@ class Scheduler:
             rec = self.backend.getExecution(weid)
             if rec.Status != 'Scheduled':
                 raise NotScheduledError(f'{weid} is {rec.Status}, not Scheduled')
+            if job.stopRequested.is_set():
+                # shutting down before the workflow started: no point in starting it
+                self.backend.setStatus(weid, 'Pending', keepAttempts=True)
+                self.monitor.dropped(weid)
+                return
             workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
 
             def onLaunch():

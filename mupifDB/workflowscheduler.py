@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/..')
 
 import logging
 import multiprocessing
+import signal
 import time
 
 import Pyro5.errors
@@ -59,6 +60,22 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     return scheduler
 
 
+def installSignalHandlers(scheduler: Scheduler) -> None:
+    """
+    Shut the scheduler down in an orderly way on SIGTERM (service manager) and SIGINT (Ctrl-C).
+
+    The main loop ends and :meth:`~mupifDB.scheduler.core.Scheduler.shutdown` stops the running
+    workflows; their executions run again after the restart.
+
+    :param scheduler: the scheduler to stop
+    """
+    def handler(signum, frame):
+        log.warning(f'Received {signal.Signals(signum).name}, shutting down')
+        scheduler.stop()
+    signal.signal(signal.SIGTERM, handler)
+    signal.signal(signal.SIGINT, handler)
+
+
 def main(config: SchedulerConfig | None = None) -> None:
     """
     Run the scheduler until it is stopped.
@@ -78,7 +95,9 @@ def main(config: SchedulerConfig | None = None) -> None:
     try:
         with pidfile.PIDFile(filename=config.pidfile):
             log.info(f'Starting MupifDB Workflow Scheduler {config.scheduler_id} (up to {config.max_jobs} executions at a time)')
-            build(config, ns).run()
+            scheduler = build(config, ns)
+            installSignalHandlers(scheduler)
+            scheduler.run()
     except pidfile.AlreadyRunningError:
         log.error('Already running.')
     log.info("Exiting MupifDB Workflow Scheduler\n")

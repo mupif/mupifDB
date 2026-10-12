@@ -200,4 +200,8 @@ class SchedulerMonitor:
         """
         import mupif as mp
         self.ns = ns
-        return mp.pyroutil.runServer(ns=ns, appName=NS_NAME, app=self, metadata={'type:scheduler'})
+        # the shared daemon of mupif runs in a daemon thread; without passing it, runServer creates
+        # an exclusive daemon in a non-daemon thread, which keeps the process alive after the
+        # scheduler has shut down
+        daemon = mp.pyroutil.getDaemon(proxy=ns)
+        return mp.pyroutil.runServer(ns=ns, appName=NS_NAME, app=self, daemon=daemon, metadata={'type:scheduler'})

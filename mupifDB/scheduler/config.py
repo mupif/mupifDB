@@ -41,7 +41,8 @@ class SchedulerConfig(pydantic.BaseModel):
     max_attempts: int = pydantic.Field(12, ge=1, description='Attempts after which an execution whose resources stay unavailable returns to Created.')
     fetch_limit: int = pydantic.Field(300, ge=1, description='Maximum number of pending executions read from the database per pass.')
     work_dir: str = pydantic.Field(default_factory=tempfile.gettempdir, description='Directory in which a temporary working directory is created for each execution.')
-    kill_grace: float = pydantic.Field(10., ge=0, description='Seconds a stopped workflow gets between SIGTERM and SIGKILL.')
+    kill_grace: float = pydantic.Field(5., ge=0, description='Seconds a stopped workflow gets between SIGTERM and SIGKILL (to terminate its models).')
+    drain_timeout: float = pydantic.Field(0., ge=0, description='On shutdown, seconds to let running workflows finish before they are stopped (their executions then run again after the restart). Shutdown takes up to drain_timeout + kill_grace + a few seconds: keep it below the stop timeout of the service manager (supervisor: stopwaitsecs, default 10).')
     stat_file: str = pydantic.Field('/var/lib/mupif/persistent/scheduler-stat.json', description='File keeping the statistics across restarts.')
     pidfile: str = pydantic.Field('mupifDB_scheduler_pidfile', description='PID file preventing a second scheduler from starting; the REST API reads it (relative to its working directory) to report whether the scheduler runs.')
 

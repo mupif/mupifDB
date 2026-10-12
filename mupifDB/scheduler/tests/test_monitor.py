@@ -115,3 +115,20 @@ def test_fresh_start(synced, tmp_path):
     m = SchedulerMonitor(str(tmp_path / 'missing.json'), capacity=2)
     m.persist()
     assert len(m.stat.hist48h.load) == m.stat.hist48h.count
+
+
+def test_run_server_uses_shared_daemon(monkeypatch):
+    """
+    The monitor is served by mupif's shared Pyro daemon, whose thread ends with the process.
+
+    Without a daemon, mupif.pyroutil.runServer starts an exclusive one in a non-daemon thread, and
+    the scheduler process stayed alive after shutting down (seen on SIGTERM).
+    """
+    import mupif as mp
+    calls = {}
+    monkeypatch.setattr(mp.pyroutil, 'getDaemon', lambda proxy=None, exclusive=False: calls.setdefault('getDaemon', (proxy, exclusive)) and 'DAEMON')
+    monkeypatch.setattr(mp.pyroutil, 'runServer', lambda **kw: calls.setdefault('runServer', kw) and 'PYRO:monitor')
+    ns = object()
+    SchedulerMonitor(None, capacity=1).runServer(ns)
+    assert calls['getDaemon'] == (ns, False)
+    assert calls['runServer']['daemon'] == 'DAEMON' and calls['runServer']['appName'] == 'mupif.scheduler'

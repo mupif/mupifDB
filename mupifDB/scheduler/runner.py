@@ -157,12 +157,15 @@ class JobRunner:
         Build the environment of the workflow subprocess.
 
         :return: the scheduler's environment, with mupifDB on ``PYTHONPATH``, the nameserver in
-                 ``MUPIF_NS`` and the REST API account in ``API_CREDENTIALS_FILE``
+                 ``MUPIF_NS``, the REST API account in ``API_CREDENTIALS_FILE`` and the scheduler's
+                 process ID in ``MUPIFDB_SCHEDULER_PID``
         """
         env = os.environ.copy()
         env['PYTHONPATH'] = os.pathsep.join(filter(None, [env.get('PYTHONPATH'), str(_MUPIFDB_SRC_DIR)]))
         env['MUPIF_NS'] = self.nsUri
         env['API_CREDENTIALS_FILE'] = os.environ.get('API_CREDENTIALS_FILE', 'None')
+        # lets the execution script end itself when the scheduler dies (see its dieWithScheduler)
+        env['MUPIFDB_SCHEDULER_PID'] = str(os.getpid())
         return env
 
     def run(self, job: Job, workflowRecord: Any, onLaunch: Callable[[], None], storeLog: Callable[[Path], None]) -> JobResult:

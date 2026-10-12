@@ -27,8 +27,9 @@ class FakeRunner:
     Stand-in for :class:`~mupifDB.scheduler.runner.JobRunner`.
 
     ``outcomes`` maps an execution ID to ``'Finished'``/``'Failed'``/``'Pending'`` (default
-    ``'Finished'``), to an exception raised before the launch, or to ``('after', exception)``
-    raised after it. While ``gate`` is an unset Event, launched jobs wait for it.
+    ``'Finished'``), to an exception raised before the launch, to ``('after', exception)`` raised
+    after it, or to ``'untilStopped'`` (runs until the job is stopped). While ``gate`` is an unset
+    Event, launched jobs wait for it.
     """
 
     def __init__(self, logFile):
@@ -47,6 +48,11 @@ class FakeRunner:
         onLaunch()
         with self.lock:
             self.launched.append(job.weid)
+        if outcome == 'untilStopped':
+            # like a long workflow: runs until the scheduler stops it (JobRunner returns Pending on shutdown)
+            assert job.stopRequested.wait(10)
+            storeLog(self.logFile)
+            return JobResult(status='Pending' if job.stopReason == 'shutdown' else 'Failed', exitCode=143, stopReason=job.stopReason)
         if self.gate is not None:
             assert self.gate.wait(10)
         if isinstance(outcome, tuple):
@@ -238,3 +244,48 @@ def test_running_execution_processes(tmp_path):
         proc.kill()
         proc.wait()
     assert 'unit-test-weid' not in core.runningExecutionProcesses()
+
+
+def test_shutdown_requeues_running_executions(env):
+    """
+    On shutdown, workflows still running after drain_timeout are stopped and their executions return to Pending.
+
+    They keep their attempt count and run again after the restart (finding #11: the old scheduler
+    waited for all workflows, possibly hours, unless killed, which left them running unattended).
+    """
+    env.scheduler.config.drain_timeout = 0.2
+    env.backend.addExecution('E0')
+    env.runner.outcomes['E0'] = 'untilStopped'
+    env.scheduler.schedulePass()
+    for _ in range(100):
+        if env.runner.launched:
+            break
+        time.sleep(0.02)
+    t0 = time.time()
+    env.scheduler.shutdown()
+    assert time.time() - t0 < 5
+    assert env.backend.statuses('E0') == ['Scheduled', 'Running', 'Pending']
+    assert env.backend.executions['E0'].Attempts == 1
+    assert env.backend.notified == [] and env.scheduler.jobs == {}
+
+
+def test_shutdown_lets_short_workflows_finish(env):
+    """A workflow ending within drain_timeout finishes normally."""
+    env.scheduler.config.drain_timeout = 5
+    env.backend.addExecution('E0')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    threading.Timer(0.3, env.runner.gate.set).start()
+    env.scheduler.shutdown()
+    assert env.backend.status('E0') == 'Finished'
+
+
+def test_job_stopped_before_launch_is_not_started(env):
+    """A taken execution whose job is stopped before its workflow starts returns to Pending without running."""
+    rec = env.backend.addExecution('E0', status='Scheduled', attempts=2)
+    job = core.Job(weid='E0', record=rec)
+    job.stop('shutdown')
+    env.scheduler.jobs['E0'] = job
+    env.scheduler.runJob(job)
+    assert env.runner.launched == [] and env.backend.statuses('E0') == ['Pending']
+    assert env.backend.executions['E0'].Attempts == 2
