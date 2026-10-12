@@ -1,6 +1,6 @@
 """Tests of :class:`mupifDB.scheduler.resources.ResourceBudget`, without REST API or nameserver."""
 
-from mupifDB.scheduler.resources import ResourceBudget
+from mupifDB.scheduler.resources import ResourceBudget, modelServerFreeSlots
 
 
 def _budget(jobmanagers, free):
@@ -34,3 +34,14 @@ def test_unavailable_and_local():
     assert b.reserve('wf', 1) == ResourceBudget.UNAVAILABLE
     assert b.reserve('missing', 1) == ResourceBudget.UNAVAILABLE
     assert b.reserve('local', 1) == ResourceBudget.OK
+
+
+def test_model_server_free_slots_unreachable(monkeypatch):
+    """modelServerFreeSlots() reports None instead of raising when the jobmanager cannot be reached."""
+    import mupif as mp
+    import Pyro5.errors
+
+    def connectModelServer(ns, name):
+        raise Pyro5.errors.NamingError(f'unknown name: {name}')
+    monkeypatch.setattr(mp.pyroutil, 'connectModelServer', connectModelServer)
+    assert modelServerFreeSlots(object(), 'CVUT.missing') is None

@@ -74,3 +74,19 @@ class ResourceBudget:
         for jm, n in needed.items():
             self.free[jm] -= n
         return self.OK
+
+
+def modelServerFreeSlots(ns, jobmanager: str) -> int | None:
+    """
+    Ask a jobmanager (model server) registered in the nameserver how many more jobs it can run now.
+
+    :param ns: Pyro nameserver proxy
+    :param jobmanager: name of the jobmanager in the nameserver
+    :return: number of free job slots, or None if the jobmanager is unknown or cannot be reached
+    """
+    import mupif as mp
+    try:
+        return int(mp.pyroutil.connectModelServer(ns, jobmanager).getNumberOfFreeJobs())
+    except Exception:
+        log.exception(f'Cannot get free job slots of jobmanager {jobmanager}')
+        return None

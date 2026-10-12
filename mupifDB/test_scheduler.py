@@ -121,9 +121,11 @@ def scheduler(xprocess,restApi):
             'MUPIF_LOG_LEVEL':'DEBUG',
             'MUPIFDB_REST_SERVER':MUPIFDB_REST_SERVER,
             'API_CREDENTIALS_FILE':API_CREDENTIALS_FILE,
+            'MUPIFDB_SCHEDULER_POLL_INTERVAL':'0.5',
+            'MUPIFDB_SCHEDULER_STAT_FILE':'./sched-stat.json',
         }
         popen_kwargs = { 'cwd': mupifDB.__path__[0]+'/api' }
-        args = [ sys.executable, '-c', 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=.5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' ]
+        args = [ sys.executable, '-m', 'mupifDB.scheduler' ]
         timeout = 10
         max_read_lines = 500
         # logged once the scheduler is ready to pick up executions

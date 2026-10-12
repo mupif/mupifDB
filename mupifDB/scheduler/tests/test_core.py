@@ -5,6 +5,8 @@ No REST API, nameserver, model server or subprocess is involved: :class:`FakeRun
 outcome of each execution, and can hold all jobs running (``gate``) to observe capacity limits.
 """
 
+import subprocess
+import sys
 import threading
 import time
 import types
@@ -219,3 +221,20 @@ def test_run_survives_errors_and_stops(env, monkeypatch):
     t.join(timeout=5)
     assert not t.is_alive()
     assert len(calls) >= 2 and env.backend.status('E0') == 'Finished'
+
+
+def test_running_execution_processes(tmp_path):
+    """The process scan finds an execution subprocess by its command line (``... workflow_execution_script.py -eid ID``)."""
+    script = tmp_path / 'workflow_execution_script.py'
+    script.write_text('import time\ntime.sleep(60)\n')
+    proc = subprocess.Popen([sys.executable, str(script), '-eid', 'unit-test-weid'])
+    try:
+        for _ in range(50):
+            if 'unit-test-weid' in core.runningExecutionProcesses():
+                break
+            time.sleep(0.1)
+        assert 'unit-test-weid' in core.runningExecutionProcesses()
+    finally:
+        proc.kill()
+        proc.wait()
+    assert 'unit-test-weid' not in core.runningExecutionProcesses()

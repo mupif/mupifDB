@@ -95,3 +95,23 @@ def test_stop_only_from_scheduler_host(monkeypatch, synced, address, allowed):
         with pytest.raises(PermissionError):
             m.stop()
     assert stopped == ([1] if allowed else [])
+
+
+def test_database_errors_do_not_propagate(monkeypatch, tmp_path):
+    """A failure to copy the statistics to the database is logged, not raised (finding #16)."""
+    from mupifDB import restApiControl
+
+    def fail(**kw):
+        raise RuntimeError('401 Unauthorized')
+    monkeypatch.setattr(restApiControl, 'setStatScheduler', fail)
+    m = SchedulerMonitor(str(tmp_path / 'stat.json'), capacity=2)
+    m.enqueued('E1')
+    m.persist()
+    assert m.stat.tasks.scheduled == 1
+
+
+def test_fresh_start(synced, tmp_path):
+    """Without a statistics file the history is initialized and the statistics can be stored at once."""
+    m = SchedulerMonitor(str(tmp_path / 'missing.json'), capacity=2)
+    m.persist()
+    assert len(m.stat.hist48h.load) == m.stat.hist48h.count
