@@ -7,6 +7,7 @@ the counters is kept by :class:`SchedulerMonitor`, which is the only code changi
 
 import datetime
 import logging
+import os
 import time
 from typing import ClassVar, List, Literal, Optional
 
@@ -173,8 +174,15 @@ class SchedulerStat(mp.BareData):
 
     def save_to_file(self,f):
         """
-        Write the statistics as JSON.
+        Write the statistics as JSON, atomically.
+
+        The data go to a temporary file in the same directory, which then replaces *f*: a crash
+        during the write leaves the previous statistics intact instead of a truncated file (which
+        would be discarded at the next start, losing all statistics).
 
         :param f: file name
         """
-        open(f,'w').write(self.model_dump_json())
+        tmp=f'{f}.tmp'
+        with open(tmp,'w') as out:
+            out.write(self.model_dump_json())
+        os.replace(tmp,f)
