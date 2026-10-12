@@ -6,8 +6,12 @@ TASKS=ns mongo mongo-setup rest safeapi web browse scheduler
 # MONGOD: mongod binary; the replica set is initiated with pymongo, so mongosh is not needed
 MONGOD ?= /usr/bin/mongod
 PYTHON ?= python3
-# JSON file with {"username":..,"password":..} of a REST API account, used by the scheduler
+# JSON file with {"username":..,"password":..} of a REST API account, used by the scheduler and the smoke test
 API_CREDENTIALS_FILE ?=
+# checkout of the mupif repository, needed for the demo model server (examples are not installed with the package)
+MUPIF_DIR ?= ../mupif
+# extra arguments for tools/scheduler_smoketest.py, e.g. SMOKETEST_ARGS="--count 12 --delay 15 --max-concurrent 4"
+SMOKETEST_ARGS ?= --register --count 3 --delay 2
 
 .PHONY: $(TASKS)
 run: $(TASKS)
@@ -34,6 +38,17 @@ browse:
 	sleep 9 # && xdg-open http://127.0.0.1:11004
 scheduler:
 	sleep 7 && API_CREDENTIALS_FILE=$(API_CREDENTIALS_FILE) MUPIF_LOG_LEVEL=DEBUG MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIF_NS=localhost:11001 PYTHONPATH=.. python3 -c 'from mupifDB import workflowscheduler as ws; ws.LOOP_SLEEP_SEC=5; ws.schedulerStatFile="./sched-stat.json"; ws.main()' || $(DIE)
+
+# Not part of "run": model server from mupif example 13, registered as CVUT.demo01 (maxJobs=4);
+# it serves the model used by the demo workflow Workflow01 (mupifDB/api/demo/workflowdemo01.py)
+modelserver13:
+	mkdir -p modelserver13-tmp~ && cd modelserver13-tmp~ && MUPIF_NS=localhost:11001 $(PYTHON) $(abspath $(MUPIF_DIR))/examples/13/server.py
+
+# End-to-end scheduler test against the running stack (needs "run" and "modelserver13")
+smoketest:
+	API_CREDENTIALS_FILE=$(API_CREDENTIALS_FILE) MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIF_LOG_LEVEL=WARNING $(PYTHON) tools/scheduler_smoketest.py $(SMOKETEST_ARGS)
+
+.PHONY: modelserver13 smoketest
 
 kill:
 	# fuser -k 11001/tcp; fuser -k 11002/tcp; fuser -k 11003/tcp; fuser -k 11004/tcp || true
