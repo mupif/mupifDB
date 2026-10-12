@@ -819,7 +819,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in {'py', 'zip', 'txt', 'json', 'xml'}
 
 
-def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[]):
+def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[], timeout: int = 0):
     """
     Inserts new workflow definition into DB.
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -848,7 +848,8 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
             modulename=modulename,
             classname=classname,
             Models=models_md,
-            EDMMapping=EDM_Mapping
+            EDMMapping=EDM_Mapping,
+            Timeout=timeout
         )
     )
 
@@ -930,6 +931,7 @@ async def upload_workflow_and_dependencies(
     classname = None
     models_md = None
     EDM_Mapping = []
+    timeout = 0
     modulename = ""
     zip_filename = "files.zip"
 
@@ -978,6 +980,7 @@ async def upload_workflow_and_dependencies(
                         description = meta.get('Description', '')
                         models_md = meta.get('Models', [])
                         EDM_Mapping = meta.get('EDMMapping', [])
+                        timeout = int(meta.get('Timeout', 0) or 0)
                     else:
                         log.error(f"File {workflow_file.filename} contains {len(classes)} classes (must be one). Classes: {classes}")
                         raise HTTPException(
@@ -1025,7 +1028,8 @@ async def upload_workflow_and_dependencies(
                     modulename=modulename,
                     classname=classname,
                     models_md=models_md,
-                    EDM_Mapping=EDM_Mapping
+                    EDM_Mapping=EDM_Mapping,
+                    timeout=timeout
                 )
             else:
                 log.error('Workflow data incomplete. Not adding workflow.')

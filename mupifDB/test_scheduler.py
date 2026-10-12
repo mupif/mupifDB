@@ -244,6 +244,15 @@ class TestFoo:
         assert order(sort='SubmittedDate')==weids
         assert order(sort='-SubmittedDate')==weids[::-1]
         assert order()==weids[::-1]
+    def test_04_workflow_timeout_is_stored(self,restApi):
+        '''
+        The Timeout of the workflow metadata is stored in the workflow record (the scheduler enforces it).
+
+        It used to be dropped at registration, so the scheduler could not know it.
+        '''
+        import mupifDB.api.demo.workflowdemo01 as demo01
+        restApiControl.postWorkflowFiles('useCase1',demo01.__file__,[])
+        assert restApiControl.getWorkflowRecord(demo01.WorkflowDemo01().metadata.ID,-1).Timeout==30
     def test_02_web(self,scheduler,web):
         server='http://localhost:'+PORTS['web']
         import requests

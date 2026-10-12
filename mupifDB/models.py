@@ -190,6 +190,7 @@ class Workflow_Model(MongoObj_Model):
     Models: List[Model_Model]=[] # XXX: test needs unset
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
+    Timeout: int=Field(0, ge=0, description='Maximum run time of one execution in seconds, from the workflow metadata ("Timeout"); 0: no limit. The scheduler stops executions exceeding it.')
 
     def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID','WorkflowVersion'],values=[self.wid,self.Version])]
 
