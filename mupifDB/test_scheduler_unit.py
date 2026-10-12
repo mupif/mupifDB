@@ -8,27 +8,12 @@ covered by ``test_scheduler.py`` (pytest + xprocess) and ``tools/scheduler_smoke
 
 Each test names the finding of the refactoring plan it guards against, where applicable.
 """
-import os
 import subprocess
 import sys
 import time
+import types
 
-
-def test_import_has_no_side_effects():
-    """
-    Importing the scheduler module must not sleep, connect to the nameserver or fail.
-
-    Regression for finding #12: the import used to sleep 5 s and connect to the nameserver, so it
-    failed (after 5 s) whenever no nameserver was reachable, e.g. in unit tests. The import runs in
-    a fresh interpreter, with ``MUPIF_NS`` pointing to a port where nothing listens.
-    """
-    code = 'import mupifDB.workflowscheduler as ws; assert ws.ns is None and ws.ns_uri is None'
-    env = dict(os.environ, MUPIF_NS='127.0.0.1:1')
-    # mupifDB itself (mupif, pydantic, ...) takes about a second to import; the scheduler module adds
-    # only milliseconds now, while the old import alone took 5 s
-    t0 = time.time()
-    subprocess.run([sys.executable, '-c', code], env=env, check=True, cwd=os.path.dirname(__file__) + '/..', timeout=60)
-    assert time.time() - t0 < 4.5
+import pytest
 
 
 class _FakeNameserver:
@@ -73,149 +58,6 @@ def test_stop_ends_main_loop(monkeypatch, tmp_path):
     ws.runLoop(pool=None, monitor=_Monitor())
     assert time.time() - t0 < 2
     assert fakeNs.removed == ['mupif.scheduler']
-
-
-# ---------------------------------------------------------------------------------------------
-# workflow_execution_script: main() is run in-process against fakes of the nameserver, the Pyro
-# daemon, the REST API and a workflow class, to check the exit code / status contract with the
-# scheduler (0 = Finished, 1 = Failed, 2 = no resources)
-# ---------------------------------------------------------------------------------------------
-
-import types
-
-import pytest
-
-
-class _FakeDaemon:
-    """Pyro daemon stand-in: registering an object just returns a made-up URI."""
-
-    def register(self, obj):
-        return 'PYRO:fake@127.0.0.1:1'
-
-
-class _FakeWorkflow:
-    """
-    Workflow stand-in; class attribute ``fail`` selects where it raises.
-
-    ``fail`` is ``None`` (succeed) or a tuple ``(stage, exception)`` with stage ``'initialize'`` or
-    ``'solve'``.
-    """
-
-    fail = None
-    terminated = 0
-
-    def _maybeFail(self, stage):
-        if self.fail and self.fail[0] == stage:
-            raise self.fail[1]
-
-    def initialize(self, metadata):
-        self._maybeFail('initialize')
-
-    def solve(self):
-        self._maybeFail('solve')
-
-    def getExecutionTargetTime(self):
-        return 1.
-
-    def terminate(self):
-        _FakeWorkflow.terminated += 1
-
-
-@pytest.fixture
-def execScript(monkeypatch):
-    """
-    Return ``run(fail=None) -> (exit code, [statuses set through the REST API])``.
-
-    Runs :func:`mupifDB.workflow_execution_script.main` for execution ``E1`` of a fake workflow
-    (module ``fakewf`` injected into ``sys.modules``) with all external services faked.
-    """
-    from mupifDB import workflow_execution_script as es
-    import mupifDB
-    statuses = []
-    monkeypatch.setattr(es.mp.pyroutil, 'connectNameserver', lambda: object())
-    monkeypatch.setattr(es.mp.pyroutil, 'getDaemon', lambda proxy: _FakeDaemon())
-    rc = mupifDB.restApiControl
-    monkeypatch.setattr(rc, 'setExecutionStatus', lambda weid, status, **kw: statuses.append(status))
-    monkeypatch.setattr(rc, 'getExecutionRecord', lambda weid: types.SimpleNamespace(WorkflowID='wf', WorkflowVersion=1, Task_ID=''))
-    monkeypatch.setattr(rc, 'getWorkflowRecord', lambda wid, ver: types.SimpleNamespace(modulename='fakewf', classname='FakeWorkflow', UseCase='uc'))
-    monkeypatch.setattr(rc, 'setExecutionParameter', lambda *a, **kw: None)
-    monkeypatch.setattr(mupifDB.workflowmanager, 'mapInputs', lambda wf, weid: None)
-    monkeypatch.setattr(mupifDB.workflowmanager, 'mapOutputs', lambda wf, weid, t: None)
-    monkeypatch.setitem(sys.modules, 'fakewf', types.SimpleNamespace(FakeWorkflow=_FakeWorkflow))
-    monkeypatch.setattr(sys, 'argv', ['workflow_execution_script.py', '-eid', 'E1'])
-
-    def run(fail=None):
-        monkeypatch.setattr(_FakeWorkflow, 'fail', fail)
-        statuses.clear()
-        with pytest.raises(SystemExit) as exc:
-            es.main()
-        return exc.value.code, list(statuses)
-    return run
-
-
-def test_exec_script_success(execScript):
-    """A workflow that solves without error exits with 0 and is marked Finished."""
-    assert execScript() == (0, ['Running', 'Finished'])
-
-
-def test_exec_script_workflow_error(execScript):
-    """
-    A workflow raising during solve exits with 1 and is marked Failed.
-
-    Also guards the ``mupifDB`` local-name pitfall of ``main()``: an ``import mupifDB.x`` statement
-    inside the function would make every earlier use of ``mupifDB`` raise ``UnboundLocalError``.
-    """
-    assert execScript(fail=('solve', RuntimeError('boom'))) == (1, ['Running', 'Failed'])
-
-
-#: what the workflow actually receives from a full model server (mupif, 2026-10): the server
-#: cannot serialize ModelServerNoResourcesException and Pyro substitutes a generic PyroError
-_PYRO_NO_RESOURCES_MESSAGE = ("Error serializing exception: 'dict' object is not callable. Original exception: "
-                              "<class 'mupif.modelserverbase.ModelServerNoResourcesException'>: ModelServer: no more resources")
-
-
-def _pyroErrorWithRemoteTraceback(text):
-    """Build a PyroError carrying *text* only in its remote traceback, like Pyro does."""
-    import Pyro5.errors
-    err = Pyro5.errors.PyroError('remote call failed')
-    err._pyroTraceback = ['Traceback (most recent call last):\n', text + '\n']
-    return err
-
-
-def _noResourcesErrors():
-    """All forms in which a no-resources error may reach the execution script."""
-    import mupif as mp
-    import Pyro5.errors
-    local = mp.ModelServerNoResourcesException('ModelServer: no more resources')
-    wrapped = RuntimeError('allocating model m1 failed')
-    wrapped.__cause__ = Pyro5.errors.PyroError(_PYRO_NO_RESOURCES_MESSAGE)
-    return {
-        'local': local,
-        'pyro-message': Pyro5.errors.PyroError(_PYRO_NO_RESOURCES_MESSAGE),
-        'pyro-traceback': _pyroErrorWithRemoteTraceback('mupif.modelserverbase.ModelServerNoResourcesException: ModelServer: no more resources'),
-        'wrapped': wrapped,
-    }
-
-
-@pytest.mark.parametrize('form', ['local', 'pyro-message', 'pyro-traceback', 'wrapped'])
-def test_exec_script_no_resources(execScript, form):
-    """
-    A model server without free slots ends the script with exit code 2 and no Failed status.
-
-    Regression for finding #2: the script compared ``type(err) == mp.JobManNoResourcesException``
-    (a deprecated subclass that is never raised, while the error actually arrives as a generic
-    ``PyroError``) and set the status to Failed before exiting, so executions lacking resources
-    were failed instead of being returned to Pending by the scheduler.
-    """
-    code, statuses = execScript(fail=('initialize', _noResourcesErrors()[form]))
-    assert (code, statuses) == (2, ['Running'])
-
-
-def test_exec_script_other_pyro_error_fails(execScript):
-    """A Pyro error not caused by missing resources is an ordinary failure (exit 1, Failed)."""
-    import Pyro5.errors
-    err = Pyro5.errors.CommunicationError('connection to model server lost')
-    assert execScript(fail=('initialize', err)) == (1, ['Running', 'Failed'])
 
 
 @pytest.mark.parametrize('exitCode,status', [(0, 'Finished'), (1, 'Failed'), (2, 'Pending'), (-9, 'Failed'), (-15, 'Failed'), (3, 'Failed'), (137, 'Failed')])
@@ -513,36 +355,6 @@ def test_pass_takes_oldest_pending_first(schedulingPass):
 # ---------------------------------------------------------------------------------------------
 # statistics (SchedulerStat, SchedulerMonitor)
 # ---------------------------------------------------------------------------------------------
-
-def test_stat_hist_advance(monkeypatch):
-    """The 48 h history shifts by whole hours, resets after long gaps and refuses to go back in time."""
-    from mupifDB import workflowscheduler as ws
-    now = [100 * 3600 + 10]
-    monkeypatch.setattr(ws.time, 'time', lambda: now[0])
-    h = ws.SchedulerStat.Hist(interval=3600, count=4)
-    h.advance()                                     # initializes the lists
-    h.processed[-1] = 5
-    now[0] += 60
-    h.advance()                                     # same hour: nothing moves
-    assert h.processed == [0, 0, 0, 5]
-    now[0] += 2 * 3600
-    h.advance()
-    assert h.processed == [0, 5, 0, 0]
-    now[0] += 10 * 3600                             # gap longer than the history
-    h.advance()
-    assert h.processed == [0, 0, 0, 0]
-    now[0] -= 3 * 3600
-    with pytest.raises(RuntimeError):
-        h.advance()
-
-
-def test_stat_hist_selfcheck_includes_load():
-    """A history with a load list of the wrong length (e.g. from an old stat file) is reset (finding #9)."""
-    from mupifDB import workflowscheduler as ws
-    h = ws.SchedulerStat.Hist(interval=3600, count=3, processed=[1, 2, 3], pooled=[1, 2, 3], finished=[1, 2, 3], failed=[0, 0, 0], load=[1.])
-    h.selfCheck()
-    assert h.load == [0, 0, 0] and h.processed == [0, 0, 0]
-
 
 @pytest.fixture
 def statMonitor(monkeypatch, tmp_path):

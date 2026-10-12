@@ -2,6 +2,8 @@
 
 import os
 
+import pytest
+
 from mupifDB.scheduler.stats import SchedulerStat
 
 
@@ -35,3 +37,32 @@ def test_failed_write_keeps_previous_file(tmp_path, monkeypatch):
         pass
     monkeypatch.undo()
     assert SchedulerStat.load_from_file(path).tasks.processed == 1
+
+
+def test_stat_hist_advance(monkeypatch):
+    """The 48 h history shifts by whole hours, resets after long gaps and refuses to go back in time."""
+    from mupifDB.scheduler import stats
+    now = [100 * 3600 + 10]
+    monkeypatch.setattr(stats.time, 'time', lambda: now[0])
+    h = SchedulerStat.Hist(interval=3600, count=4)
+    h.advance()                                     # initializes the lists
+    h.processed[-1] = 5
+    now[0] += 60
+    h.advance()                                     # same hour: nothing moves
+    assert h.processed == [0, 0, 0, 5]
+    now[0] += 2 * 3600
+    h.advance()
+    assert h.processed == [0, 5, 0, 0]
+    now[0] += 10 * 3600                             # gap longer than the history
+    h.advance()
+    assert h.processed == [0, 0, 0, 0]
+    now[0] -= 3 * 3600
+    with pytest.raises(RuntimeError):
+        h.advance()
+
+
+def test_stat_hist_selfcheck_includes_load():
+    """A history with a load list of the wrong length (e.g. from an old stat file) is reset (finding #9)."""
+    h = SchedulerStat.Hist(interval=3600, count=3, processed=[1, 2, 3], pooled=[1, 2, 3], finished=[1, 2, 3], failed=[0, 0, 0], load=[1.])
+    h.selfCheck()
+    assert h.load == [0, 0, 0] and h.processed == [0, 0, 0]
