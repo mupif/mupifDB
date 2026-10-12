@@ -8,6 +8,7 @@ import atexit
 import tempfile
 import multiprocessing
 import subprocess
+import threading
 import enum
 import pidfile
 import zipfile
@@ -61,7 +62,9 @@ ns = None
 ns_uri = None
 
 poolsize = 30
-stopFlag = False # set to tru to end main scheduler loop
+# set to end the main scheduler loop (see SchedulerMonitor.stop); an Event rather than a flag, so
+# that the loop's sleep between iterations is interrupted as soon as a stop is requested
+stopEvent = threading.Event()
 
 
 import pydantic
@@ -222,7 +225,14 @@ class SchedulerMonitor(object):
             log.error(repr(e))
             return []
     def stop(self):
-        stopFlag=True
+        """
+        Ask the scheduler to stop and unregister it from the nameserver.
+
+        The main loop finishes its current iteration and exits; executions already handed to the
+        worker pool are waited for (see :func:`stopPool`). Exposed over Pyro like the other public
+        methods of this class.
+        """
+        stopEvent.set()
         self.ns.remove("mupif.scheduler")
     # no-op: runServer wants this for some reason?
     def registerPyro(self,*,daemon,ns,uri,appName,exclusiveDaemon): 
@@ -569,6 +579,22 @@ def procFinish(r):  pass
 def procError(e):   log.error('Error running pool task:',exc_info=e)
 
 
+def runLoop(pool, monitor) -> None:
+    """
+    Schedule pending executions every :data:`LOOP_SLEEP_SEC` seconds until :data:`stopEvent` is set.
+
+    :param pool: worker pool which runs the executions
+    :param monitor: Pyro proxy of the :class:`SchedulerMonitor`, used to persist the statistics
+    """
+    while not stopEvent.is_set():
+        # add new executions (Pending)
+        scheduler_schedule_pending(pool)
+        # lazy update of persistent statistics, done in main thread thus thread safe
+        monitor.persistStat()
+        # returns early when a stop is requested
+        stopEvent.wait(LOOP_SLEEP_SEC)
+
+
 def main():
     """
     Run the scheduler until it is stopped.
@@ -627,13 +653,7 @@ def main():
                     log.info("Done")
 
                     log.info("Entering main loop to check for Pending executions")
-                    # add new execution (Pending)
-                    while stopFlag is not True:
-                        scheduler_schedule_pending(pool)
-                        # lazy update of persistent statistics, done in main thread thus thread safe
-                        monitor.persistStat()
-                        # log.info("waiting..")
-                        time.sleep(LOOP_SLEEP_SEC)
+                    runLoop(pool, monitor)
 
                 except Exception as err:
                     log.exception("Error in workflow execution")

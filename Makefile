@@ -13,7 +13,7 @@ MUPIF_DIR ?= ../mupif
 # extra arguments for tools/scheduler_smoketest.py, e.g. SMOKETEST_ARGS="--count 12 --delay 15 --max-concurrent 4"
 SMOKETEST_ARGS ?= --register --count 3 --delay 2
 # files which must have complete docstrings (checked by "make lint-docs"); extended as code gets documented
-DOCLINT_PATHS = tools/scheduler_smoketest.py tools/mongo_replset_init.py
+DOCLINT_PATHS = tools/scheduler_smoketest.py tools/mongo_replset_init.py mupifDB/test_scheduler_unit.py
 
 .PHONY: $(TASKS)
 run: $(TASKS)
