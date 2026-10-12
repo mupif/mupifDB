@@ -355,3 +355,64 @@ def test_input_check_failure_does_not_block(env):
     env.scheduler.schedulePass()
     env.drain()
     assert env.backend.status('E0') == 'Finished'
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Control the scheduler's monotonic clock: ``clock[0]`` is the current time in seconds."""
+    now = [1000.]
+    monkeypatch.setattr(core.time, 'monotonic', lambda: now[0])
+    return now
+
+
+def test_backoff_grows_and_is_capped(env, clock):
+    """Delays after consecutive transient failures double from retry_backoff up to retry_backoff_max [S4]."""
+    env.scheduler.config.retry_jitter = 0
+    delays = [env.scheduler.deferRetry('E0') for _ in range(9)]
+    assert delays == [10, 20, 40, 80, 160, 320, 600, 600, 600]
+
+
+def test_unreachable_model_server_is_retried_later(env, clock):
+    """
+    An execution whose model server is unreachable is not tried again before its delay has passed [S4].
+
+    It used to be tried at every pass (every 20 s), so a model server down for a few minutes
+    exhausted the attempt limit of its executions.
+    """
+    env.scheduler.config.retry_jitter = 0
+    env.backend.addExecution('E0')
+    env.freeSlots['CVUT.demo01'] = None
+    env.scheduler.schedulePass()
+    env.scheduler.schedulePass()
+    assert env.backend.executions['E0'].Attempts == 1            # second pass skipped it
+    clock[0] += 11
+    env.scheduler.schedulePass()
+    assert env.backend.executions['E0'].Attempts == 2
+
+
+def test_no_slot_at_start_is_retried_later(env, clock):
+    """An execution returned to Pending because no model-server slot was free at its start is deferred."""
+    env.backend.addExecution('E0')
+    env.runner.outcomes['E0'] = 'Pending'
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.scheduler.deferred('E0')
+    env.scheduler.executor = core.concurrent.futures.ThreadPoolExecutor(max_workers=3)
+    assert env.scheduler.schedulePass() == 0
+
+
+def test_busy_model_server_is_not_deferred(env, clock):
+    """Waiting for a busy model server is normal queueing: no delay, the execution keeps its place."""
+    env.backend.addExecution('E0')
+    env.freeSlots['CVUT.demo01'] = 0
+    env.scheduler.schedulePass()
+    assert not env.scheduler.deferred('E0') and env.backend.executions['E0'].Attempts == 0
+
+
+def test_final_outcome_clears_the_delay(env, clock):
+    """Once an execution reaches a final status, its retry delay is forgotten."""
+    env.backend.addExecution('E0')
+    env.scheduler.backoff['E0'] = (0., 3)
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.backend.status('E0') == 'Finished' and 'E0' not in env.scheduler.backoff

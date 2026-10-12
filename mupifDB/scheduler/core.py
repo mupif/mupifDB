@@ -30,6 +30,7 @@ protected by the monitor's own lock.
 
 import concurrent.futures
 import logging
+import random
 import threading
 import time
 from typing import Any, Callable
@@ -105,6 +106,8 @@ class Scheduler:
         self.jobs: dict[str, Job] = {}
         #: set to end the main loop; also interrupts its sleep
         self.stopEvent = threading.Event()
+        #: execution ID -> (monotonic time before which it is not tried again, consecutive transient failures)
+        self.backoff: dict[str, tuple[float, int]] = {}
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=config.max_jobs, thread_name_prefix='job')
 
     # --- main loop ------------------------------------------------------------------------------
@@ -167,6 +170,30 @@ class Scheduler:
         with self.lock:
             return self.config.max_jobs - len(self.jobs)
 
+    def deferRetry(self, weid: str) -> float:
+        """
+        Delay the next attempt of an execution after a transient failure [S4].
+
+        The delay is ``retry_backoff`` doubled for every consecutive transient failure, at most
+        ``retry_backoff_max``, varied by ``retry_jitter``. Kept in memory: a restart retries at once.
+
+        :param weid: execution ID
+        :return: the delay in seconds
+        """
+        with self.lock:
+            failures = self.backoff.get(weid, (0., 0))[1] + 1
+            delay = min(self.config.retry_backoff * 2 ** (failures - 1), self.config.retry_backoff_max)
+            delay *= 1 + random.uniform(-self.config.retry_jitter, self.config.retry_jitter)
+            self.backoff[weid] = (time.monotonic() + delay, failures)
+        log.info(f'{weid}: next attempt in {delay:.0f} s (transient failure #{failures})')
+        return delay
+
+    def deferred(self, weid: str) -> bool:
+        """Tell whether an execution must not be tried yet (see :meth:`deferRetry`)."""
+        with self.lock:
+            until = self.backoff.get(weid, (0., 0))[0]
+        return time.monotonic() < until
+
     def _workflowJobmanagers(self, wid: str, version: int) -> list[str]:
         """Return the jobmanagers of the models of a workflow, one per model with a remote jobmanager."""
         workflow = self.backend.getWorkflow(wid, version)
@@ -178,8 +205,10 @@ class Scheduler:
 
         Model-server slots are budgeted for the pass (:class:`ResourceBudget`): an execution whose
         model servers are busy waits for a later pass without using up an attempt; one whose model
-        servers (or workflow record) are unreachable uses up an attempt, and after
-        ``max_attempts`` attempts it returns to ``Created``.
+        servers (or workflow record) are unreachable uses up an attempt and is retried after a
+        growing delay (:meth:`deferRetry`), and after ``max_attempts`` attempts it returns to
+        ``Created``. Executions deferred after a transient failure are skipped until their delay
+        has passed.
 
         :return: number of executions taken
         """
@@ -196,8 +225,12 @@ class Scheduler:
             with self.lock:
                 if weid in self.jobs:
                     continue
+            if self.deferred(weid):
+                continue
             if rec.Attempts > self.config.max_attempts:
                 log.warning(f'{weid}: resources unavailable for {rec.Attempts} attempts, returning it to Created')
+                with self.lock:
+                    self.backoff.pop(weid, None)
                 try:
                     self.backend.setStatus(weid, 'Created')
                     self.backend.notifyOwner(weid)
@@ -215,6 +248,7 @@ class Scheduler:
                     self.backend.setAttempts(weid, rec.Attempts + 1)
                 except Exception:
                     log.exception(f'{weid}: could not increase the attempt count')
+                self.deferRetry(weid)
                 continue
             # a job thread only runs Scheduled executions: one whose status could not be changed
             # stays Pending and is considered again in the next pass
@@ -269,6 +303,12 @@ class Scheduler:
                                      timeout=self.jobTimeout(workflow))
             self.terminateLeftoverModelJobs(weid, workflow)
             log.warning(f'Workflow execution {weid} {result.status}' + (f' ({result.stopReason})' if result.stopReason else ''))
+            if result.status == 'Pending' and result.stopReason is None:
+                # no free model-server slot when the workflow started: retry later, not at once
+                self.deferRetry(weid)
+            elif result.status != 'Pending':
+                with self.lock:
+                    self.backoff.pop(weid, None)
             self.backend.setStatus(weid, result.status, keepAttempts=(result.status == 'Pending'))
             if result.status != 'Pending':
                 self.backend.notifyOwner(weid)
@@ -345,6 +385,7 @@ class Scheduler:
                 self.backend.setStatus(weid, 'Failed')
                 self.backend.notifyOwner(weid)
             else:
+                self.deferRetry(weid)
                 self.backend.setStatus(weid, 'Pending', keepAttempts=True)
         except Exception:
             # REST API unreachable: nothing more can be done from here, the record is recovered
