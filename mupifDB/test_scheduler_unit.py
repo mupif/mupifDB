@@ -216,3 +216,15 @@ def test_exec_script_other_pyro_error_fails(execScript):
     import Pyro5.errors
     err = Pyro5.errors.CommunicationError('connection to model server lost')
     assert execScript(fail=('initialize', err)) == (1, ['Running', 'Failed'])
+
+
+@pytest.mark.parametrize('exitCode,status', [(0, 'Finished'), (1, 'Failed'), (2, 'Pending'), (-9, 'Failed'), (-15, 'Failed'), (3, 'Failed'), (137, 'Failed')])
+def test_exit_code_mapping(exitCode, status):
+    """
+    Every exit code of the execution subprocess maps to a status other than ``Running``.
+
+    Regression for finding #3: codes other than 0, 1 and 2 (e.g. -9 when the workflow process is
+    killed) were ignored, leaving the execution in ``Running`` forever.
+    """
+    from mupifDB import workflowscheduler as ws
+    assert ws.statusForExitCode(exitCode) == status

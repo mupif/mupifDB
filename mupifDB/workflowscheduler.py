@@ -386,23 +386,35 @@ def executeWorkflow_inner2(we_id: str, we_rec, workflow_record) -> None:
         _mon.updateFinished(completed,we_id)
         # updateStatFinished(lock, schedulerStat, completed, we_id)
         # del runningJobs[we_id] # remove we_id from running jobs; for monitoring
-    log.info("Updating we_id %s status to %s" % (we_id, completed))
-    # set execution code to completed
-    if completed == 0:
-        log.warning("Workflow execution %s Finished" % we_id)
-        restApiControl.setExecutionStatus(we_id,'Finished')
-        my_email.sendEmailAboutExecutionStatus(we_id)
-        # return we_id, ExecutionResult.Finished # XXX ??
-    elif completed == 1:
-        log.warning("Workflow execution %s Failed" % we_id)
-        restApiControl.setExecutionStatus(we_id,'Failed')
-        my_email.sendEmailAboutExecutionStatus(we_id)
-        # return we_id, ExecutionResult.Failed # XXX ??
-    elif completed == 2:
+    status = statusForExitCode(completed)
+    log.info("Updating we_id %s status to %s (exit code %s)" % (we_id, status, completed))
+    if status == 'Pending':
         log.warning("Workflow execution %s could not be initialized due to lack of resources" % we_id)
         restApiControl.setExecutionStatus(we_id, 'Pending', revertPending=True)
     else:
-        pass
+        log.warning("Workflow execution %s %s" % (we_id, status))
+        restApiControl.setExecutionStatus(we_id, status)
+        my_email.sendEmailAboutExecutionStatus(we_id)
+
+
+def statusForExitCode(exitCode: int) -> Literal['Finished', 'Failed', 'Pending']:
+    """
+    Map the exit code of ``workflow_execution_script.py`` to the execution status to set.
+
+    The script exits with 0 when the workflow finished, 1 when it failed and 2 when a model
+    server had no free resources (see its module documentation). Every other code -- notably the
+    negative codes of a process killed by a signal (OOM killer, manual kill), or an interpreter
+    crash -- also means the workflow did not finish and is reported as ``Failed``, so that no
+    execution is ever left in ``Running``.
+
+    :param exitCode: return code of the execution subprocess (negative: killed by that signal)
+    :return: ``'Finished'``, ``'Failed'`` or ``'Pending'`` (retry later, the attempt count is kept)
+    """
+    if exitCode == 0:
+        return 'Finished'
+    if exitCode == 2:
+        return 'Pending'
+    return 'Failed'
 
 
 def executeWorkflow_copyInputs(we_id,workflow_record,tempDir,execScript) -> None:
