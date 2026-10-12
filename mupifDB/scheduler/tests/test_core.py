@@ -35,13 +35,15 @@ class FakeRunner:
     def __init__(self, logFile):
         """Use *logFile* as the log of every run."""
         self.outcomes = {}
+        self.timeouts = {}
         self.gate = None
         self.launched = []
         self.logFile = logFile
         self.lock = threading.Lock()
 
-    def run(self, job, workflow, onLaunch, storeLog):
+    def run(self, job, workflow, onLaunch, storeLog, timeout=0):
         """Behave like JobRunner.run for the configured outcome."""
+        self.timeouts[job.weid] = timeout
         outcome = self.outcomes.get(job.weid, 'Finished')
         if isinstance(outcome, Exception):
             raise outcome
@@ -315,3 +317,18 @@ def test_recovery_terminates_model_jobs_of_running_executions(env, monkeypatch):
     env.backend.addExecution('S1', status='Scheduled', loggerURI='PYRO:log-S1')
     env.scheduler.recoverInterruptedExecutions()
     assert env.cleanups == [(['CVUT.demo01'], 'PYRO:log-R1')]
+
+
+@pytest.mark.parametrize('workflowTimeout,default,expected', [(30, 0, 30.), (0, 600, 600.), (0, 0, 0.), (30, 600, 30.)])
+def test_job_timeout(env, workflowTimeout, default, expected):
+    """
+    An execution may run for the workflow's own Timeout, else for default_job_timeout (0: no limit) [S2].
+
+    The Timeout of the workflow metadata used to be ignored.
+    """
+    env.scheduler.config.default_job_timeout = default
+    env.backend.workflows[('wf', 1)].Timeout = workflowTimeout
+    env.backend.addExecution('E0')
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.runner.timeouts['E0'] == expected

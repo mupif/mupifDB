@@ -153,3 +153,11 @@ def test_status_for_exit_code():
     """Every code other than 0 (finished) and 2 (no resources) is a failure, signals included."""
     assert [statusForExitCode(c) for c in (0, 1, 2, -9, 137)] == ['Finished', 'Failed', 'Pending', 'Failed', 'Failed']
 
+
+
+def test_timeout_stops_the_workflow(runner, tmp_path):
+    """A workflow running longer than its timeout is stopped (with its child processes) and fails [S2]."""
+    t0 = time.time()
+    result = runner.run(Job(weid='hang', record=None), None, onLaunch=lambda: None, storeLog=lambda p: None, timeout=1)
+    assert (result.status, result.stopReason) == ('Failed', 'timeout')
+    assert time.time() - t0 < 1 + 0.5 + runner.config.kill_grace + 3

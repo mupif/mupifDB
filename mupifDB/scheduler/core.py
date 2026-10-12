@@ -259,7 +259,8 @@ class Scheduler:
                 launched = True
                 self.monitor.started(weid, rec.WorkflowID)
 
-            result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path))
+            result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path),
+                                     timeout=self.jobTimeout(workflow))
             self.terminateLeftoverModelJobs(weid, workflow)
             log.warning(f'Workflow execution {weid} {result.status}' + (f' ({result.stopReason})' if result.stopReason else ''))
             self.backend.setStatus(weid, result.status, keepAttempts=(result.status == 'Pending'))
@@ -275,6 +276,16 @@ class Scheduler:
         finally:
             with self.lock:
                 self.jobs.pop(weid, None)
+
+    def jobTimeout(self, workflow: Any) -> float:
+        """
+        Return the maximum run time of an execution of *workflow* in seconds (0: no limit).
+
+        The workflow's own ``Timeout`` (from its metadata) if it declares one, else the
+        ``default_job_timeout`` setting.
+        """
+        own = getattr(workflow, 'Timeout', 0) or 0
+        return float(own) if own > 0 else self.config.default_job_timeout
 
     def _recover(self, weid: str, launched: bool, permanent: bool) -> None:
         """

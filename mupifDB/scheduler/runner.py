@@ -22,6 +22,7 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -168,7 +169,7 @@ class JobRunner:
         env['MUPIFDB_SCHEDULER_PID'] = str(os.getpid())
         return env
 
-    def run(self, job: Job, workflowRecord: Any, onLaunch: Callable[[], None], storeLog: Callable[[Path], None]) -> JobResult:
+    def run(self, job: Job, workflowRecord: Any, onLaunch: Callable[[], None], storeLog: Callable[[Path], None], timeout: float = 0) -> JobResult:
         """
         Run an execution to its end.
 
@@ -183,6 +184,8 @@ class JobRunner:
         :param onLaunch: called just before the subprocess starts (sets the execution Running)
         :param storeLog: called with the log file when the subprocess has ended (log of the
                          subprocess with a header and a footer); errors are logged and ignored
+        :param timeout: maximum run time of the subprocess in seconds (0: no limit); when exceeded,
+                        the job is stopped with reason ``'timeout'`` and fails
         :return: outcome of the run
         :raises mupifDB.scheduler.staging.StagingError: if the workflow package cannot be used
         """
@@ -204,7 +207,7 @@ class JobRunner:
                 out.flush()
                 log.info(f'Executing {job.weid} in {workDir}')
                 job.process = subprocess.Popen(cmd, cwd=workDir, stdout=out, stderr=subprocess.STDOUT, env=self.environment(), start_new_session=True)
-                exitCode = self._wait(job)
+                exitCode = self._wait(job, timeout)
                 t1 = datetime.datetime.now()
                 dt = t1 - t0
                 stopped = f' (stopped by the scheduler: {job.stopReason})' if job.stopReason else ''
@@ -221,16 +224,21 @@ class JobRunner:
             return JobResult(status='Pending' if job.stopReason == 'shutdown' else 'Failed', exitCode=exitCode, stopReason=job.stopReason)
         return JobResult(status=statusForExitCode(exitCode), exitCode=exitCode)
 
-    def _wait(self, job: Job) -> int:
+    def _wait(self, job: Job, timeout: float = 0) -> int:
         """
-        Wait for the subprocess of *job*, terminating it when the job is asked to stop.
+        Wait for the subprocess of *job*, terminating it when the job is asked to stop or runs too long.
 
         :param job: job whose subprocess is running
+        :param timeout: maximum run time in seconds (0: no limit)
         :return: exit code of the subprocess
         """
         process = job.process
         assert process is not None
+        deadline = time.monotonic() + timeout if timeout > 0 else None
         while process.poll() is None:
+            if deadline is not None and time.monotonic() > deadline and not job.stopRequested.is_set():
+                log.warning(f'{job.weid}: run time exceeded {timeout} s')
+                job.stop('timeout')
             if job.stopRequested.wait(timeout=0.5):
                 log.warning(f'{job.weid}: stopping the workflow ({job.stopReason})')
                 killProcessGroup(process, self.config.kill_grace)
