@@ -3023,10 +3023,76 @@ def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:
 def dms_api_type_list(db: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     return list(GG.schema_get(db).model_dump().keys())
 
-@api_router.get('/EDM/{db}/{type}', tags=["EDM"])
-def dms_api_object_list(db: str, type: str, current_user: User_Model = Depends(get_current_authenticated_user)):
-    res=GG.db_get(db)[type].find()
-    return [str(r['_id']) for r in res]
+
+@api_router.get('/EDM/{db}/{type}', tags=["EDM"], response_model=models.EDMEntityCollectionResponse)
+def dms_api_object_list(
+    db: str,
+    type: str,
+    page: int = 1,
+    pageSize: int = 20,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.EDMEntityCollectionResponse:
+    
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+
+    collection = GG.db_get(db)[type]
+    skip = (page - 1) * pageSize
+
+    # 1. Fetch paginated EDM records
+    records = list(
+        collection.find({}, projection={"_id": 1, "meta": 1})
+        .skip(skip)
+        .limit(pageSize)
+    )
+    total_count = collection.count_documents({})
+
+    # 2. Extract execution IDs from meta
+    exec_id_keys = []
+    for r in records:
+        raw_id = (r.get("meta") or {}).get("execution")
+        if raw_id:
+            exec_id_keys.append(raw_id)
+            if isinstance(raw_id, str) and ObjectId.is_valid(raw_id):
+                exec_id_keys.append(ObjectId(raw_id))
+
+    # 3. Query the MuPIF database for EndDate
+    end_date_map = {}
+    if exec_id_keys:
+        exec_cursor = client.MuPIF.WorkflowExecutions.find(
+            {"_id": {"$in": exec_id_keys}},
+            projection={"_id": 1, "EndDate": 1}
+        )
+        for doc in exec_cursor:
+            end_date_map[str(doc["_id"])] = doc.get("EndDate")
+
+    # 4. Assemble response
+    collection_items = []
+    for r in records:
+        meta_dict = r.get("meta") or {}
+        exec_id_str = str(meta_dict.get("execution", "") or "")
+        collection_items.append(
+            models.EDMEntityCollectionRecord.model_validate({
+                'id': str(r['_id']),
+                'createdDate': end_date_map.get(exec_id_str),
+                'executionId': exec_id_str,
+                'meta': meta_dict,
+                'dbName': db,
+                'edmEntityType': type
+            })
+        )
+
+    return models.EDMEntityCollectionResponse(
+        collection=collection_items,
+        pagination=models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
+
 
 
 

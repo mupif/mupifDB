@@ -212,6 +212,30 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
             obj = edm.getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
+        elif object_type == 'mupif.PyroFile':
+            edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
+
+            file_id = edm_data.get('FileID', None)
+            if file_id is not None:
+                # load from hdf5 file
+                pfile, fn = client.getBinaryFileByID(file_id)
+                with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                    # full_path = "/home/stanislav/tmp/" + fn  # tempDir
+                    full_path = tempDir + "/" + fn
+                    f = open(full_path, 'wb')
+                    f.write(pfile)
+                    f.close()
+                    pf = mupif.PyroFile(
+                        filename=full_path,
+                        mode='rb',
+                        dataID=mupif.DataID[edm_data['DataID']]
+                    )
+                    getDaemon().register(pf)
+                    app.set(pf, app_obj_id)
+
+            # obj = edm.getEDMPyroFileInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            # app.set(obj, app_obj_id)
+
         elif object_type.startswith('mupif.DataList') and edm_list is True:
             datalist_object_type = object_type.replace(']', '').split('[')[1]
             obj_list = []
