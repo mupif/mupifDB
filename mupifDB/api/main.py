@@ -88,7 +88,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 MONITOR_SPA_PATH = os.environ.get('MONITOR_SPA_PATH', '/var/lib/mupif/monitor/dist/spa')
 MONITOR_INDEX_PATH = os.path.join(MONITOR_SPA_PATH, "index.html")
 
-EDM_VISUALIZER_PATH = os.environ.get('EDM_VISUALIZER_PATH', '/var/lib/mupif/monitor/EDMVisualizer/dist')
+EDM_VISUALIZER_PATH = os.environ.get('EDM_VISUALIZER_PATH', '/var/lib/mupif/EDMVisualizer/dist')
 EDM_VISUALIZER_INDEX_PATH = os.path.join(EDM_VISUALIZER_PATH, "index.html")
 
 # --- MongoDB Connection ---
