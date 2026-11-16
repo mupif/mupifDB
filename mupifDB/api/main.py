@@ -88,6 +88,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 MONITOR_SPA_PATH = os.environ.get('MONITOR_SPA_PATH', '/var/lib/mupif/monitor/dist/spa')
 MONITOR_INDEX_PATH = os.path.join(MONITOR_SPA_PATH, "index.html")
 
+EDM_VISUALIZER_PATH = os.environ.get('EDM_VISUALIZER_PATH', '/var/lib/mupif/monitor/EDMVisualizer/dist')
+EDM_VISUALIZER_INDEX_PATH = os.path.join(EDM_VISUALIZER_PATH, "index.html")
+
 # --- MongoDB Connection ---
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
 db = client.MuPIF
@@ -497,6 +500,7 @@ api_router = APIRouter()
 base_router = APIRouter()
 home_router = APIRouter()
 monitor_router = APIRouter()
+edm_visualizer_router = APIRouter()
 
 
 # --------------------------------------------------
@@ -2311,6 +2315,18 @@ def edm_find(db: str, type: str, data: M_FindParams, current_user: User_Model = 
 
 
 # --------------------------------------------------
+# EDM Visualizer
+# --------------------------------------------------
+
+@edm_visualizer_router.get("/", response_class=HTMLResponse, tags=["EDM Visualizer User Interface"], include_in_schema=False)
+def edm_visualizer():
+    f = open(EDM_VISUALIZER_INDEX_PATH, 'r')
+    content = f.read()
+    f.close()
+    return HTMLResponse(content=content, status_code=200)
+
+
+# --------------------------------------------------
 # EDM
 # --------------------------------------------------
 
@@ -3173,6 +3189,7 @@ app.include_router(api_router, prefix="/api")
 app.include_router(base_router, prefix="")
 app.include_router(home_router, prefix="/home")
 app.include_router(monitor_router, prefix="/mon")
+app.include_router(edm_visualizer_router, prefix="/edm_visualizer")
 
 
 
