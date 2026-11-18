@@ -378,3 +378,7 @@ class EDMEntityCollectionRecord(BaseModel):
 class EDMEntityCollectionResponse(BaseModel):
     collection: List[EDMEntityCollectionRecord]
     pagination: Pagination_Model
+
+class IdsCollectionResponse(BaseModel):
+    collection: List[str]
+    pagination: Pagination_Model

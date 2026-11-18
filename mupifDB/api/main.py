@@ -2952,6 +2952,57 @@ def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir), current_user
     # return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
 
 
+@api_router.get(
+    '/EDM/{edmDb}/{type}/{id}/executions_using_entity',
+    tags=["EDM"],
+    response_model=models.ExecutionIdsCollectionResponse
+)
+def dms_api_get_executions_using_entity(
+    edmDb: str,
+    type: str,
+    id: str,
+    page: int = 1,
+    pageSize: int = 100,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.IdsCollectionResponse:
+    
+    query = {
+        "EDMMapping": {
+            "$elemMatch": {
+                "DBName": edmDb,
+                "EDMEntity": type,
+                "$or": [
+                    {"id": id},
+                    {"ids": id}
+                ],
+                "createNew": {"$in": [None]},
+                "createFrom": {"$in": [None]}
+            }
+        }
+    }
+
+    total_count = db.WorkflowExecutions.count_documents(query)
+
+    cursor = (
+        db.WorkflowExecutions
+        .find(query, {"_id": 1})
+        .sort("CreatedDate", -1)
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+    )
+
+    execution_ids = [str(doc["_id"]) for doc in cursor]
+
+    return models.IdsCollectionResponse(
+        collection=execution_ids,
+        pagination=models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
+
+
 #
 # FIXME: paths is a space-delimited array
 #
