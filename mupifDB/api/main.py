@@ -2955,7 +2955,7 @@ def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir), current_user
 @api_router.get(
     '/EDM/{edmDb}/{type}/{id}/executions_using_entity',
     tags=["EDM"],
-    response_model=models.ExecutionIdsCollectionResponse
+    response_model=models.IdsCollectionResponse
 )
 def dms_api_get_executions_using_entity(
     edmDb: str,
