@@ -282,10 +282,16 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 # Files
 # --------------------------------------------------
 
+from email.message import Message
+
 def getBinaryFileByID(fid) -> Tuple[bytes, str]:
     response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders(), timeout=(4.0, 600.0))
-    d = response.headers['Content-Disposition']
-    filename = re.findall("filename=(.+)", d)[0]
+    d = response.headers.get('Content-Disposition', '')
+    
+    msg = Message()
+    msg['content-disposition'] = d
+    filename = msg.get_filename()
+    
     return response.content, filename
 
 def uploadBinaryFile(binary_data) -> str:

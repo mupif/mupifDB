@@ -1615,6 +1615,9 @@ def checkInput(execution, name, obj_id, object_type, data_id, edm_path=None, edm
                     if object_type == 'mupif.String':
                         if edm_data.get('value', None) is not None:
                             return True
+                    if object_type == 'mupif.PyroFile':
+                        if edm_data.get('FileID', None) is not None:
+                            return True
         return False
 
     else:
