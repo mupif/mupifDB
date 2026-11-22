@@ -2086,14 +2086,18 @@ def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
 
 
 
+#: fields of the scheduler statistics stored in the database (document of db.Stat, key "scheduler");
+#: the scheduler copies them there (PATCH below), GET returns them
+SCHEDULER_STAT_KEYS = ["runningTasks", "scheduledTasks", "load", "processedTasks", "waitingTasks", "pendingTasks"]
+
+
 @api_router.get("/scheduler_statistics", tags=["Stats"])
 @api_router.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Stat
     output = {}
     for s in table.find():
-        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
-        for k in keys:
+        for k in SCHEDULER_STAT_KEYS:
             if k in s["scheduler"]:
                 output[k] = s["scheduler"][k]
         break
@@ -2101,18 +2105,34 @@ def get_scheduler_statistics(current_user: User_Model = Depends(get_current_auth
 
 
 class M_ModifyStatistics(BaseModel):
-    key: str
-    value: int
+    """
+    Change of the scheduler statistics in the database.
+
+    Either one field (*key*, *value*; the original form) or several at once (*values*). The
+    scheduler sends all fields at once, so that the stored statistics are always consistent (with
+    one request per field, a failure in between left some fields stale) and the copy costs one
+    request instead of four.
+    """
+    #: field name with the "scheduler." prefix, e.g. "scheduler.runningTasks"
+    key: Optional[str] = None
+    value: Optional[int] = None
+    #: several fields at once: field name with the "scheduler." prefix -> value
+    values: Optional[Dict[str, int]] = None
 
 
 @api_router.patch("/scheduler_statistics", tags=["Stats"])
 @api_router.patch("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     # perms.notRemote(request,'modifying scheduler statistics')
-    if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
-        res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
-        return True
-    return False
+    allowed = {"scheduler." + k for k in SCHEDULER_STAT_KEYS}
+    changes = dict(data.values or {})
+    if data.key is not None and data.value is not None:
+        changes[data.key] = data.value
+    # unknown fields are ignored, as before; nothing is stored unless all of them are known
+    if not changes or not set(changes) <= allowed:
+        return False
+    db.Stat.update_one({}, {"$set": {k: int(v) for k, v in changes.items()}})
+    return True
 
 
 @api_router.get("/status2", tags=["Stats"])

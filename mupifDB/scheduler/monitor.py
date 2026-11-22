@@ -73,6 +73,11 @@ class SchedulerMonitor:
         self.statFile = statFile
         self.onStop = onStop
         self.lock = threading.RLock()
+        #: serializes the copies to the database (see :meth:`syncDb`)
+        self._syncLock = threading.Lock()
+        #: number of changes of the statistics so far, and the number already copied to the database
+        self._version = 0
+        self._syncedVersion = -1
         self.stat = SchedulerStat()
         SchedulerStat.capacity = capacity
         if statFile and Path(statFile).is_file():
@@ -107,14 +112,16 @@ class SchedulerMonitor:
             # would be counted twice as waiting (pending and taken) until the next sample()
             self.stat.tasks.pending = max(0, self.stat.tasks.pending - 1)
             self.stat.countEvent('pooled')
-            self.stat.sync()
+            self._changed()
+        self.syncDb()
 
     def dropped(self, weid: str) -> None:
         """Count a taken execution that ended before its workflow process was started."""
         with self.lock:
             self.stat.advanceTime()
             self.stat.tasks.scheduled = max(0, self.stat.tasks.scheduled - 1)
-            self.stat.sync()
+            self._changed()
+        self.syncDb()
 
     def started(self, weid: str, wid: str) -> None:
         """Count a workflow process being started for a taken execution."""
@@ -123,7 +130,8 @@ class SchedulerMonitor:
             self.stat.tasks.scheduled = max(0, self.stat.tasks.scheduled - 1)
             self.stat.tasks.running += 1
             self.stat.lastJobNew(SchedulerStat.JobInfo(we_id=weid, wid=wid, status='Running', started=datetime.datetime.now(), finished=None))
-            self.stat.sync()
+            self._changed()
+        self.syncDb()
 
     def finished(self, weid: str, status: str) -> None:
         """
@@ -146,15 +154,16 @@ class SchedulerMonitor:
                     self.stat.tasks.failed += 1
                     self.stat.countEvent('failed')
             self.stat.lastJobDone(we_id=weid, status=status, finished=datetime.datetime.now())
-            self.stat.sync()
+            self._changed()
+        self.syncDb()
 
     def sample(self, counts: dict[str, int]) -> None:
         """
         Store the numbers of executions in the database by status (once per scheduler iteration).
 
         Gives the queue length (``Pending``), the waiting executions (queue + taken by this
-        scheduler) and the ``Running`` executions according to the database. The levels are
-        recorded in the history by the following :meth:`persist`.
+        scheduler) and the ``Running`` executions according to the database. They are copied to the
+        database by the following :meth:`persist`.
 
         :param counts: number of executions by status, see :meth:`ExecutionBackend.statusCounts`
         """
@@ -162,18 +171,51 @@ class SchedulerMonitor:
             self.stat.advanceTime()
             self.stat.tasks.pending = counts.get('Pending', 0)
             self.stat.tasks.dbRunning = counts.get('Running', 0)
-            self.stat.updateGauges()
+            self._changed()
 
     def persist(self) -> None:
-        """Write the statistics to the statistics file (if any) and copy them to the database."""
+        """
+        Write the statistics to the statistics file (if any) and copy them to the database.
+
+        Called every scheduler iteration: the copy in the database is refreshed even without
+        changes, which also repairs it after a failed copy.
+        """
         with self.lock:
             self.stat.advanceTime()
-            self.stat.sync()
+            self._changed()
             if self.statFile:
                 try:
                     self.stat.save_to_file(self.statFile)
                 except Exception:
                     log.exception(f'Could not write the statistics file {self.statFile}')
+        self.syncDb()
+
+    def _changed(self) -> None:
+        """
+        Note a change of the statistics (call with :attr:`lock` held): update the derived levels
+        and the peaks in the history, and mark the statistics for copying by :meth:`syncDb`.
+        """
+        self.stat.updateGauges()
+        self._version += 1
+
+    def syncDb(self) -> None:
+        """
+        Copy the latest statistics to the database, unless they are there already; never raises.
+
+        Called after each change *without* holding :attr:`lock`: the REST request may take
+        seconds (timeouts), and while it was made under the lock it blocked the other job threads
+        and :meth:`getStatistics`, which then timed out in the monitoring pages. Copies are made
+        one at a time (:attr:`_syncLock`) and each takes the newest statistics, so an older
+        snapshot can never overwrite a newer one; threads which find their change already copied
+        by another one return at once.
+        """
+        with self._syncLock:
+            with self.lock:
+                if self._version == self._syncedVersion:
+                    return
+                version, values = self._version, self.stat.dbValues()
+            if SchedulerStat.storeInDb(values):
+                self._syncedVersion = version
 
     # --- Pyro API --------------------------------------------------------------------------------
 

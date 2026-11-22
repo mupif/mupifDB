@@ -25,7 +25,7 @@ class SchedulerStat(mp.BareData):
     Statistics of the scheduler: current counters, last executions, an hourly 48 h history and a 2 h history by minutes.
 
     Persisted as JSON across restarts (:meth:`save_to_file`, :meth:`load_from_file`) and copied to
-    the database by :meth:`sync`. Not thread-safe: :class:`SchedulerMonitor` serializes access.
+    the database (:meth:`dbValues`, :meth:`storeInDb`). Not thread-safe: :class:`SchedulerMonitor` serializes access.
     """
 
     #: number of executions that can run at once; the load is the percentage of it in use. Set by
@@ -249,19 +249,25 @@ class SchedulerStat(mp.BareData):
         for h in self.histories():
             for name,value in self.levels().items(): h.recordLevel(name,value)
 
-    def sync(self):
-        """Update the gauges and copy the counters to the database; best effort, never raises."""
-        self.updateGauges()
+    def dbValues(self) -> dict:
+        """Return the counters copied to the database (``PATCH scheduler_statistics``), as keyword arguments of ``setStatScheduler``."""
+        return dict(runningTasks=self.tasks.running, scheduledTasks=self.tasks.scheduled, processedTasks=self.tasks.processed,
+                    load=int(self.load), waitingTasks=self.tasks.waiting, pendingTasks=self.tasks.pending)
+
+    @staticmethod
+    def storeInDb(values: dict) -> bool:
+        """
+        Copy counters (from :meth:`dbValues`) to the database in one request; best effort, never raises.
+
+        :return: whether they were stored
+        """
         try:
-            restApiControl.setStatScheduler(
-                runningTasks=self.tasks.running,
-                scheduledTasks=self.tasks.scheduled,
-                processedTasks=self.tasks.processed,
-                load=self.load
-            )
+            restApiControl.setStatScheduler(**values)
+            return True
         except Exception:
             # statistics must not break scheduling (a failure here used to end the main loop)
             log.exception('Could not store scheduler statistics in the database')
+            return False
 
     @staticmethod
     def load_from_file(f):

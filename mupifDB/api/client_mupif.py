@@ -376,15 +376,17 @@ def getStatScheduler():
 def setStatScheduler(*args, session=None, **kw):
     return updateStatScheduler(*args, **kw)
 
-def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
-    if runningTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.runningTasks", "value": _dump(runningTasks)}, headers=getRequestHeaders())
-    if scheduledTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.scheduledTasks", "value": _dump(scheduledTasks)}, headers=getRequestHeaders())
-    if load is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.load", "value": _dump(load)}, headers=getRequestHeaders())
-    if processedTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.processedTasks", "value": _dump(processedTasks)}, headers=getRequestHeaders())
+def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, waitingTasks=None, pendingTasks=None):
+    """
+    Store the scheduler statistics in the database, all given fields in one request (fields that are None are left unchanged).
+
+    Needs an API which accepts ``values`` in ``PATCH scheduler_statistics`` (same version of mupifDB).
+    """
+    given = dict(runningTasks=runningTasks, scheduledTasks=scheduledTasks, load=load, processedTasks=processedTasks,
+                 waitingTasks=waitingTasks, pendingTasks=pendingTasks)
+    values = {f"scheduler.{k}": _dump(v) for k, v in given.items() if v is not None}
+    if values:
+        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"values": values}, headers=getRequestHeaders())
 
 
 # --------------------------------------------------

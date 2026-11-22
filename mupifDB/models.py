@@ -242,6 +242,10 @@ class MupifDBStatus_Model(StrictBase):
             processedTasks: int=0
             runningTasks:   int=0
             scheduledTasks: int=0
+            #: executions waiting to run (database queue + taken by the scheduler, not started)
+            waitingTasks:   int=0
+            #: executions in the database queue (Pending)
+            pendingTasks:   int=0
         scheduler: SchedulerStat_Model=SchedulerStat_Model()
     class ExecutionStatistics_Model(StrictBase):
         totalExecutions:    int=0

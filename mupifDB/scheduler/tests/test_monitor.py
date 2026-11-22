@@ -160,3 +160,54 @@ def test_sample_and_taken_execution_is_not_counted_twice(synced):
     assert (m.stat.tasks.pending, m.stat.tasks.scheduled, m.stat.tasks.waiting) == (2, 1, 3)
     m.started('E1', 'wf')
     assert (m.stat.tasks.waiting, m.stat.tasks.running) == (2, 1)
+
+
+def test_database_copy_is_one_request_with_all_fields(synced):
+    """The statistics are copied to the database with all fields at once (they used to be four requests)."""
+    m = SchedulerMonitor(None, capacity=4)
+    m.sample({'Pending': 2, 'Running': 0})
+    m.enqueued('E1')
+    assert synced[-1] == dict(runningTasks=0, scheduledTasks=1, processedTasks=0, load=0, waitingTasks=2, pendingTasks=1)
+
+
+def test_slow_database_copy_does_not_block_statistics(monkeypatch):
+    """
+    While the statistics are being copied to the database, they can be read and updated.
+
+    The copy used to be made under the monitor's lock: a slow REST API blocked the job threads and
+    getStatistics(), which then timed out in the monitoring pages (scheduler shown as unreachable).
+    """
+    import threading
+    from mupifDB import restApiControl
+    entered, release, made = threading.Event(), threading.Event(), []
+
+    def slow(**kw):
+        made.append(kw)
+        entered.set()
+        assert release.wait(10)
+    monkeypatch.setattr(restApiControl, 'setStatScheduler', slow)
+    m = SchedulerMonitor(None, capacity=4)
+    t = threading.Thread(target=m.enqueued, args=('E1',))
+    t.start()
+    assert entered.wait(10)                         # the copy hangs in the REST call
+    assert m.getStatistics()['scheduledTasks'] == 1  # not blocked
+    t2 = threading.Thread(target=m.started, args=('E1', 'wf'))
+    t2.start()
+    for _ in range(100):                            # the counter is updated before the copy
+        if m.stat.tasks.running == 1:
+            break
+        threading.Event().wait(0.01)
+    assert m.stat.tasks.running == 1
+    release.set()
+    t.join(10)
+    t2.join(10)
+    assert made[-1]['runningTasks'] == 1            # the newest statistics were copied last
+
+
+def test_unchanged_statistics_are_not_copied_again(synced):
+    """A thread whose change was already copied by another one does not copy it again."""
+    m = SchedulerMonitor(None, capacity=4)
+    m.enqueued('E1')
+    n = len(synced)
+    m.syncDb()
+    assert len(synced) == n
