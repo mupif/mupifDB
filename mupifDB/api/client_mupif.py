@@ -223,7 +223,7 @@ def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | 
     query = f"{API_PREFIX}executions?noparam"
     if workflow_version is not None and workflow_version < 0:
         workflow_version = None
-    for n, a in [('num_limit', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status), ('sort', sort)]:
+    for n, a in [('pageSize', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status)]:
         if a is not None:
             query += f"&{n}={str(a)}"
     return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)['collection']]
@@ -329,6 +329,8 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 # --------------------------------------------------
 # Files
 # --------------------------------------------------
+
+from email.message import Message
 
 def fileNameFromContentDisposition(value: str) -> str:
     """

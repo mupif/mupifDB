@@ -88,6 +88,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 MONITOR_SPA_PATH = os.environ.get('MONITOR_SPA_PATH', '/var/lib/mupif/monitor/dist/spa')
 MONITOR_INDEX_PATH = os.path.join(MONITOR_SPA_PATH, "index.html")
 
+EDM_VISUALIZER_PATH = os.environ.get('EDM_VISUALIZER_PATH', '/var/lib/mupif/EDMVisualizer/dist')
+EDM_VISUALIZER_INDEX_PATH = os.path.join(EDM_VISUALIZER_PATH, "index.html")
+
 # --- MongoDB Connection ---
 client = MongoClient("mongodb://localhost:"+os.environ.get('MUPIFDB_MONGODB_PORT','27017'))
 db = client.MuPIF
@@ -497,6 +500,7 @@ api_router = APIRouter()
 base_router = APIRouter()
 home_router = APIRouter()
 monitor_router = APIRouter()
+edm_visualizer_router = APIRouter()
 
 
 # --------------------------------------------------
@@ -1623,6 +1627,9 @@ def checkInput(execution, name, obj_id, object_type, data_id, edm_path=None, edm
                     if object_type == 'mupif.String':
                         if edm_data.get('value', None) is not None:
                             return True
+                    if object_type == 'mupif.PyroFile':
+                        if edm_data.get('FileID', None) is not None:
+                            return True
         return False
 
     else:
@@ -2323,6 +2330,18 @@ def edm_find(db: str, type: str, data: M_FindParams, current_user: User_Model = 
 
 
 # --------------------------------------------------
+# EDM Visualizer
+# --------------------------------------------------
+
+@edm_visualizer_router.get("/", response_class=HTMLResponse, tags=["EDM Visualizer User Interface"], include_in_schema=False)
+def edm_visualizer():
+    f = open(EDM_VISUALIZER_INDEX_PATH, 'r')
+    content = f.read()
+    f.close()
+    return HTMLResponse(content=content, status_code=200)
+
+
+# --------------------------------------------------
 # EDM
 # --------------------------------------------------
 
@@ -2948,6 +2967,57 @@ def dms_api_blob_get(db: str, uid: str, tdir=Depends(get_temp_dir), current_user
     # return fastapi.responses.StreamingResponse(iterfile(),media_type="application/octet-stream")
 
 
+@api_router.get(
+    '/EDM/{edmDb}/{type}/{id}/executions_using_entity',
+    tags=["EDM"],
+    response_model=models.IdsCollectionResponse
+)
+def dms_api_get_executions_using_entity(
+    edmDb: str,
+    type: str,
+    id: str,
+    page: int = 1,
+    pageSize: int = 100,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.IdsCollectionResponse:
+    
+    query = {
+        "EDMMapping": {
+            "$elemMatch": {
+                "DBName": edmDb,
+                "EDMEntity": type,
+                "$or": [
+                    {"id": id},
+                    {"ids": id}
+                ],
+                "createNew": {"$in": [None]},
+                "createFrom": {"$in": [None]}
+            }
+        }
+    }
+
+    total_count = db.WorkflowExecutions.count_documents(query)
+
+    cursor = (
+        db.WorkflowExecutions
+        .find(query, {"_id": 1})
+        .sort("CreatedDate", -1)
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+    )
+
+    execution_ids = [str(doc["_id"]) for doc in cursor]
+
+    return models.IdsCollectionResponse(
+        collection=execution_ids,
+        pagination=models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
+
+
 #
 # FIXME: paths is a space-delimited array
 #
@@ -3035,10 +3105,76 @@ def dms_api_path_get(db:str,type:str,id:str,path: Optional[str]=None, max_level:
 def dms_api_type_list(db: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     return list(GG.schema_get(db).model_dump().keys())
 
-@api_router.get('/EDM/{db}/{type}', tags=["EDM"])
-def dms_api_object_list(db: str, type: str, current_user: User_Model = Depends(get_current_authenticated_user)):
-    res=GG.db_get(db)[type].find()
-    return [str(r['_id']) for r in res]
+
+@api_router.get('/EDM/{db}/{type}', tags=["EDM"], response_model=models.EDMEntityCollectionResponse)
+def dms_api_object_list(
+    db: str,
+    type: str,
+    page: int = 1,
+    pageSize: int = 20,
+    current_user: User_Model = Depends(get_current_authenticated_user)
+) -> models.EDMEntityCollectionResponse:
+    
+    if page < 1:
+        page = 1
+    if pageSize < 1:
+        pageSize = 20
+
+    collection = GG.db_get(db)[type]
+    skip = (page - 1) * pageSize
+
+    # 1. Fetch paginated EDM records
+    records = list(
+        collection.find({}, projection={"_id": 1, "meta": 1})
+        .skip(skip)
+        .limit(pageSize)
+    )
+    total_count = collection.count_documents({})
+
+    # 2. Extract execution IDs from meta
+    exec_id_keys = []
+    for r in records:
+        raw_id = (r.get("meta") or {}).get("execution")
+        if raw_id:
+            exec_id_keys.append(raw_id)
+            if isinstance(raw_id, str) and ObjectId.is_valid(raw_id):
+                exec_id_keys.append(ObjectId(raw_id))
+
+    # 3. Query the MuPIF database for EndDate
+    end_date_map = {}
+    if exec_id_keys:
+        exec_cursor = client.MuPIF.WorkflowExecutions.find(
+            {"_id": {"$in": exec_id_keys}},
+            projection={"_id": 1, "EndDate": 1}
+        )
+        for doc in exec_cursor:
+            end_date_map[str(doc["_id"])] = doc.get("EndDate")
+
+    # 4. Assemble response
+    collection_items = []
+    for r in records:
+        meta_dict = r.get("meta") or {}
+        exec_id_str = str(meta_dict.get("execution", "") or "")
+        collection_items.append(
+            models.EDMEntityCollectionRecord.model_validate({
+                'id': str(r['_id']),
+                'createdDate': end_date_map.get(exec_id_str),
+                'executionId': exec_id_str,
+                'meta': meta_dict,
+                'dbName': db,
+                'edmEntityType': type
+            })
+        )
+
+    return models.EDMEntityCollectionResponse(
+        collection=collection_items,
+        pagination=models.Pagination_Model(
+            page=page,
+            pageSize=pageSize,
+            totalCount=total_count
+        )
+    )
+
 
 
 
@@ -3119,6 +3255,7 @@ app.include_router(api_router, prefix="/api")
 app.include_router(base_router, prefix="")
 app.include_router(home_router, prefix="/home")
 app.include_router(monitor_router, prefix="/mon")
+app.include_router(edm_visualizer_router, prefix="/edm_visualizer")
 
 
 

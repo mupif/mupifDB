@@ -365,3 +365,21 @@ class UserEntityResponse(BaseModel):
 class UserCollectionResponse(BaseModel):
     collection: List[User_Model]
     pagination: Pagination_Model
+
+# EDM
+
+class EDMEntityCollectionRecord(BaseModel):
+    id: str
+    createdDate: str | None
+    executionId: str | None
+    meta: Dict[str, Any]
+    dbName: str
+    edmEntityType: str
+
+class EDMEntityCollectionResponse(BaseModel):
+    collection: List[EDMEntityCollectionRecord]
+    pagination: Pagination_Model
+
+class IdsCollectionResponse(BaseModel):
+    collection: List[str]
+    pagination: Pagination_Model

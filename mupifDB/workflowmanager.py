@@ -212,6 +212,30 @@ def mapInput(app, eid, name, obj_id, app_obj_id, object_type, data_id, linked_ou
             obj = edm.getEDMTemporalPropertyInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
             app.set(obj, app_obj_id)
 
+        elif object_type == 'mupif.PyroFile':
+            edm_data = client.getEDMData(edm_dbname, edm_entity, edm_id, object_path)
+
+            file_id = edm_data.get('FileID', None)
+            if file_id is not None:
+                # load from hdf5 file
+                pfile, fn = client.getBinaryFileByID(file_id)
+                with tempfile.TemporaryDirectory(dir="/tmp", prefix='mupifDB') as tempDir:
+                    # full_path = "/home/stanislav/tmp/" + fn  # tempDir
+                    full_path = tempDir + "/" + fn
+                    f = open(full_path, 'wb')
+                    f.write(pfile)
+                    f.close()
+                    pf = mupif.PyroFile(
+                        filename=full_path,
+                        mode='rb',
+                        dataID=mupif.DataID[edm_data['DataID']]
+                    )
+                    getDaemon().register(pf)
+                    app.set(pf, app_obj_id)
+
+            # obj = edm.getEDMPyroFileInstance(edm_data=edm_data, data_id=data_id, value_type=value_type)
+            # app.set(obj, app_obj_id)
+
         elif object_type.startswith('mupif.DataList') and edm_list is True:
             datalist_object_type = object_type.replace(']', '').split('[')[1]
             obj_list = []
@@ -540,18 +564,17 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, edm_path=None,
                 full_path = tempDir + "/file.h5"
                 prop.saveHdf5(full_path)
                 if edm_path is not None:
-                    raise NotImplementedError('Model-based output array mapping not yet implemented for EDM')
                     splitted = edm_path.split('.', 1)
                     base_object_name = splitted[0]
                     object_path = splitted[1]
                     # find base object info
                     info = {}
                     for i in edm_base_objects:
-                        if i['Name'] == base_object_name:
+                        if i.Name == base_object_name:
                             info = i
                     fileID = None
                     with open(full_path, 'rb') as f:
-                        fileID = client.uploadEDMBinaryFile(info.get('DBName', ''), f)
+                        fileID = client.uploadEDMBinaryFile(info.DBName, f)
                         f.close()
                     if fileID is not None:
                         data = {
@@ -561,9 +584,9 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, edm_path=None,
                             "DataID": prop.propID.name
                         }
                         if edm_list is True:
-                            setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
+                            setEDMDataToList(info.DBName, info.EDMEntity, info.ids, object_path, data=data)
                         else:
-                            client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                            client.setEDMData(info.DBName, info.EDMEntity, info.id, object_path, data=data)
                     else:
                         raise ConnectionError("hdf5 file was not saved")
 
@@ -581,63 +604,58 @@ def mapOutput(app, eid, name, obj_id, data_id, time, object_type, edm_path=None,
         prop = app.get(mupif.DataID[data_id], time, obj_id)
 
         if edm_path is not None:
-            raise NotImplementedError('Model-based output TemporalProperty mapping not yet implemented for EDM')
             splitted = edm_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
             # find base object info
             info = {}
             for i in edm_base_objects:
-                if i['Name'] == base_object_name:
+                if i.Name == base_object_name:
                     info = i
             data = prop.to_db_dict(dialect='edm')
             if edm_list is True:
-                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
+                setEDMDataToList(info.DBName, info.EDMEntity, info.ids, object_path, data=data)
             else:
-                client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                client.setEDMData(info.DBName, info.EDMEntity, info.id, object_path, data=data)
         else:
             client.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
     elif object_type == 'mupif.String':
         prop = app.get(mupif.DataID[data_id], time, obj_id)
         if edm_path is not None:
-            raise NotImplementedError('Model-based output string mapping not yet implemented for EDM')
             splitted = edm_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
             # find base object info
             info = {}
             for i in edm_base_objects:
-                if i['Name'] == base_object_name:
+                if i.Name == base_object_name:
                     info = i
             # set the desired object
             data = prop.to_db_dict(dialect='edm')
             if edm_list is True:
-                setEDMDataToList(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('ids', []), object_path, data=data)
+                setEDMDataToList(info.DBName, info.EDMEntity, info.ids, object_path, data=data)
             else:
-                client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), info.get('id', ''), object_path, data=data)
+                client.setEDMData(info.DBName, info.EDMEntity, info.id, object_path, data=data)
         else:
             client.setExecutionOutputObject(eid, name, obj_id, prop.to_db_dict())
 
     elif object_type.startswith('mupif.DataList'):
         dl = app.get(mupif.DataID[data_id], time, obj_id)
         if edm_path is not None and edm_list is True:
-            raise NotImplementedError('Model-based output DataList mapping not yet implemented for EDM')
             splitted = edm_path.split('.', 1)
             base_object_name = splitted[0]
             object_path = splitted[1]
             # find base object info
             info = {}
             for i in edm_base_objects:
-                if i['Name'] == base_object_name:
+                if i.Name == base_object_name:
                     info = i
-            ids = info.get('ids', [])
-            lids = len(ids)
-            lobjs = len(dl.objs)
+            ids = info.ids
             if len(ids) == len(dl.objs):
                 for idx in range(0, len(ids)):
                     data = dl.objs[idx].to_db_dict(dialect='edm')
-                    client.setEDMData(info.get('DBName', ''), info.get('EDMEntity', ''), ids[idx], object_path, data=data)
+                    client.setEDMData(info.DBName, info.EDMEntity, ids[idx], object_path, data=data)
             else:
                 raise ValueError('The length of the DataList does not match the length of the EDM objects list. (%d x %s)' % (len(ids), len(dl.objs)))
         else:

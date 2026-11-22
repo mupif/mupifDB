@@ -36,3 +36,9 @@ def getEDMStringInstance(edm_data, data_id, value_type) -> mupif.String:
 def getEDMTemporalPropertyInstance(edm_data, data_id, value_type) -> mupif.TemporalProperty:
     obj = mupif.DbDictable.from_db_dict(edm_data, dialect='edm')
     return obj
+
+
+def getEDMPyroFileInstance(edm_data, data_id, value_type) -> mupif.PyroFile:
+    
+    obj = mupif.DbDictable.from_db_dict(edm_data, dialect='edm')
+    return obj

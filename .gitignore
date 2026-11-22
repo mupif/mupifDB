@@ -8,3 +8,4 @@ __pycache__
 mupifDB/dev/*
 mupifDB/dev_configs/*
 mupifDB/ui/*
+api_auth_*.json
