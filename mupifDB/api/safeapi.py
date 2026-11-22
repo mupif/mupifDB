@@ -28,6 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from mupifDB.api.execstats import executionStatusCounts
+
 mongoClient = pymongo.MongoClient("mongodb://localhost:27017")
 
 
@@ -68,6 +70,18 @@ def get_status2():
 def get_scheduler_status2():
     ns = mp.pyroutil.connectNameserver()
     return mp.monitor.schedulerInfo(ns)
+
+
+@app.get("/execution-status2/", tags=["Stats"])
+@cache(expire=2)
+def get_execution_status2():
+    """
+    Numbers of workflow executions by status (total, created, pending, scheduled, running, finished, failed).
+
+    Aggregate counts only (no IDs, workflows or users), so they can be shown by the monitoring
+    pages without authentication, like the other endpoints of this API.
+    """
+    return executionStatusCounts(mongoClient.MuPIF)
 
 
 @app.get("/ns-status2/", tags=["Stats"])

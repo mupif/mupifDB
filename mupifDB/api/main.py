@@ -22,6 +22,7 @@ from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthoriz
 from fastapi.staticfiles import StaticFiles
 
 from pymongo import MongoClient
+from mupifDB.api.execstats import executionStatusCounts
 import tempfile
 import zipfile
 import importlib
@@ -2021,24 +2022,7 @@ def get_status(current_user: User_Model = Depends(get_current_authenticated_user
 
 @api_router.get("/execution_statistics", tags=["Stats"])
 def get_execution_statistics(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
-    res = client.MuPIF.WorkflowExecutions.aggregate([
-        {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
-    ])
-    vals = {}
-    tot = 0
-    for r in res:
-        vals[r['_id']] = r['count']
-        tot += r['count']
-
-    return models.MupifDBStatus_Model.ExecutionStatistics_Model(
-        totalExecutions = tot,
-        finishedExecutions = vals.get('Finished', 0),
-        failedExecutions = vals.get('Failed', 0),
-        createdExecutions = vals.get('Created', 0),
-        pendingExecutions = vals.get('Pending', 0),
-        scheduledExecutions = vals.get('Scheduled', 0),
-        runningExecutions = vals.get('Running', 0),
-    )
+    return executionStatusCounts(client.MuPIF)
 
 
 @api_router.get("/settings", tags=["Settings"])
@@ -2133,6 +2117,13 @@ def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current
         return False
     db.Stat.update_one({}, {"$set": {k: int(v) for k, v in changes.items()}})
     return True
+
+
+@api_router.get("/execution-status2", tags=["Stats"])
+@api_router.get("/execution-status2/", tags=["Stats"], include_in_schema=False)
+def get_execution_status2(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
+    """Numbers of executions by status (same as the monitoring API, see :mod:`mupifDB.api.execstats`)."""
+    return executionStatusCounts(client.MuPIF)
 
 
 @api_router.get("/status2", tags=["Stats"])
