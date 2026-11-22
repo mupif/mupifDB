@@ -16,6 +16,9 @@ This is a preliminary MupifDB documentation.
    :numbered:
 
    infrastructure.md
+   scheduler.md
+   scheduler-api.rst
+   scheduler-smoketest-results.md
    rest-api.rst
 
 

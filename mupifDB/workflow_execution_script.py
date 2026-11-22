@@ -1,3 +1,25 @@
+"""
+Run a single workflow execution; started by the scheduler as a subprocess.
+
+The scheduler copies this script into a temporary directory together with the workflow package and
+runs ``python workflow_execution_script.py -eid <execution ID>`` there. The script imports the
+workflow class, maps the execution inputs from the database onto the workflow, solves it, and maps
+the outputs back to the database.
+
+The process exit code tells the scheduler how the execution ended; the scheduler alone sets the
+status of the execution (it stores the log first). When the script is run by hand, ``--standalone``
+makes it set the status itself (``Running`` at the start, then ``Finished`` or ``Failed``):
+
+* ``0`` -- the workflow finished;
+* ``1`` -- the workflow failed;
+* ``2`` -- a model server had no free resources; the scheduler returns the execution to
+  ``Pending`` so that it is tried again later;
+* ``143`` -- terminated by SIGTERM: the scheduler stopped the execution (e.g. at shutdown), or the
+  scheduler died. The workflow and its models are terminated before the script exits.
+
+Environment: ``MUPIF_NS`` (nameserver), ``MUPIFDB_REST_SERVER`` and ``API_CREDENTIALS_FILE``
+(REST API access), set by the scheduler.
+"""
 import importlib
 import sys
 import os
@@ -7,75 +29,137 @@ import os
 
 import logging
 import argparse
+import signal
 import mupifDB
 import mupif as mp
 import Pyro5.errors
 
+#: fully qualified name of the exception a model server raises when it has no free job slot
+NO_RESOURCES_EXCEPTION = 'mupif.modelserverbase.ModelServerNoResourcesException'
+
+
+def isNoResourcesError(err: BaseException | None) -> bool:
+    """
+    Tell whether *err* (or an exception it was raised from) means "model server has no free slot".
+
+    The exception is raised on the model server and reaches the workflow through Pyro. Pyro
+    re-raises it locally as the same class when it can serialize it; when it cannot -- which is
+    what happens with :class:`mupif.ModelServerNoResourcesException` (the server reports "Error
+    serializing exception") -- the client gets a generic :class:`Pyro5.errors.PyroError` whose
+    message and remote traceback name the original class. Both forms are recognized, also when
+    wrapped in other exceptions (``raise ... from ...`` or raised while handling it).
+
+    :param err: exception caught around the workflow run
+    :return: true if the execution failed only for lack of resources and should be retried later
+    """
+    seen = set()
+    while err is not None and id(err) not in seen:
+        seen.add(id(err))
+        if isinstance(err, mp.ModelServerNoResourcesException):
+            return True
+        remoteTraceback = ''.join(getattr(err, '_pyroTraceback', None) or [])
+        if NO_RESOURCES_EXCEPTION in str(err) or NO_RESOURCES_EXCEPTION in remoteTraceback:
+            return True
+        err = err.__cause__ or err.__context__
+    return False
+
+
+class Terminated(BaseException):
+    """Raised in the main thread when the script gets SIGTERM; derived from BaseException, like KeyboardInterrupt."""
+
+
+#: exit code after SIGTERM (128 + 15, as a shell reports it)
+EXIT_TERMINATED = 143
+
+
+def _onSigterm(signum, frame):
+    """Turn SIGTERM into :class:`Terminated`, so that the workflow can be terminated in an orderly way."""
+    raise Terminated()
+
+
+def dieWithScheduler(environ=os.environ) -> None:
+    """
+    Ask the kernel to send SIGTERM to this process when the scheduler that started it dies (Linux only).
+
+    The workflow runs in its own process group, so it would otherwise keep running unattended when
+    the scheduler is killed (e.g. SIGKILL). Its execution stays ``Running`` and is run again by the
+    restarted scheduler, which must not find a second copy still running.
+
+    :param environ: environment; ``MUPIFDB_SCHEDULER_PID`` is the scheduler's process ID (not set:
+                    started by hand, nothing to do)
+    """
+    pid = environ.get('MUPIFDB_SCHEDULER_PID')
+    if not pid or not sys.platform.startswith('linux'):
+        return
+    import ctypes
+    PR_SET_PDEATHSIG = 1
+    ctypes.CDLL(None, use_errno=True).prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+    # the scheduler may have died before the request was made
+    if os.getppid() != int(pid):
+        os.kill(os.getpid(), signal.SIGTERM)
+
+
 def downloadWorkflowFiles(eid):
-    import zipfile
+    """
+    Download the workflow package of execution *eid* into the current directory (``--download_workflow``).
+
+    :param eid: execution ID
+    :raises mupifDB.scheduler.staging.StagingError: if the workflow package cannot be used
+    """
+    from mupifDB.scheduler.staging import stageWorkflow
     we_rec = mupifDB.restApiControl.getExecutionRecord(eid)
-    workflowVersion = int(we_rec.WorkflowVersion)
-    wid = we_rec.WorkflowID
-    workflow_record = mupifDB.restApiControl.getWorkflowRecord(wid=wid, version=workflowVersion)
-
-    python_script_filename = workflow_record.modulename + ".py"
-
-    fc, fn = mupifDB.restApiControl.getBinaryFileByID(workflow_record.GridFSID)
-    file_path = f'./{fn}'
-    with open(file_path, "wb") as f:
-        f.write(fc)
-        f.close()
-
-    if fn.split('.')[-1] == 'py':
-        log.info("downloaded .py file..")
-        if fn == python_script_filename:
-            log.info("Filename check OK")
-        else:
-            log.info("Filename check FAILED")
-
-    elif fn.split('.')[-1] == 'zip':
-        log.info("downloaded .zip file, extracting..")
-        log.info(fn)
-        zf = zipfile.ZipFile(file_path, mode='r')
-        filenames = zipfile.ZipFile.namelist(zf)
-        log.info("Zipped files:")
-        log.info(filenames)
-        zf.extractall(path='./')
-        if python_script_filename in filenames:
-            log.info("Filename check OK")
-        else:
-            log.error("Filename check FAILED")
+    workflow_record = mupifDB.restApiControl.getWorkflowRecord(wid=we_rec.WorkflowID, version=int(we_rec.WorkflowVersion))
+    stageWorkflow(workflow_record, '.')
 
 
 log = logging.getLogger('workflow_execution_script')
 log.setLevel(logging.DEBUG)
 tailHandler=mp.pyrolog.TailLogHandler(capacity=10000)
 log.addHandler(tailHandler)
-log.info(f'Execution script started with args: {sys.argv}')
 
-# connect to nameserver (uses MUPIF_NS env var) so that getDaemon binds the correct network address
-ns = mp.pyroutil.connectNameserver()
-daemon = mp.pyroutil.getDaemon(proxy=ns)
-logUri = str(daemon.register(mp.pyrolog.PyroLogReceiver(tailHandler=tailHandler)))
 
-if __name__ == "__main__":
+def main():
+    """
+    Run one workflow execution and exit; see the module documentation for the exit codes.
+
+    Connecting to the nameserver and registering the Pyro daemon happen here rather than at import
+    time, so that the module can be imported (e.g. by unit tests) without a running nameserver.
+    """
+    log.info(f'Execution script started with args: {sys.argv}')
+    signal.signal(signal.SIGTERM, _onSigterm)
+    dieWithScheduler()
+
+    # connect to nameserver (uses MUPIF_NS env var) so that getDaemon binds the correct network address
+    ns = mp.pyroutil.connectNameserver()
+    daemon = mp.pyroutil.getDaemon(proxy=ns)
+    logUri = str(daemon.register(mp.pyrolog.PyroLogReceiver(tailHandler=tailHandler)))
+
     workflow = None
+    args = None
+
+    def setStatus(weid, status):
+        # only when run by hand: under the scheduler, the exit code reports the outcome
+        if args is not None and args.standalone:
+            mupifDB.restApiControl.setExecutionStatus(str(weid), status)
+
     weid = None
     try:
         parser = argparse.ArgumentParser()
         parser.add_argument('-eid', '--executionID', required=True, dest="id")
         parser.add_argument('-download_workflow', '--download_workflow', required=False, dest="download", default=False)
+        parser.add_argument('--standalone', action='store_true', help='run without the scheduler: set the execution status from this script')
         args = parser.parse_args()
         weid = args.id
 
         if args.download:
             downloadWorkflowFiles(weid)
 
-        mupifDB.restApiControl.setExecutionStatus(weid, 'Running')
+        setStatus(weid, 'Running')
         
         # add REST logging handler for this weid, add 'weid' field to every message automatically
-        import mupifDB.restLogger
-        log.addHandler(mupifDB.restLogger.RestLogHandler(extraData={'weid': weid}))
+        # (a "from" import: "import mupifDB.restLogger" would make mupifDB a local name of main())
+        from mupifDB import restLogger
+        log.addHandler(restLogger.RestLogHandler(extraData={'weid': weid}))
 
         execution_record = mupifDB.restApiControl.getExecutionRecord(weid)
         if execution_record is None:
@@ -85,7 +169,7 @@ if __name__ == "__main__":
         workflow_record = mupifDB.restApiControl.getWorkflowRecord(execution_record.WorkflowID, execution_record.WorkflowVersion)
         if workflow_record is None:
             log.error("Workflow not found")
-            mupifDB.restApiControl.setExecutionStatus(weid, 'Failed')
+            setStatus(weid, 'Failed')
             sys.exit(1)
 
         #
@@ -94,11 +178,13 @@ if __name__ == "__main__":
         workflow_class = getattr(moduleImport, workflow_record.classname)
         #
 
+        # before initialize(), which allocates the models: they log to logUri, which is how the
+        # scheduler finds (and terminates) model jobs left behind if this script dies abnormally
+        mupifDB.restApiControl.setExecutionParameter(weid, 'loggerURI', logUri)
         workflow = workflow_class()
         workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record.UseCase, 'Task_ID': execution_record.Task_ID, 'Log_URI': logUri}})
         wfUri = str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid, 'workflowURI', wfUri)
-        mupifDB.restApiControl.setExecutionParameter(weid, 'loggerURI', logUri)
         mupifDB.workflowmanager.mapInputs(workflow, weid)
         workflow.solve()
         mupifDB.workflowmanager.mapOutputs(workflow, weid, workflow.getExecutionTargetTime())
@@ -113,19 +199,34 @@ if __name__ == "__main__":
                 workflow.terminate()
         except:
             pass
-        if type(err) == mp.JobManNoResourcesException:
+        if isNoResourcesError(err):
+            # not a failure of the workflow: leave the status to the scheduler, which returns the
+            # execution to Pending (exit code 2) so that it is retried when resources are free
             log.error('Not enough resources')
-            mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
             sys.exit(2)
-        mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
+        setStatus(weid, 'Failed')
         sys.exit(1)
+
+    except Terminated:
+        log.warning('Terminated (SIGTERM): terminating the workflow and its models')
+        try:
+            if workflow is not None:
+                workflow.terminate()
+        except Exception:
+            log.exception('Terminating the workflow failed')
+        setStatus(weid, 'Failed')
+        sys.exit(EXIT_TERMINATED)
 
     except:
         log.info("Unknown error")
         if workflow is not None:
             workflow.terminate()
-        mupifDB.restApiControl.setExecutionStatus(str(weid), 'Failed')
+        setStatus(weid, 'Failed')
         sys.exit(1)
 
-    mupifDB.restApiControl.setExecutionStatus(weid, 'Finished')
+    setStatus(weid, 'Finished')
     sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

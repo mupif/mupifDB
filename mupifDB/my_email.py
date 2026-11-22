@@ -32,7 +32,8 @@ def sendEmail(receiver_address, subject, message):
         # The body and the attachments for the mail
         msg.attach(MIMEText(message, 'plain'))
         # Create SMTP session for sending the mail
-        session = smtplib.SMTP(server)
+        # with a timeout: an unreachable SMTP server must not block the caller forever
+        session = smtplib.SMTP(server, timeout=30)
         session.starttls()  # enable security
         session.login(sender_address, sender_pass)  # login with mail_id and password
         text = msg.as_string()

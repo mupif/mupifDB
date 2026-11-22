@@ -42,8 +42,26 @@ if API_CREDENTIALS_FILE is not None and os.path.exists(API_CREDENTIALS_FILE):
 bearer_token: dict[str, Any] = {}
 bearer_token_expires_at: float = 0
 
+def setAPICredentials(username: str, password: str) -> None:
+    """
+    Set the REST API account after import, replacing what was read from ``API_CREDENTIALS_FILE``.
+
+    The credentials file is read once, when this module is imported; code that cannot set the
+    environment early enough (e.g. tests inside the ``mupifDB`` package, which pytest imports
+    together with the package) uses this function instead. Any cached access token is dropped,
+    so the next request logs in with the new account.
+
+    :param username: account name (e-mail) used for ``/login``
+    :param password: account password
+    """
+    global api_credentials, bearer_token, bearer_token_expires_at
+    api_credentials = {'username': username, 'password': password}
+    bearer_token = {}
+    bearer_token_expires_at = 0
+
 def getAuthToken() -> dict[str, Any] | None:
-    if API_CREDENTIALS_FILE is None or (api_credentials['username'] == '' and api_credentials['password'] == ''):
+    # no account configured (neither API_CREDENTIALS_FILE nor setAPICredentials): send requests without a token
+    if api_credentials['username'] == '' and api_credentials['password'] == '':
         return None
 
     global bearer_token
@@ -92,6 +110,21 @@ def getAuthToken() -> dict[str, Any] | None:
             return None
 
     return bearer_token
+
+def _reauthenticate() -> dict[str, str] | None:
+    """
+    Drop the cached access token and log in again (hook for 401 responses, see ``client_util``).
+
+    :return: the new ``Authorization`` header, or None if no credentials are set or login failed
+    """
+    global bearer_token, bearer_token_expires_at
+    bearer_token = {}
+    bearer_token_expires_at = 0
+    token = getAuthToken()
+    return {'Authorization': f"Bearer {token['access_token']}"} if token else None
+
+from . import client_util as _client_util
+_client_util.onUnauthorized = _reauthenticate
 
 def getRequestHeaders(content_type: str | None = None) -> dict[str, str]:
     headers = {'Accept-Charset': 'UTF-8'}
@@ -180,7 +213,13 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
 # --------------------------------------------------
 
 pydantic.validate_call(validate_return=True)
-def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None) -> List[models.WorkflowExecution_Model]:
+def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None, sort: str | None = None) -> List[models.WorkflowExecution_Model]:
+    """
+    List execution records matching the given filters.
+
+    :param sort: order of the records: ``CreatedDate`` or ``SubmittedDate``, ascending, or descending
+                 with a leading ``-``; None uses the API default (``-CreatedDate``, newest first)
+    """
     query = f"{API_PREFIX}executions?noparam"
     if workflow_version is not None and workflow_version < 0:
         workflow_version = None
@@ -196,8 +235,17 @@ def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
 def getScheduledExecutions(num_limit: int | None = None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-def getPendingExecutions(num_limit: int | None = None):
-    return getExecutionRecords(status="Pending", num_limit=num_limit)
+def getPendingExecutions(num_limit: int | None = None, sort: str | None = None):
+    return getExecutionRecords(status="Pending", num_limit=num_limit, sort=sort)
+
+def checkExecutionInputs(execution_id: str) -> bool:
+    """
+    Ask the REST API whether all compulsory inputs of an execution are set.
+
+    :param execution_id: execution ID
+    :return: true if the execution has all its compulsory inputs
+    """
+    return bool(rGet(f"{API_PREFIX}executions/{execution_id}/check_inputs", headers=getRequestHeaders()))
 
 def scheduleExecution(execution_id: str):
     return rPatch(f"{API_PREFIX}executions/{execution_id}/schedule", headers=getRequestHeaders())
@@ -284,15 +332,29 @@ def getPropertyArrayData(file_id, i_start, i_count):  # may not be used
 
 from email.message import Message
 
+def fileNameFromContentDisposition(value: str) -> str:
+    """
+    Extract the file name from a ``Content-Disposition`` header (RFC 6266).
+
+    The REST API sends both forms, ``filename="name"; filename*=utf-8\'\'name``; the extended
+    form (percent-encoded, any charset) is preferred, then the quoted or plain ``filename``.
+
+    :param value: header value, e.g. ``attachment; filename="files.zip"; filename*=utf-8\'\'files.zip``
+    :return: the file name, or an empty string if the header names none
+    """
+    import urllib.parse
+    m = re.search(r"filename\*\s*=\s*([^']*)'[^']*'([^;]+)", value)
+    if m:
+        return urllib.parse.unquote(m.group(2).strip(), encoding=m.group(1) or 'utf-8')
+    m = re.search(r'filename\s*=\s*"((?:[^"\\]|\\.)*)"', value)
+    if m:
+        return m.group(1)
+    m = re.search(r'filename\s*=\s*([^;]+)', value)
+    return m.group(1).strip() if m else ''
+
 def getBinaryFileByID(fid) -> Tuple[bytes, str]:
     response = rGetRaw(f"{API_PREFIX}file/{fid}", headers=getRequestHeaders(), timeout=(4.0, 600.0))
-    d = response.headers.get('Content-Disposition', '')
-    
-    msg = Message()
-    msg['content-disposition'] = d
-    filename = msg.get_filename()
-    
-    return response.content, filename
+    return response.content, fileNameFromContentDisposition(response.headers['Content-Disposition'])
 
 def uploadBinaryFile(binary_data) -> str:
     return rPost(f"{API_PREFIX}file/", files={"file": binary_data}, headers=getRequestHeaders())
@@ -314,15 +376,17 @@ def getStatScheduler():
 def setStatScheduler(*args, session=None, **kw):
     return updateStatScheduler(*args, **kw)
 
-def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None):
-    if runningTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.runningTasks", "value": _dump(runningTasks)}, headers=getRequestHeaders())
-    if scheduledTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.scheduledTasks", "value": _dump(scheduledTasks)}, headers=getRequestHeaders())
-    if load is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.load", "value": _dump(load)}, headers=getRequestHeaders())
-    if processedTasks is not None:
-        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"key": "scheduler.processedTasks", "value": _dump(processedTasks)}, headers=getRequestHeaders())
+def updateStatScheduler(runningTasks=None, scheduledTasks=None, load=None, processedTasks=None, waitingTasks=None, pendingTasks=None):
+    """
+    Store the scheduler statistics in the database, all given fields in one request (fields that are None are left unchanged).
+
+    Needs an API which accepts ``values`` in ``PATCH scheduler_statistics`` (same version of mupifDB).
+    """
+    given = dict(runningTasks=runningTasks, scheduledTasks=scheduledTasks, load=load, processedTasks=processedTasks,
+                 waitingTasks=waitingTasks, pendingTasks=pendingTasks)
+    values = {f"scheduler.{k}": _dump(v) for k, v in given.items() if v is not None}
+    if values:
+        rPatch(f"{API_PREFIX}scheduler_statistics/", json={"values": values}, headers=getRequestHeaders())
 
 
 # --------------------------------------------------

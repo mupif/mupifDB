@@ -190,6 +190,7 @@ class Workflow_Model(MongoObj_Model):
     Models: List[Model_Model]=[] # XXX: test needs unset
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
+    Timeout: int=Field(0, ge=0, description='Maximum run time of one execution in seconds, from the workflow metadata ("Timeout"); 0: no limit. The scheduler stops executions exceeding it.')
 
     def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID','WorkflowVersion'],values=[self.wid,self.Version])]
 
@@ -241,6 +242,10 @@ class MupifDBStatus_Model(StrictBase):
             processedTasks: int=0
             runningTasks:   int=0
             scheduledTasks: int=0
+            #: executions waiting to run (database queue + taken by the scheduler, not started)
+            waitingTasks:   int=0
+            #: executions in the database queue (Pending)
+            pendingTasks:   int=0
         scheduler: SchedulerStat_Model=SchedulerStat_Model()
     class ExecutionStatistics_Model(StrictBase):
         totalExecutions:    int=0

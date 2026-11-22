@@ -22,6 +22,7 @@ from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthoriz
 from fastapi.staticfiles import StaticFiles
 
 from pymongo import MongoClient
+from mupifDB.api.execstats import executionStatusCounts
 import tempfile
 import zipfile
 import importlib
@@ -823,7 +824,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in {'py', 'zip', 'txt', 'json', 'xml'}
 
 
-def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[]):
+def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[], timeout: int = 0):
     """
     Inserts new workflow definition into DB.
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -852,7 +853,8 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
             modulename=modulename,
             classname=classname,
             Models=models_md,
-            EDMMapping=EDM_Mapping
+            EDMMapping=EDM_Mapping,
+            Timeout=timeout
         )
     )
 
@@ -934,6 +936,7 @@ async def upload_workflow_and_dependencies(
     classname = None
     models_md = None
     EDM_Mapping = []
+    timeout = 0
     modulename = ""
     zip_filename = "files.zip"
 
@@ -982,6 +985,7 @@ async def upload_workflow_and_dependencies(
                         description = meta.get('Description', '')
                         models_md = meta.get('Models', [])
                         EDM_Mapping = meta.get('EDMMapping', [])
+                        timeout = int(meta.get('Timeout', 0) or 0)
                     else:
                         log.error(f"File {workflow_file.filename} contains {len(classes)} classes (must be one). Classes: {classes}")
                         raise HTTPException(
@@ -1029,7 +1033,8 @@ async def upload_workflow_and_dependencies(
                     modulename=modulename,
                     classname=classname,
                     models_md=models_md,
-                    EDM_Mapping=EDM_Mapping
+                    EDM_Mapping=EDM_Mapping,
+                    timeout=timeout
                 )
             else:
                 log.error('Workflow data incomplete. Not adding workflow.')
@@ -1126,9 +1131,17 @@ def get_executions(
     label: str = "",
     page: int = 1,
     pageSize: int = 20,
+    sort: Literal['CreatedDate', '-CreatedDate', 'SubmittedDate', '-SubmittedDate'] = '-CreatedDate',
     current_user: User_Model = Depends(get_current_authenticated_user)
 ) -> models.ExecutionCollectionResponse:
-    
+    """
+    List executions, optionally filtered, one page at a time.
+
+    *sort* names the field to order by, ascending, or descending with a leading ``-``. The default
+    (newest created first) suits listings for users; the scheduler takes pending executions oldest
+    submitted first (``SubmittedDate``), so that old executions are not starved by newer ones.
+    """
+
     if page < 1:
         page = 1
     if pageSize < 1:
@@ -1153,7 +1166,7 @@ def get_executions(
     
     res = (
         db.WorkflowExecutions.find(filtering)
-        .sort('CreatedDate', -1)
+        .sort(sort.lstrip('-'), -1 if sort.startswith('-') else 1)
         .skip(skip)
         .limit(pageSize)
     )
@@ -2009,24 +2022,7 @@ def get_status(current_user: User_Model = Depends(get_current_authenticated_user
 
 @api_router.get("/execution_statistics", tags=["Stats"])
 def get_execution_statistics(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
-    res = client.MuPIF.WorkflowExecutions.aggregate([
-        {"$group": {"_id": "$Status", "count": {"$sum": 1}}}
-    ])
-    vals = {}
-    tot = 0
-    for r in res:
-        vals[r['_id']] = r['count']
-        tot += r['count']
-
-    return models.MupifDBStatus_Model.ExecutionStatistics_Model(
-        totalExecutions = tot,
-        finishedExecutions = vals.get('Finished', 0),
-        failedExecutions = vals.get('Failed', 0),
-        createdExecutions = vals.get('Created', 0),
-        pendingExecutions = vals.get('Pending', 0),
-        scheduledExecutions = vals.get('Scheduled', 0),
-        runningExecutions = vals.get('Running', 0),
-    )
+    return executionStatusCounts(client.MuPIF)
 
 
 @api_router.get("/settings", tags=["Settings"])
@@ -2074,14 +2070,18 @@ def db_init(current_user: User_Model = Depends(get_current_authenticated_user)):
 
 
 
+#: fields of the scheduler statistics stored in the database (document of db.Stat, key "scheduler");
+#: the scheduler copies them there (PATCH below), GET returns them
+SCHEDULER_STAT_KEYS = ["runningTasks", "scheduledTasks", "load", "processedTasks", "waitingTasks", "pendingTasks"]
+
+
 @api_router.get("/scheduler_statistics", tags=["Stats"])
 @api_router.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
     table = db.Stat
     output = {}
     for s in table.find():
-        keys = ["runningTasks", "scheduledTasks", "load", "processedTasks"]
-        for k in keys:
+        for k in SCHEDULER_STAT_KEYS:
             if k in s["scheduler"]:
                 output[k] = s["scheduler"][k]
         break
@@ -2089,18 +2089,41 @@ def get_scheduler_statistics(current_user: User_Model = Depends(get_current_auth
 
 
 class M_ModifyStatistics(BaseModel):
-    key: str
-    value: int
+    """
+    Change of the scheduler statistics in the database.
+
+    Either one field (*key*, *value*; the original form) or several at once (*values*). The
+    scheduler sends all fields at once, so that the stored statistics are always consistent (with
+    one request per field, a failure in between left some fields stale) and the copy costs one
+    request instead of four.
+    """
+    #: field name with the "scheduler." prefix, e.g. "scheduler.runningTasks"
+    key: Optional[str] = None
+    value: Optional[int] = None
+    #: several fields at once: field name with the "scheduler." prefix -> value
+    values: Optional[Dict[str, int]] = None
 
 
 @api_router.patch("/scheduler_statistics", tags=["Stats"])
 @api_router.patch("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def set_scheduler_statistics(data: M_ModifyStatistics, request: Request, current_user: User_Model = Depends(get_current_authenticated_user)):
     # perms.notRemote(request,'modifying scheduler statistics')
-    if data.key in ["scheduler.runningTasks", "scheduler.scheduledTasks", "scheduler.load", "scheduler.processedTasks"]:
-        res = db.Stat.update_one({}, {"$set": {data.key: int(data.value)}})
-        return True
-    return False
+    allowed = {"scheduler." + k for k in SCHEDULER_STAT_KEYS}
+    changes = dict(data.values or {})
+    if data.key is not None and data.value is not None:
+        changes[data.key] = data.value
+    # unknown fields are ignored, as before; nothing is stored unless all of them are known
+    if not changes or not set(changes) <= allowed:
+        return False
+    db.Stat.update_one({}, {"$set": {k: int(v) for k, v in changes.items()}})
+    return True
+
+
+@api_router.get("/execution-status2", tags=["Stats"])
+@api_router.get("/execution-status2/", tags=["Stats"], include_in_schema=False)
+def get_execution_status2(current_user: User_Model = Depends(get_current_authenticated_user)) -> models.MupifDBStatus_Model.ExecutionStatistics_Model:
+    """Numbers of executions by status (same as the monitoring API, see :mod:`mupifDB.api.execstats`)."""
+    return executionStatusCounts(client.MuPIF)
 
 
 @api_router.get("/status2", tags=["Stats"])

@@ -48,20 +48,51 @@ def _check(resp: Response):
             print('(not renderable as JSON)')
     raise RuntimeError(f'Error: {resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}.')
 
+#: Called when the REST API rejects a request with 401 although it carried an access token (e.g.
+#: the API restarted with a new JWT key, or the session was removed): drops the cached token, logs
+#: in again and returns the new ``Authorization`` header, or None if that is not possible. Set by
+#: client_mupif, which owns the credentials.
+onUnauthorized: Optional[Callable[[], Optional[Dict[str, str]]]] = None
+
+
+def _request(method: str, path: str, *, headers=None, files=None, **kw) -> Response:
+    """
+    Send one request to the REST API; on 401, log in again once and repeat the request.
+
+    :param method: HTTP method name (``get``, ``post``, ...)
+    :param path: path relative to :data:`RESTserver`
+    :param headers: request headers; only requests with an ``Authorization`` header are repeated
+    :param files: files to upload (rewound before a repeated request)
+    :return: the response, checked by :func:`_check`
+    """
+    def send():
+        return getattr(requests, method)(url=RESTserver + path, headers=headers, **({'files': files} if files is not None else {}), **kw)
+    resp = send()
+    if resp.status_code == 401 and headers and 'Authorization' in headers and onUnauthorized is not None:
+        newAuth = onUnauthorized()
+        if newAuth:
+            log.warning(f'{method.upper()} {path}: access token rejected (401), repeating the request after logging in again')
+            headers = dict(headers, **newAuth)
+            for f in (files or {}).values():
+                if hasattr(f, 'seek'):
+                    f.seek(0)
+            resp = send()
+    return _check(resp)
+
 def rGetRaw(path, *, headers=None, auth=None, timeout=_defaultTimeout, params={}, allow_redirects=True):  # type: ignore
-    return _check(requests.get(url=RESTserver + path, timeout=timeout, headers=headers, auth=auth, params=params, allow_redirects=allow_redirects))
+    return _request('get', path, timeout=timeout, headers=headers, auth=auth, params=params, allow_redirects=allow_redirects)
 
 def rPostRaw(path, *, headers=None, auth=None, data=None, json=None, timeout=_defaultTimeout, files={}, allow_redirects=True):  # type: ignore
-    return _check(requests.post(url=RESTserver + path, timeout=timeout, headers=headers, auth=auth, data=data, json=json, files=files, allow_redirects=allow_redirects))
+    return _request('post', path, timeout=timeout, headers=headers, auth=auth, data=data, json=json, files=files, allow_redirects=allow_redirects)
 
 def rPatchRaw(path, *, headers=None, auth=None, data=None, json=None, timeout=_defaultTimeout):
-    return _check(requests.patch(url=RESTserver + path, timeout=timeout, headers=headers, auth=auth, data=data, json=json))
+    return _request('patch', path, timeout=timeout, headers=headers, auth=auth, data=data, json=json)
 
 def rPutRaw(path, *, headers=None, auth=None, data=None, json=None, timeout=_defaultTimeout):  # type: ignore
-    return _check(requests.put(url=RESTserver + path, timeout=timeout, headers=headers, auth=auth, data=data, json=json))
+    return _request('put', path, timeout=timeout, headers=headers, auth=auth, data=data, json=json)
 
 def rDeleteRaw(path, *, headers=None, auth=None, timeout=_defaultTimeout):  # type: ignore
-    return _check(requests.delete(url=RESTserver + path, timeout=timeout, headers=headers, auth=auth))
+    return _request('delete', path, timeout=timeout, headers=headers, auth=auth)
 
 def rGet(*args, **kw): return rGetRaw(*args, **kw).json()
 def rPost(*args, **kw): return rPostRaw(*args, **kw).json()

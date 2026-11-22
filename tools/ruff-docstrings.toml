@@ -1,0 +1,12 @@
+# Docstring lint for code written or rewritten during the scheduler refactoring.
+#
+# Used only through "make lint-docs", which passes an explicit list of files (DOCLINT_PATHS in the
+# Makefile), so existing, not yet documented code is not affected. Docstrings use the Sphinx field
+# style (:param x:, :return:, :rtype:, :raises X:) used throughout mupif and mupifDB.
+line-length = 160
+
+[lint]
+select = ["D"]
+
+[lint.pydocstyle]
+convention = "pep257"
