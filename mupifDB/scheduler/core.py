@@ -149,6 +149,7 @@ class Scheduler:
         while not self.stopEvent.is_set():
             try:
                 self.schedulePass()
+                self.sampleQueue()
                 self.monitor.persist()
             except Exception:
                 # e.g. REST API or nameserver temporarily unreachable: an error in one iteration must
@@ -156,6 +157,20 @@ class Scheduler:
                 log.exception('Error in scheduler iteration; continuing with the next one')
             self.stopEvent.wait(self.config.poll_interval)
         self.shutdown()
+
+    def sampleQueue(self) -> None:
+        """
+        Give the statistics the numbers of executions in the database by status (queue length, Running).
+
+        Best effort: if the database cannot be asked, the statistics keep the previous numbers and
+        the scheduling goes on.
+        """
+        try:
+            counts = self.backend.statusCounts()
+        except Exception:
+            log.exception('Could not count the executions by status for the statistics')
+            return
+        self.monitor.sample(counts)
 
     def stop(self) -> None:
         """

@@ -132,3 +132,14 @@ def test_run_server_uses_shared_daemon(monkeypatch):
     SchedulerMonitor(None, capacity=1).runServer(ns)
     assert calls['getDaemon'] == (ns, False)
     assert calls['runServer']['daemon'] == 'DAEMON' and calls['runServer']['appName'] == 'mupif.scheduler'
+
+
+def test_sample_and_taken_execution_is_not_counted_twice(synced):
+    """A sampled Pending execution taken by the scheduler moves from the queue to the taken ones; waiting does not grow."""
+    m = SchedulerMonitor(None, capacity=4)
+    m.sample({'Pending': 3, 'Running': 0})
+    assert m.stat.tasks.waiting == 3
+    m.enqueued('E1')
+    assert (m.stat.tasks.pending, m.stat.tasks.scheduled, m.stat.tasks.waiting) == (2, 1, 3)
+    m.started('E1', 'wf')
+    assert (m.stat.tasks.waiting, m.stat.tasks.running) == (2, 1)

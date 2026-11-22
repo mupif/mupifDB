@@ -492,3 +492,34 @@ def test_notification_errors_are_logged(env, caplog):
     env.scheduler.schedulePass()
     env.drain()
     assert env.backend.status('E0') == 'Finished' and 'could not notify the owner' in caplog.text
+
+
+def test_statistics_report_running_and_waiting(env):
+    """
+    The statistics tell how many executions run and how many wait (database queue + taken, not started).
+
+    The database count of Running executions is reported next to the scheduler's own count; here
+    one Running record is not a process of this scheduler (e.g. it outlived a previous run).
+    """
+    for i in range(5):
+        env.backend.addExecution(f'E{i}')
+    env.backend.addExecution('X', status='Running')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()                        # takes 3 (max_jobs), 2 stay Pending
+    for _ in range(100):
+        if env.monitor.stat.tasks.running == 3:
+            break
+        time.sleep(0.02)
+    env.scheduler.sampleQueue()
+    t = env.monitor.stat.tasks
+    assert (t.running, t.pending, t.waiting, t.dbRunning) == (3, 2, 2, 4)
+    assert env.monitor.stat.hist2h.running[-1] == 3 and env.monitor.stat.hist48h.waiting[-1] >= 2
+    env.drain()
+
+
+def test_queue_sampling_failure_is_not_fatal(env, caplog):
+    """If the executions cannot be counted, the statistics keep the previous numbers and nothing raises."""
+    env.backend.failures['statusCounts'] = lambda: RuntimeError('API down')
+    env.scheduler.sampleQueue()
+    assert env.monitor.stat.tasks.dbRunning is None
+    assert 'Could not count the executions' in caplog.text

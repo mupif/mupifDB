@@ -103,6 +103,9 @@ class SchedulerMonitor:
         with self.lock:
             self.stat.advanceTime()
             self.stat.tasks.scheduled += 1
+            # the execution has left the database queue (Pending -> Scheduled): without this, it
+            # would be counted twice as waiting (pending and taken) until the next sample()
+            self.stat.tasks.pending = max(0, self.stat.tasks.pending - 1)
             self.stat.countEvent('pooled')
             self.stat.sync()
 
@@ -144,6 +147,22 @@ class SchedulerMonitor:
                     self.stat.countEvent('failed')
             self.stat.lastJobDone(we_id=weid, status=status, finished=datetime.datetime.now())
             self.stat.sync()
+
+    def sample(self, counts: dict[str, int]) -> None:
+        """
+        Store the numbers of executions in the database by status (once per scheduler iteration).
+
+        Gives the queue length (``Pending``), the waiting executions (queue + taken by this
+        scheduler) and the ``Running`` executions according to the database. The levels are
+        recorded in the history by the following :meth:`persist`.
+
+        :param counts: number of executions by status, see :meth:`ExecutionBackend.statusCounts`
+        """
+        with self.lock:
+            self.stat.advanceTime()
+            self.stat.tasks.pending = counts.get('Pending', 0)
+            self.stat.tasks.dbRunning = counts.get('Running', 0)
+            self.stat.updateGauges()
 
     def persist(self) -> None:
         """Write the statistics to the statistics file (if any) and copy them to the database."""

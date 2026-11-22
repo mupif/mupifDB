@@ -139,3 +139,12 @@ class FakeBackend:
         """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.notifyOwner`."""
         with self.lock:
             self.notified.append(weid)
+
+    def statusCounts(self) -> dict[str, int]:
+        """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.statusCounts`."""
+        with self.lock:
+            self._maybeFail('statusCounts')
+            counts: dict[str, int] = {}
+            for r in self.executions.values():
+                counts[r.Status] = counts.get(r.Status, 0) + 1
+            return counts

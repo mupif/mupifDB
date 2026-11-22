@@ -99,6 +99,17 @@ class ExecutionBackend(Protocol):
         :param weid: execution ID
         """
 
+    def statusCounts(self) -> dict[str, int]:
+        """
+        Count the executions in the database by status, for the statistics.
+
+        Only cheap aggregate numbers: the scheduler samples them every iteration to report how
+        many executions wait in the queue (``Pending``) and how many are ``Running`` according to
+        the database (to compare with its own processes).
+
+        :return: number of executions by status (statuses without executions may be missing)
+        """
+
 
 class RestBackend:
     """:class:`ExecutionBackend` implemented with the REST API client and the e-mail notifications."""
@@ -150,3 +161,10 @@ class RestBackend:
         """See :meth:`ExecutionBackend.notifyOwner`."""
         from mupifDB import my_email
         my_email.sendEmailAboutExecutionStatus(weid)
+
+    def statusCounts(self) -> dict[str, int]:
+        """See :meth:`ExecutionBackend.statusCounts`; one aggregation query (``GET execution_statistics``)."""
+        from mupifDB import restApiControl
+        st = restApiControl.getExecutionStatistics()
+        return {'Created': st.createdExecutions, 'Pending': st.pendingExecutions, 'Scheduled': st.scheduledExecutions,
+                'Running': st.runningExecutions, 'Finished': st.finishedExecutions, 'Failed': st.failedExecutions}
