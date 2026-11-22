@@ -81,9 +81,13 @@ class SchedulerMonitor:
             except Exception:
                 log.exception(f'Failure reading persistent schedule statistics from {statFile}, starting from scratch.')
         # the totals and the history carry over from the previous run, but nothing is queued or
-        # running in this new process yet
+        # running in this new process yet; the database queue is sampled again by the first
+        # scheduler iteration (sample())
         self.stat.tasks.running = 0
         self.stat.tasks.scheduled = 0
+        self.stat.tasks.pending = 0
+        self.stat.tasks.waiting = 0
+        self.stat.tasks.dbRunning = None
         # size the history lists (empty in a new SchedulerStat) before anything is stored in them
         self.stat.advanceTime()
         self.ns = None
@@ -99,7 +103,7 @@ class SchedulerMonitor:
         with self.lock:
             self.stat.advanceTime()
             self.stat.tasks.scheduled += 1
-            self.stat.hist48h.pooled[-1] += 1
+            self.stat.countEvent('pooled')
             self.stat.sync()
 
     def dropped(self, weid: str) -> None:
@@ -131,13 +135,13 @@ class SchedulerMonitor:
             self.stat.tasks.running = max(0, self.stat.tasks.running - 1)
             if status != 'Pending':
                 self.stat.tasks.processed += 1
-                self.stat.hist48h.processed[-1] += 1
+                self.stat.countEvent('processed')
                 if status == 'Finished':
                     self.stat.tasks.finished += 1
-                    self.stat.hist48h.finished[-1] += 1
+                    self.stat.countEvent('finished')
                 else:
                     self.stat.tasks.failed += 1
-                    self.stat.hist48h.failed[-1] += 1
+                    self.stat.countEvent('failed')
             self.stat.lastJobDone(we_id=weid, status=status, finished=datetime.datetime.now())
             self.stat.sync()
 

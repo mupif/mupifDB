@@ -83,7 +83,66 @@ def test_monitor_counts_survive_clock_going_back(monkeypatch):
 
 
 def test_stat_hist_selfcheck_includes_load():
-    """A history with a load list of the wrong length (e.g. from an old stat file) is reset (finding #9)."""
+    """A list of the wrong length (e.g. from an old stat file) is reset; the other lists keep their history (finding #9)."""
     h = SchedulerStat.Hist(interval=3600, count=3, processed=[1, 2, 3], pooled=[1, 2, 3], finished=[1, 2, 3], failed=[0, 0, 0], load=[1.])
     h.selfCheck()
-    assert h.load == [0, 0, 0] and h.processed == [0, 0, 0]
+    assert h.load == [0, 0, 0] and h.processed == [1, 2, 3]
+    assert h.running == [0, 0, 0] and h.waiting == [0, 0, 0]
+
+
+def test_gauges_keep_peak_and_carry_level_forward(monkeypatch):
+    """
+    Gauges (running, waiting, load) keep the peak level of each period; periods without any change get the level of the time.
+
+    Counters start every period at 0, but a gauge must not drop to 0 in an hour in which nothing
+    happened: executions started before are still running.
+    """
+    from mupifDB.scheduler import stats
+    now = [100 * 3600 + 10]
+    monkeypatch.setattr(stats.time, 'time', lambda: now[0])
+    st = SchedulerStat()
+    st.hist48h = SchedulerStat.Hist(interval=3600, count=4)
+    st.advanceTime()
+
+    def setRunning(n):
+        st.advanceTime()
+        st.tasks.running = n
+        st.updateGauges()
+    setRunning(3)
+    setRunning(1)                                   # peak 3 stays in this hour
+    assert st.hist48h.running[-1] == 3
+    now[0] += 2 * 3600                              # two quiet hours, still 1 running
+    setRunning(2)
+    assert st.hist48h.running == [0, 3, 1, 2]       # skipped hour carries level 1, current peak 2
+    st.countEvent('processed')
+    assert st.hist48h.processed[-1] == 1 and st.hist2h.processed[-1] == 1
+
+
+def test_waiting_is_pending_plus_taken():
+    """Waiting executions are those in the database queue plus those taken but not started yet."""
+    st = SchedulerStat()
+    st.advanceTime()
+    st.tasks.pending = 5
+    st.tasks.scheduled = 2
+    st.updateGauges()
+    assert st.tasks.waiting == 7
+    assert st.hist48h.waiting[-1] == 7 and st.hist2h.waiting[-1] == 7
+
+
+def test_old_stat_file_keeps_history(tmp_path):
+    """A statistics file without the gauges and the 2 h history is read; its counter history is kept."""
+    import json
+    stat = SchedulerStat()
+    stat.advanceTime()
+    stat.hist48h.processed[-1] = 4
+    data = json.loads(stat.model_dump_json())
+    # as written by the previous version
+    del data['hist2h'], data['hist48h']['running'], data['hist48h']['waiting']
+    for k in ('pending', 'waiting', 'dbRunning'):
+        del data['tasks'][k]
+    path = tmp_path / 'stat.json'
+    path.write_text(json.dumps(data))
+    loaded = SchedulerStat.load_from_file(str(path))
+    loaded.advanceTime()
+    assert loaded.hist48h.processed[-1] == 4
+    assert len(loaded.hist48h.running) == 48 and len(loaded.hist2h.waiting) == 120
