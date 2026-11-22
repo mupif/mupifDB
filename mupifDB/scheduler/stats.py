@@ -12,6 +12,7 @@ import time
 from typing import ClassVar, List, Literal, Optional
 
 import mupif as mp
+import pydantic
 
 from mupifDB import restApiControl
 
@@ -78,6 +79,8 @@ class SchedulerStat(mp.BareData):
         finished: List[int]=[]
         failed: List[int]=[]
         load: List[float]=[]
+        #: period of the last "clock went back" warning (not stored: private attribute)
+        _pastWarned: Optional[int]=pydantic.PrivateAttr(default=None)
 
         def reset(self):
             """Set all lists to :attr:`count` zeros."""
@@ -101,12 +104,22 @@ class SchedulerStat(mp.BareData):
             """
             Make the last element of each list correspond to the current period.
 
-            :raises RuntimeError: if the clock went back to an earlier period
+            If the wall clock went back to an earlier period (NTP step, VM or WSL clock resync, a
+            statistics file written on a host with a clock ahead), the history stays where it is:
+            values keep going into the current last period until real time catches up with it.
+            This used to raise, and since every counter update advances the history first, an
+            exception here skipped the update itself: e.g. a finished execution was never
+            subtracted from the running ones, so the scheduler reported it as running forever.
             """
             self.selfCheck()
             per=int(time.time()//self.interval)
             if per==self.headPeriod: return # nothing to do
-            elif per<self.headPeriod: raise RuntimeError('Traveling to the past?')
+            elif per<self.headPeriod:
+                # warn only once per backward step, not on every update until time catches up
+                if per!=self._pastWarned:
+                    log.warning(f'Clock went back by {self.headPeriod-per} period(s) of {self.interval} s; keeping the statistics history where it is')
+                    self._pastWarned=per
+                return
             else: self.moveBy(per-self.headPeriod)
             self.headPeriod=per
     #: hourly history of the last 48 hours

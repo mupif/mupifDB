@@ -40,7 +40,7 @@ def test_failed_write_keeps_previous_file(tmp_path, monkeypatch):
 
 
 def test_stat_hist_advance(monkeypatch):
-    """The 48 h history shifts by whole hours, resets after long gaps and refuses to go back in time."""
+    """The 48 h history shifts by whole hours, resets after long gaps and stays put if the clock goes back."""
     from mupifDB.scheduler import stats
     now = [100 * 3600 + 10]
     monkeypatch.setattr(stats.time, 'time', lambda: now[0])
@@ -56,9 +56,30 @@ def test_stat_hist_advance(monkeypatch):
     now[0] += 10 * 3600                             # gap longer than the history
     h.advance()
     assert h.processed == [0, 0, 0, 0]
-    now[0] -= 3 * 3600
-    with pytest.raises(RuntimeError):
-        h.advance()
+    h.processed[-1] = 2
+    now[0] -= 3 * 3600                              # clock steps back (NTP, VM resync)
+    h.advance()                                     # does not raise, nothing moves
+    assert h.processed == [0, 0, 0, 2]
+    h.processed[-1] += 1                            # updates keep going into the last period
+    now[0] += 3 * 3600 + 3600                       # real time catches up and goes on
+    h.advance()
+    assert h.processed == [0, 0, 3, 0]
+
+
+def test_monitor_counts_survive_clock_going_back(monkeypatch):
+    """A finished execution is subtracted from the running ones even if the clock went back meanwhile."""
+    from mupifDB.scheduler import stats
+    from mupifDB.scheduler.monitor import SchedulerMonitor
+    monkeypatch.setattr(stats.restApiControl, 'setStatScheduler', lambda **kw: None)
+    now = [100 * 3600 + 10]
+    monkeypatch.setattr(stats.time, 'time', lambda: now[0])
+    mon = SchedulerMonitor(None, capacity=4)
+    mon.enqueued('e1')
+    mon.started('e1', 'w1')
+    now[0] -= 2 * 3600
+    mon.finished('e1', 'Finished')
+    assert mon.stat.tasks.running == 0 and mon.stat.tasks.finished == 1
+    assert mon.getStatistics()['runningTasks'] == 0
 
 
 def test_stat_hist_selfcheck_includes_load():
