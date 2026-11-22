@@ -211,3 +211,51 @@ def test_unchanged_statistics_are_not_copied_again(synced):
     n = len(synced)
     m.syncDb()
     assert len(synced) == n
+
+
+class _NS:
+    """Nameserver stub: names -> URIs."""
+
+    def __init__(self, **names):
+        self.names = dict(names)
+
+    def lookup(self, name):
+        import Pyro5.errors
+        if name not in self.names:
+            raise Pyro5.errors.NamingError(f'unknown name: {name}')
+        return self.names[name]
+
+    def remove(self, name):
+        self.names.pop(name, None)
+
+
+def test_unregister_removes_own_entry_once(synced):
+    """At shutdown the monitor removes its nameserver entry, so the monitoring pages do not list a dead scheduler."""
+    m = SchedulerMonitor(None, capacity=1)
+    m.ns, m.uri = _NS(**{'mupif.scheduler': 'PYRO:me@h:1'}), 'PYRO:me@h:1'
+    ns = m.ns
+    m.unregister()
+    m.unregister()                                  # second call does nothing
+    assert ns.names == {}
+
+
+def test_unregister_keeps_entry_of_a_newer_scheduler(synced):
+    """If another scheduler has registered under the same name meanwhile, its entry stays."""
+    m = SchedulerMonitor(None, capacity=1)
+    m.ns, m.uri = _NS(**{'mupif.scheduler': 'PYRO:other@h:2'}), 'PYRO:me@h:1'
+    ns = m.ns
+    m.unregister()
+    assert ns.names == {'mupif.scheduler': 'PYRO:other@h:2'}
+
+
+def test_unregister_never_raises(synced):
+    """An unreachable nameserver or a missing entry is not an error at shutdown."""
+    m = SchedulerMonitor(None, capacity=1)
+    m.ns, m.uri = _NS(), 'PYRO:me@h:1'
+    m.unregister()
+
+    class Down:
+        def lookup(self, name):
+            raise ConnectionError('nameserver down')
+    m.ns = Down()
+    m.unregister()

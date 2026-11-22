@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 import Pyro5.api
+import Pyro5.errors
 
 from .stats import SchedulerStat
 
@@ -95,7 +96,9 @@ class SchedulerMonitor:
         self.stat.tasks.dbRunning = None
         # size the history lists (empty in a new SchedulerStat) before anything is stored in them
         self.stat.advanceTime()
+        #: nameserver proxy and URI of the monitor, once registered by :meth:`runServer`
         self.ns = None
+        self.uri: str | None = None
         #: drain mode of the scheduler (reported in the statistics)
         self.draining = False
         #: called by :meth:`setDrain` with the new state (set by the scheduler)
@@ -278,8 +281,7 @@ class SchedulerMonitor:
         """Stop the scheduler (callers on the scheduler's host only) and unregister the monitor."""
         log.warning('Stop requested through the monitor')
         self.onStop()
-        if self.ns is not None:
-            self.ns.remove(NS_NAME)
+        self.unregister()
 
     @Pyro5.api.expose
     @localCallerOnly
@@ -292,6 +294,33 @@ class SchedulerMonitor:
         :param on: True to drain, False to resume
         """
         self.onDrain(bool(on))
+
+    def unregister(self) -> None:
+        """
+        Remove the monitor from the nameserver, so that the monitoring pages do not list a scheduler which is gone.
+
+        Called when the scheduler shuts down (and by :meth:`stop`); safe to call more than once,
+        never raises. The name is the same for every scheduler run: if the nameserver entry does
+        not point to this monitor any more (a new scheduler has registered meanwhile), it is left
+        alone.
+        """
+        ns, self.ns = self.ns, None
+        if ns is None:
+            return
+        try:
+            # a Pyro proxy belongs to the thread which created it; stop() runs in a Pyro thread
+            claim = getattr(ns, '_pyroClaimOwnership', None)
+            if claim is not None:
+                claim()
+            if self.uri is not None and str(ns.lookup(NS_NAME)) != str(self.uri):
+                log.info(f'{NS_NAME} in the nameserver belongs to another scheduler now, not removing it')
+                return
+            ns.remove(NS_NAME)
+            log.info(f'Removed {NS_NAME} from the nameserver')
+        except Pyro5.errors.NamingError:
+            pass  # not registered (any more)
+        except Exception:
+            log.exception(f'Could not remove {NS_NAME} from the nameserver')
 
     def registerPyro(self, *, daemon, ns, uri, appName, exclusiveDaemon):
         """Accept the registration callback of :func:`mupif.pyroutil.runServer` (nothing to do)."""
@@ -309,4 +338,5 @@ class SchedulerMonitor:
         # an exclusive daemon in a non-daemon thread, which keeps the process alive after the
         # scheduler has shut down
         daemon = mp.pyroutil.getDaemon(proxy=ns)
-        return mp.pyroutil.runServer(ns=ns, appName=NS_NAME, app=self, daemon=daemon, metadata={'type:scheduler'})
+        self.uri = mp.pyroutil.runServer(ns=ns, appName=NS_NAME, app=self, daemon=daemon, metadata={'type:scheduler'})
+        return self.uri

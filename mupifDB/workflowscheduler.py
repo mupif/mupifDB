@@ -106,7 +106,12 @@ def main(config: SchedulerConfig | None = None) -> None:
             log.info(f'Starting MupifDB Workflow Scheduler {config.scheduler_id} (up to {config.max_jobs} executions at a time)')
             scheduler = build(config, ns)
             installSignalHandlers(scheduler)
-            scheduler.run()
+            try:
+                scheduler.run()
+            finally:
+                # do not leave a dead scheduler in the nameserver: the monitoring pages would
+                # list it (unreachable) until the next start
+                scheduler.monitor.unregister()
     except pidfile.AlreadyRunningError:
         log.error('Already running.')
     log.info("Exiting MupifDB Workflow Scheduler\n")
