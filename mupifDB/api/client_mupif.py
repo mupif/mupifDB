@@ -223,7 +223,9 @@ def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | 
     query = f"{API_PREFIX}executions?noparam"
     if workflow_version is not None and workflow_version < 0:
         workflow_version = None
-    for n, a in [('pageSize', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status)]:
+    # 'sort' must be passed on: the scheduler takes pending executions oldest submitted first
+    # (sort='SubmittedDate'); without it the API returns the newest first and old executions wait
+    for n, a in [('pageSize', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status), ('sort', sort)]:
         if a is not None:
             query += f"&{n}={str(a)}"
     return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)['collection']]

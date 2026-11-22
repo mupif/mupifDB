@@ -54,6 +54,22 @@ def test_rest_backend_calls(calls, tmp_path):
     ]
 
 
+def test_pending_executions_query_keeps_order_and_limit(monkeypatch):
+    """
+    The request for pending executions asks the API for the oldest submitted first and for the limit.
+
+    test_rest_backend_calls replaces the client functions, so it does not see the query they build:
+    when 'sort' was dropped from it (merge of the num_limit -> pageSize change), the API silently
+    returned the newest executions first, and old ones could wait indefinitely.
+    """
+    from mupifDB.api import client_mupif
+    queries = []
+    monkeypatch.setattr(client_mupif, 'rGet', lambda query, **kw: queries.append(query) or {'collection': []})
+    assert RestBackend().pendingExecutions(5) == []
+    params = queries[0].split('?', 1)[1].split('&')
+    assert {'status=Pending', 'pageSize=5', 'sort=SubmittedDate'} <= set(params)
+
+
 def test_fake_backend_mirrors_rest_semantics():
     """The test double behaves like the REST API where the scheduler depends on it."""
     from mupifDB.scheduler.tests.fakes import FakeBackend
