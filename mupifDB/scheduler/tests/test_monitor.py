@@ -61,6 +61,23 @@ def test_statistics_format(tmp_path, synced):
             'pooledTasks48', 'processedTasks48', 'finishedTasks48', 'failedTasks48', 'load48'} <= set(stats)
 
 
+def test_statistics_report_load_history(monkeypatch, synced):
+    """getStatistics() reports running and waiting executions with their history and its time axis."""
+    from mupifDB.scheduler import stats as statsModule
+    monkeypatch.setattr(statsModule.time, 'time', lambda: 1000 * 3600 + 125)
+    m = SchedulerMonitor(None, capacity=4)
+    m.sample({'Pending': 5, 'Running': 2})
+    m.enqueued('E1')
+    m.started('E1', 'wf')
+    st = m.getStatistics()
+    assert (st['capacity'], st['runningTasks'], st['waitingTasks'], st['pendingTasks'], st['dbRunningTasks']) == (4, 1, 4, 4, 2)
+    assert len(st['running48']) == len(st['waiting48']) == 48
+    assert len(st['running120m']) == len(st['waiting120m']) == 120
+    assert st['running120m'][-1] == 1 and st['waiting120m'][-1] == 5     # peak: 5 waiting before E1 started
+    assert (st['periodStart48'], st['periodLength48']) == (1000 * 3600, 3600)
+    assert (st['periodStart120m'], st['periodLength120m']) == (1000 * 3600 + 120, 60)
+
+
 def test_stop_calls_back(tmp_path, synced):
     """stop() stops the scheduler through the callback and unregisters the monitor."""
     stopped, removed = [], []

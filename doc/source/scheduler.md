@@ -70,9 +70,16 @@ The scheduler registers its monitor in the Pyro nameserver as `mupif.scheduler` 
 
 - `scheduledTasks` – executions taken and not started yet; `runningTasks` – running workflow processes;
 - `processedTasks` = `finishedTasks` + `failedTasks` – executions that reached a final status (an execution returned to `Pending` is not counted);
-- `currentLoad` – percentage of `max_jobs` in use;
-- hourly history of the last 48 hours (`pooledTasks48`: executions taken, `processedTasks48`, `finishedTasks48`, `failedTasks48`, `load48`);
+- `currentLoad` – percentage of `max_jobs` in use; `capacity` – `max_jobs`;
+- `pendingTasks` – executions in the database queue (`Pending`), sampled every iteration; the queue is shared by the deployment;
+- `waitingTasks` = `pendingTasks` + `scheduledTasks` – executions waiting to run;
+- `dbRunningTasks` – executions `Running` according to the database (`null` until the first sample). It is normally equal to `runningTasks`; it is higher when some `Running` executions are not processes of this scheduler, e.g. a workflow that outlived a previous scheduler run (left alone at startup) or a record left behind;
+- hourly history of the last 48 hours (`pooledTasks48`: executions taken, `processedTasks48`, `finishedTasks48`, `failedTasks48`: events in each hour; `load48`, `running48`, `waiting48`: peak level in each hour);
+- history of the last 2 hours by minutes, peak levels: `running120m`, `waiting120m`;
+- time axis of the histories: `periodStart48`/`periodStart120m` – start of the last (current) period in seconds since the epoch, `periodLength48`/`periodLength120m` – length of a period in seconds; element *i* of a list of *n* starts at `periodStart - (n-1-i)*periodLength`;
 - `draining` – drain mode.
+
+Peak levels: a period starts with the level of the time (a quiet hour with long workflows still shows them running) and keeps the highest level reached in it. If the clock goes back (NTP step, VM resync), the history stays at its last period until real time catches up; the counters are not affected.
 
 The totals and the history are kept across restarts in the statistics file and copied to the database (`GET /scheduler_statistics`). Over Pyro, `stop()` and `setDrain()` are accepted only from the scheduler's host.
 

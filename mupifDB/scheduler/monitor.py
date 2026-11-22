@@ -191,7 +191,9 @@ class SchedulerMonitor:
             s = self.stat.model_copy(deep=True)
         if raw:
             return s.model_dump(mode='json')
+        h48, h2 = s.hist48h, s.hist2h
         return dict(
+            # --- keys of the original format (read by mupif.monitor.schedulerInfo of all versions)
             runningTasks=s.tasks.running,
             scheduledTasks=s.tasks.scheduled,
             processedTasks=s.tasks.processed,
@@ -199,12 +201,33 @@ class SchedulerMonitor:
             failedTasks=s.tasks.failed,
             lastJobs=[list(j.model_dump(mode='json').values()) for j in s.lastJobs],
             currentLoad=s.load,
-            processedTasks48=s.hist48h.processed,
-            pooledTasks48=s.hist48h.pooled,
-            finishedTasks48=s.hist48h.finished,
-            failedTasks48=s.hist48h.failed,
-            load48=s.hist48h.load,
+            processedTasks48=h48.processed,
+            pooledTasks48=h48.pooled,
+            finishedTasks48=h48.finished,
+            failedTasks48=h48.failed,
+            load48=h48.load,
             draining=self.draining,
+            # --- load of the scheduler: added keys, ignored by older readers
+            #: executions that can run at once (to sum the capacity of several schedulers)
+            capacity=s.capacity,
+            #: executions waiting to run = pendingTasks + scheduledTasks
+            waitingTasks=s.tasks.waiting,
+            #: executions in the database queue (Pending), shared by the deployment
+            pendingTasks=s.tasks.pending,
+            #: executions Running according to the database (None: not sampled yet)
+            dbRunningTasks=s.tasks.dbRunning,
+            #: peak running / waiting executions in each hour of the last 48 h (oldest first)
+            running48=h48.running,
+            waiting48=h48.waiting,
+            #: peak running / waiting executions in each minute of the last 2 h (oldest first)
+            running120m=h2.running,
+            waiting120m=h2.waiting,
+            #: start of the last (current) period of each history in seconds since the epoch, and
+            #: the length of the periods: the time axis is periodStart - (count-1-i)*periodLength
+            periodStart48=h48.periodStart(),
+            periodLength48=h48.interval,
+            periodStart120m=h2.periodStart(),
+            periodLength120m=h2.interval,
         )
 
     @Pyro5.api.expose
