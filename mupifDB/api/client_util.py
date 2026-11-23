@@ -1,3 +1,5 @@
+import contextlib
+import contextvars
 import os
 import requests
 from requests.models import Response
@@ -30,6 +32,45 @@ class NotFoundResponse(Exception):
     """
     pass
 
+
+class ConflictResponse(Exception):
+    """
+    The API reports 409 (conflict): a lease condition failed (see mupifDB.api.leases).
+
+    E.g. the execution was claimed by another scheduler, or the lease the request was made under
+    is not current any more (taken over): the caller must not retry, but drop what it was doing.
+    Distinct from errors which may go away by retrying (5xx, API unreachable).
+    """
+    pass
+
+
+#: lease the requests of the current thread are made under (``<weid>:<scheduler_id>:<epoch>``),
+#: sent as the header ``X-MupifDB-Lease``; see :func:`leaseContext` and :func:`currentLease`
+_lease: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('mupifDBLease', default=None)
+
+
+@contextlib.contextmanager
+def leaseContext(lease: Optional[str]):
+    """
+    Make the requests of the current thread (and its context) carry the given lease.
+
+    The scheduler runs each execution in a job thread under the execution's lease; every write the
+    thread makes to the execution is then checked by the API against the current lease (fencing).
+    """
+    token = _lease.set(lease)
+    try:
+        yield
+    finally:
+        _lease.reset(token)
+
+
+def currentLease() -> Optional[str]:
+    """
+    Return the lease requests are made under: set by :func:`leaseContext`, else the environment
+    variable ``MUPIFDB_LEASE`` (set by the scheduler for the workflow execution script), else None.
+    """
+    return _lease.get() or os.environ.get('MUPIFDB_LEASE') or None
+
 def _check(resp: Response):
     msg = f'{resp.request.method} {resp.request.url}, status {resp.status_code} ({resp.reason}): {resp.text}'
     (log.info if (200 <= resp.status_code < 300 and resp.status_code != 404) else log.error)(msg)
@@ -37,6 +78,8 @@ def _check(resp: Response):
         return resp
     elif resp.status_code == 404:
         raise NotFoundResponse(msg)
+    elif resp.status_code == 409:
+        raise ConflictResponse(msg)
     elif resp.status_code == 422:  # Unprocessable entity
         log.error(100 * '*' + '\nUnprocessable entity\n' + 100 * '*')
         txt = json.loads(resp.text)

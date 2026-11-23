@@ -133,6 +133,11 @@ def getRequestHeaders(content_type: str | None = None) -> dict[str, str]:
     token = getAuthToken()
     if token is not None:
         headers['Authorization'] = f"Bearer {token['access_token']}"
+    # the lease the request is made under (scheduler job threads, the workflow execution script):
+    # writes to a held execution are checked against it by the API (mupifDB.api.leases)
+    lease = currentLease()
+    if lease is not None:
+        headers['X-MupifDB-Lease'] = lease
     return headers
 
 
@@ -213,19 +218,20 @@ def postWorkflowFiles(usecaseid, path_workflow, paths_additional):
 # --------------------------------------------------
 
 pydantic.validate_call(validate_return=True)
-def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None, sort: str | None = None) -> List[models.WorkflowExecution_Model]:
+def getExecutionRecords(workflow_id: str | None = None, workflow_version: int | None = None, label: str | None = None, num_limit: int | None = None, status: str | None = None, sort: str | None = None, ready: bool = False) -> List[models.WorkflowExecution_Model]:
     """
     List execution records matching the given filters.
 
     :param sort: order of the records: ``CreatedDate`` or ``SubmittedDate``, ascending, or descending
                  with a leading ``-``; None uses the API default (``-CreatedDate``, newest first)
+    :param ready: only pending executions which may be claimed now (retry delay passed)
     """
     query = f"{API_PREFIX}executions?noparam"
     if workflow_version is not None and workflow_version < 0:
         workflow_version = None
     # 'sort' must be passed on: the scheduler takes pending executions oldest submitted first
     # (sort='SubmittedDate'); without it the API returns the newest first and old executions wait
-    for n, a in [('pageSize', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status), ('sort', sort)]:
+    for n, a in [('pageSize', num_limit), ('label', label), ('workflow_id', workflow_id), ('workflow_version', workflow_version), ('status', status), ('sort', sort), ('ready', 'true' if ready else None)]:
         if a is not None:
             query += f"&{n}={str(a)}"
     return [models.WorkflowExecution_Model.model_validate(record) for record in rGet(query, headers=getRequestHeaders(), timeout=15)['collection']]
@@ -237,8 +243,70 @@ def getExecutionRecord(weid: str) -> models.WorkflowExecution_Model:
 def getScheduledExecutions(num_limit: int | None = None):
     return getExecutionRecords(status="Scheduled", num_limit=num_limit)
 
-def getPendingExecutions(num_limit: int | None = None, sort: str | None = None):
-    return getExecutionRecords(status="Pending", num_limit=num_limit, sort=sort)
+def getPendingExecutions(num_limit: int | None = None, sort: str | None = None, ready: bool = False):
+    return getExecutionRecords(status="Pending", num_limit=num_limit, sort=sort, ready=ready)
+
+
+# --------------------------------------------------
+# Leases (several schedulers; see mupifDB.api.leases). Conditions failing raise ConflictResponse.
+# --------------------------------------------------
+
+def _backoffJson(backoff: tuple[float, float, float] | None):
+    return None if backoff is None else {'base': backoff[0], 'max': backoff[1], 'jitter': backoff[2]}
+
+
+def claimExecution(weid: str, schedulerId: str, leaseSeconds: float) -> models.WorkflowExecution_Model:
+    """Take a pending execution under a new lease; ConflictResponse if another scheduler took it (or it is not pending/due)."""
+    return models.WorkflowExecution_Model.model_validate(rPatch(f"{API_PREFIX}executions/{weid}/claim", json={'scheduler_id': schedulerId, 'lease_seconds': leaseSeconds}, headers=getRequestHeaders()))
+
+
+def transitionExecution(weid: str, schedulerId: str, epoch: int, to: str, incAttempts: int = 0, resetAttempts: bool = False,
+                        backoff: tuple[float, float, float] | None = None, leaseSeconds: float | None = None) -> models.WorkflowExecution_Model:
+    """Change the status of an execution held under the lease (scheduler, epoch); ConflictResponse if the lease is lost."""
+    body = {'scheduler_id': schedulerId, 'epoch': int(epoch), 'to': to, 'incAttempts': incAttempts, 'resetAttempts': resetAttempts,
+            'backoff': _backoffJson(backoff), 'lease_seconds': leaseSeconds}
+    return models.WorkflowExecution_Model.model_validate(rPost(f"{API_PREFIX}executions/{weid}/transition", json=body, headers=getRequestHeaders()))
+
+
+def deferExecution(weid: str, backoff: tuple[float, float, float]) -> models.WorkflowExecution_Model:
+    """Postpone a pending execution whose resources are unavailable (attempt + 1); ConflictResponse if another scheduler did it already."""
+    return models.WorkflowExecution_Model.model_validate(rPatch(f"{API_PREFIX}executions/{weid}/defer", json={'backoff': _backoffJson(backoff)}, headers=getRequestHeaders()))
+
+
+def takeOverExecutions(schedulerId: str, leaseSeconds: float, limit: int = 50) -> List[models.WorkflowExecution_Model]:
+    """Take over executions whose lease expired and whose scheduler is not alive."""
+    return [models.WorkflowExecution_Model.model_validate(r) for r in rPost(f"{API_PREFIX}executions/leases/takeover", json={'scheduler_id': schedulerId, 'lease_seconds': leaseSeconds, 'limit': limit}, headers=getRequestHeaders())]
+
+
+def takeOverOwnExecutions(schedulerId: str, instance: str, leaseSeconds: float) -> List[models.WorkflowExecution_Model]:
+    """At the start of a scheduler: take over the executions of its previous process."""
+    return [models.WorkflowExecution_Model.model_validate(r) for r in rPost(f"{API_PREFIX}executions/leases/takeover-own", json={'scheduler_id': schedulerId, 'instance': instance, 'lease_seconds': leaseSeconds}, headers=getRequestHeaders())]
+
+
+def acquireSchedulerIdentity(schedulerId: str, instance: str, host: str, pid: int, heartbeatSeconds: float) -> bool:
+    """Take the scheduler identity; False if another live process holds it."""
+    try:
+        return bool(rPost(f"{API_PREFIX}schedulers/{schedulerId}/acquire", json={'instance': instance, 'host': host, 'pid': pid, 'heartbeat_seconds': heartbeatSeconds}, headers=getRequestHeaders()))
+    except ConflictResponse:
+        return False
+
+
+def schedulerHeartbeat(schedulerId: str, instance: str, heartbeatSeconds: float, leaseSeconds: float, leases: List[tuple[str, int]],
+                       stats: dict | None = None, draining: bool | None = None) -> dict:
+    """Renew the heartbeat and the leases; return ``{'identity': bool, 'held': [execution IDs still held]}``."""
+    body = {'instance': instance, 'heartbeat_seconds': heartbeatSeconds, 'lease_seconds': leaseSeconds,
+            'leases': [{'weid': w, 'epoch': int(e)} for w, e in leases], 'stats': stats, 'draining': draining}
+    return rPost(f"{API_PREFIX}schedulers/{schedulerId}/heartbeat", json=body, headers=getRequestHeaders())
+
+
+def releaseSchedulerIdentity(schedulerId: str, instance: str) -> None:
+    """Give up the scheduler identity at a clean shutdown."""
+    rPost(f"{API_PREFIX}schedulers/{schedulerId}/release", json={'instance': instance}, headers=getRequestHeaders())
+
+
+def getSchedulers() -> List[models.SchedulerInstance_Model]:
+    """List the registered schedulers (live or not)."""
+    return [models.SchedulerInstance_Model.model_validate(r) for r in rGet(f"{API_PREFIX}schedulers", headers=getRequestHeaders())]
 
 def checkExecutionInputs(execution_id: str) -> bool:
     """
