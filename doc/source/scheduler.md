@@ -23,17 +23,18 @@ Transitions made by the scheduler:
 - `Scheduled → Failed`: compulsory inputs are not set, or the workflow package cannot be used (wrong module name, unsupported file type, unsafe archive). The execution is not started; for missing inputs a short log says why.
 - `Scheduled → Pending`: a transient error before the workflow started (e.g. REST API unreachable).
 - `Pending → Created`: the model servers the execution needs stayed unreachable for 12 attempts; the owner is notified by e-mail (if notifications are configured).
+- `Pending → Failed`: the execution asks for an execution profile its workflow does not have; a short log says why.
 - at startup, `Scheduled`/`Running → Pending`: executions interrupted by a previous scheduler run (crash, kill) are run again; model-server jobs left by their workflows are terminated first.
 
 The owner of an execution is notified by e-mail of its final status (if notifications are configured: `webUrl` setting and SMTP credentials in `/var/lib/mupif/persistent/mupif-smtp-credentials.json`).
 
 ## Main loop
 
-Every `poll_interval` seconds (20 s) the scheduler takes pending executions, **oldest submitted first**, at most as many as it has free job slots (`max_jobs`, 30). For each candidate it reserves one slot on the model server (jobmanager) of every model of the workflow. The free slots of each model server are read once per pass and consumed by the executions taken in that pass, so no more executions are started than the model servers can serve:
+Every `poll_interval` seconds (20 s) the scheduler takes pending executions, **oldest submitted first**, at most as many as it has free job slots (`max_jobs`, 30). For each candidate it counts one slot for every remote model of the workflow on a compatible model server (see [Model servers](#model-servers-instances-and-execution-profiles)). The compatible servers and their free slots are read once per pass and consumed by the executions taken in that pass, so no more executions are started than the model servers can serve:
 
-- all slots available: the execution is taken (`Scheduled`) and handed to a job thread;
-- a model server is busy (too few free slots): the execution waits for a later pass; this is normal queueing and does not count as an attempt;
-- a model server (or the workflow record) is unreachable: the attempt count is increased and the execution is retried after a delay.
+- a slot for every model: the execution is taken (`Scheduled`) and handed to a job thread;
+- the compatible model servers are busy (too few free slots): the execution waits for a later pass; this is normal queueing and does not count as an attempt;
+- no compatible model server of some model is registered and reachable (or the workflow record cannot be read): the attempt count is increased and the execution is retried after a delay.
 
 **Retries.** After a transient failure (model server unreachable, no free slot when the workflow started, REST API error before the start) an execution is not tried again before a delay of `retry_backoff` (10 s), doubled after every further transient failure up to `retry_backoff_max` (10 min), with ±20 % jitter. With the defaults an unreachable model server returns its executions to `Created` after about an hour. Permanent failures (workflow error, timeout, missing inputs, unusable package) are not retried.
 
@@ -46,7 +47,7 @@ A job thread creates a temporary directory under `work_dir`, stages the workflow
 | Exit code | Meaning | Final status |
 |---|---|---|
 | 0 | workflow finished | `Finished` |
-| 2 | a model server had no free slot (another client took it meanwhile) | `Pending` (retried after a delay) |
+| 2 | no compatible model server had a free slot (other clients took them meanwhile) | `Pending` (retried after a delay) |
 | 143 | stopped by the scheduler (timeout, shutdown); the workflow and its models were terminated | `Failed`, or `Pending` at shutdown |
 | 1, other, or killed by a signal | workflow failed | `Failed` |
 
@@ -54,7 +55,27 @@ The workflow output is stored with the execution as its log (`ExecutionLog`).
 
 **Timeout.** An execution may run for the `Timeout` declared in its workflow metadata (seconds), or for `default_job_timeout` if the workflow declares none (default: no limit). When exceeded, the workflow gets SIGTERM, which makes the execution script terminate the workflow and its models, then SIGKILL after `kill_grace` seconds; the execution fails. Workflows registered before the scheduler refactoring have no stored timeout until they are uploaded again.
 
-**Model-server jobs left behind.** If a workflow process dies without terminating its models (killed, crashed), the scheduler terminates the model-server jobs belonging to the execution after its run, so they do not keep their slots.
+**Model-server jobs left behind.** If a workflow process dies without terminating its models (killed, crashed), the scheduler terminates the model-server jobs belonging to the execution after its run, so they do not keep their slots. It looks for them on the model servers the execution used (`ModelServers` of the execution), or on all compatible ones if the script died before storing them.
+
+## Model servers, instances and execution profiles
+
+A remote model of a workflow runs on a model server (jobmanager). Several model servers may be able to run it:
+
+- **instances** of one model server, e.g. on several hosts, to share the load. All register with the same base name; the first one keeps it in the nameserver (`CVUT.demo01`), further ones get an instance name: `CVUT.demo01~<instance>` if started with an instance id (`instance=` of the model server, or `MUPIF_MODELSERVER_INSTANCE`), else `CVUT.demo01~<host>-<pid>`. Clients which look a server up by its exact name (older mupif) still reach the first instance;
+- **model servers of the same model** registered under other names: a workflow model giving `ModelID` (the ID of the model's metadata) besides `Jobmanager` accepts every model server of that model.
+
+Which of them may run a model, and which are preferred, is chosen per execution by its **execution profile** (`ExecutionProfileIndex` of the execution, set when it is created; `ExecutionProfiles` of the workflow metadata). A profile lists, per model, nameserver tags a model server must carry (`RequiredModelMetadata`, e.g. `Runtime_seconds`, `Accuracy_High`) and tags preferring it (`OptionalModelMetadata`). Without a profile (the **default profile**, `-1`), every compatible server may run the model.
+
+The **workflow chooses** the server when it allocates a model (mupif `mupif.modelplacement`): servers with a free slot first, then those with more preferred tags, then the least loaded (used share of their job slots), at random among equal ones; if the chosen server refuses (full, unreachable), it tries the next one. The scheduler only checks that the models can find free slots before it starts the workflow (above), using the same ranking for its own count; it does not tell the workflow where to run, so the choice is also right for workflows run without the scheduler.
+
+Where the models ran is shown in
+
+- the **execution log**: for each model, the profile, the compatible servers with their load, the server chosen and every server skipped with the reason; then `Model servers used: …`;
+- the **execution record**: `ModelServers` (model → server), stored by the execution script once the models are allocated;
+- the **scheduler log** (records tagged with the execution ID): the profile and number of compatible servers when the execution is taken, the servers once known, and at the end of the run;
+- the **statistics**: the model servers of each of the last executions, and the number of running executions per model server (below).
+
+Requires mupif with `mupif.modelplacement` (branch `feature/execution-profiles`) for the scheduler, the execution script and the model servers that should register as instances; model servers of older versions keep working (one instance per name).
 
 **Debugging failures.** With `keep_failed_workdirs` set, the working directories of the most recent failed executions are kept in `<work_dir>/failed/<execution ID>`.
 
@@ -77,7 +98,9 @@ The scheduler registers its monitor in the Pyro nameserver as `mupif.scheduler` 
 - hourly history of the last 48 hours (`pooledTasks48`: executions taken, `processedTasks48`, `finishedTasks48`, `failedTasks48`: events in each hour; `load48`, `running48`, `waiting48`: peak level in each hour);
 - history of the last 2 hours by minutes, peak levels: `running120m`, `waiting120m`;
 - time axis of the histories: `periodStart48`/`periodStart120m` – start of the last (current) period in seconds since the epoch, `periodLength48`/`periodLength120m` – length of a period in seconds; element *i* of a list of *n* starts at `periodStart - (n-1-i)*periodLength`;
-- `draining` – drain mode.
+- `draining` – drain mode;
+- `modelServerJobs` – running executions of this scheduler per model server (registered name), counted once the execution has stored its model servers;
+- `lastJobs` – the last executions started: ID, workflow, status, start, end, and the model servers of its models (empty until known; older readers use the first five fields).
 
 Peak levels: a period starts with the level of the time (a quiet hour with long workflows still shows them running) and keeps the highest level reached in it. If the clock goes back (NTP step, VM resync), the history stays at its last period until real time catches up; the counters are not affected.
 
@@ -130,7 +153,6 @@ make smoketest SMOKETEST_ARGS="--register --count 12 --delay 15 --max-concurrent
 ## Known limitations
 
 - Only one scheduler may run per deployment: executions are taken with a plain status change, not an atomic claim, so two schedulers could run the same execution twice.
-- Several instances of the same model server cannot share the load: they would register under the same name in the nameserver, and the last one registered replaces the others.
 - Retry delays are kept in memory: after a restart, executions are retried at once.
 
 These are addressed by the next phases of the refactoring (see the changelog).

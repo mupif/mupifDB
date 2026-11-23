@@ -2,6 +2,17 @@
 
 ## Unreleased: workflow scheduler refactoring
 
+### Phase 4: several model servers per model, execution profiles
+
+Needs mupif with `mupif.modelplacement` (mupif branch `feature/execution-profiles`). See "Model servers, instances and execution profiles" in `doc/source/scheduler.md`.
+
+- **Instances of a model server share the load.** A second model server registered under the same name no longer replaces the first: it registers as `<name>~<instance>`. A workflow model may run on any instance, and also, when it gives `ModelID`, on model servers of the same model under other names.
+- **Least loaded first.** The workflow allocates each model on the compatible server with a free slot and the lowest load, and tries the next one if a server refuses. The scheduler admits executions by the free slots of all compatible servers together.
+- **Execution profiles** (`ExecutionProfiles` of the workflow metadata) are supported again. An execution selects one by `ExecutionProfileIndex` (`POST /executions/create`; default `-1`: no requirements). A profile restricts the model servers by required tags and prefers some by optional tags. An execution asking for a profile its workflow does not have fails with a log saying why. Workflows are stored with their profiles; workflows registered before have none until they are uploaded again.
+- **The model servers used are shown**: in the execution log, in the new `ModelServers` field of the execution record, in the scheduler log, and in the statistics (`lastJobs`, new `modelServerJobs`: running executions per model server).
+- Leftover model-server jobs are looked for on the servers the execution used.
+- New record fields: `Workflow.ExecutionProfiles`, `Workflow.Models[].ModelID`, `WorkflowExecution.ExecutionProfileIndex`, `WorkflowExecution.ModelServers`. These keys used to be dropped silently, because the record models do not forbid unknown keys.
+
 ### Phase 2: restructured scheduler
 
 The scheduler is now the package `mupifDB/scheduler/` (configuration, core, database backend, runner, staging, resources, statistics); `mupifDB/workflowscheduler.py` remains the entry point. Behaviour changes for users and operators:

@@ -31,4 +31,6 @@ Results of `tools/scheduler_smoketest.py` against a local deployment, recorded d
 | Execution observed `Finished` before its log was stored | 1–4 per run | 1–4 per run | none (scheduler stores the log, then sets the status) |
 | Two instances of `CVUT.demo01`, `--count 12 --delay 15 --max-concurrent 8` | – | not supported: the second instance replaces the first in the nameserver, max. 4 run; stopping it makes the other unreachable | unchanged (planned for phase 4) |
 
-Remaining issues (addressed in later phases): one scheduler per deployment only; several instances of a model server do not share the load; retry delays are lost on restart.
+Remaining issues (addressed in later phases): one scheduler per deployment only; retry delays are lost on restart.
+
+Phase 4 implements the sharing of load among instances of a model server (see the changelog); the scenario with two instances of `CVUT.demo01` is still to be run against the phase 4 stack.
