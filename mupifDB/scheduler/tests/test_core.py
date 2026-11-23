@@ -857,6 +857,8 @@ def test_script_gets_the_lease(tmp_path):
     r = JobRunner(SchedulerConfig(work_dir=str(tmp_path), scheduler_id='s7'), nsUri='PYRO:ns@h:1')
     env = r.environment(core.Job(weid='E0', record=None, lease=Lease('E0', 's7', 3)))
     assert env['MUPIFDB_LEASE'] == 'E0:s7:3' and env['MUPIFDB_SCHEDULER_ID'] == 's7'
+    # it waits out short REST API outages, up to the lease duration
+    assert env['MUPIFDB_RETRY_SECONDS'] == '600.0'
 
 
 # --- lease keeper ----------------------------------------------------------------------------------

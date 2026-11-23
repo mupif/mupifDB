@@ -1,6 +1,7 @@
 import contextlib
 import contextvars
 import os
+import time
 import requests
 from requests.models import Response
 import logging
@@ -98,6 +99,20 @@ def _check(resp: Response):
 onUnauthorized: Optional[Callable[[], Optional[Dict[str, str]]]] = None
 
 
+def _retrySeconds() -> float:
+    """
+    How long requests failing with a connection error (REST API unreachable) are retried, in seconds.
+
+    ``MUPIFDB_RETRY_SECONDS``, set by the scheduler for the workflow execution script (to its lease
+    duration): a short outage of the REST API at the end of a run then does not lose its results.
+    0 (not set): no retries (the scheduler has its own).
+    """
+    try:
+        return float(os.environ.get('MUPIFDB_RETRY_SECONDS', '0') or 0)
+    except ValueError:
+        return 0.
+
+
 def _request(method: str, path: str, *, headers=None, files=None, **kw) -> Response:
     """
     Send one request to the REST API; on 401, log in again once and repeat the request.
@@ -109,7 +124,20 @@ def _request(method: str, path: str, *, headers=None, files=None, **kw) -> Respo
     :return: the response, checked by :func:`_check`
     """
     def send():
-        return getattr(requests, method)(url=RESTserver + path, headers=headers, **({'files': files} if files is not None else {}), **kw)
+        window = _retrySeconds()
+        deadline, pause = time.monotonic() + window, 2.
+        while True:
+            try:
+                return getattr(requests, method)(url=RESTserver + path, headers=headers, **({'files': files} if files is not None else {}), **kw)
+            except (requests.ConnectionError, requests.Timeout) as e:
+                if time.monotonic() + pause > deadline:
+                    raise
+                log.warning(f'{method.upper()} {path}: REST API unreachable ({e}); retrying in {pause:.0f} s')
+                time.sleep(pause)
+                pause = min(pause * 2, 30.)
+                for f in (files or {}).values():
+                    if hasattr(f, 'seek'):
+                        f.seek(0)
     resp = send()
     if resp.status_code == 401 and headers and 'Authorization' in headers and onUnauthorized is not None:
         newAuth = onUnauthorized()

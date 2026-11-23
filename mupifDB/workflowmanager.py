@@ -383,9 +383,50 @@ def getOntoBaseObjectByName(objects, name):
             return i
     return None
 
+def _attemptEpoch():
+    """
+    Return the lease epoch of the current attempt (from ``MUPIFDB_LEASE``, set by the scheduler), or None (standalone run).
+
+    Each attempt to run an execution (claim or takeover) has its own epoch; EDM objects created by
+    an attempt are stamped with it.
+    """
+    from mupifDB.api.client_util import currentLease
+    lease = currentLease()
+    if not lease:
+        return None
+    from mupifDB.api.leases import parseLease
+    return parseLease(lease)[2]
+
+
+def _markOrphaned(obo, ids, eid, epoch):
+    """
+    Mark EDM output objects of an earlier attempt of the execution as orphaned (best effort).
+
+    The EDM API cannot delete objects (they form graphs across collections), so the objects stay;
+    the mark tells they are not results of the execution (``meta.orphaned``), for a later purge.
+    """
+    for old in ids:
+        try:
+            client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=old, path="meta", data={"execution": eid, "orphaned": True, "replacedByEpoch": epoch})
+        except Exception as e:
+            print(f"Could not mark EDM object {obo.DBName}/{obo.EDMEntity}/{old} of an earlier attempt as orphaned: {e}")
+
+
 def createOutputEDMMappingObjects(app, eid, outputs):
+    """
+    Create the EDM objects the outputs of an execution are written into (mappings with ``createFrom`` or ``createNew``).
+
+    Every attempt to run the execution creates fresh objects, even if an earlier attempt created
+    some already (their IDs are on the execution record): with several schedulers, an earlier
+    attempt cut off from the database may still be writing into its objects; the new attempt must
+    not share them. The earlier objects are marked orphaned; the new ones are stamped with the
+    execution and the attempt's lease epoch (``meta``). Mappings to objects given by the user (no
+    ``createFrom``/``createNew``) are used as they are.
+    """
     execution = client.getExecutionRecord(eid)
     OBO = execution.EDMMapping
+    epoch = _attemptEpoch()
+    stamp = {"execution": eid} | ({"epoch": epoch} if epoch is not None else {})
     if len(OBO):
         print("Creating EDM output objects")
         outputs = client.getExecutionOutputRecord(eid)
@@ -395,8 +436,10 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                 edmpaths.append(path)
 
         for obo in OBO:
-            # ?? ids are never used
-            if obo.id is None and (obo.ids is None or obo.ids == []): #  not obo.get('id', None) and not obo.get('ids', None):
+            if obo.createFrom is not None or obo.createNew:
+                # objects of an earlier attempt: replaced (see above)
+                previous = ([obo.id] if obo.id else []) + [i for i in (obo.ids or []) if i and i != obo.id]
+                created = False
                 if obo.createFrom is not None:
                     source_obo = getOntoBaseObjectByName(OBO, obo.createFrom)
                     if source_obo is not None:
@@ -424,8 +467,9 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                     )
                                     new_ids.append(new_id)
                                 client.setExecutionOntoBaseObjectIDs(eid, name=obo.get('Name'), value=new_ids)
+                                created = True
                                 for new_id in new_ids:
-                                    client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                                    client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data=stamp)
                             else:
                                 new_id = client.cloneEDMData(
                                     DBName=source_obo.DBName,
@@ -434,7 +478,8 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                                     shallow=safe_links
                                 )
                                 client.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
-                                client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                                created = True
+                                client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data=stamp)
 
                 elif obo.createNew:
                     edm_name = obo.Name
@@ -448,7 +493,10 @@ def createOutputEDMMappingObjects(app, eid, outputs):
                         data=obo.createNew
                     )
                     client.setExecutionOntoBaseObjectID(eid, name=obo.Name, value=new_id)
-                    client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data={"execution": eid})
+                    created = True
+                    client.setEDMData(DBName=obo.DBName, Type=obo.EDMEntity, ID=new_id, path="meta", data=stamp)
+                if created:
+                    _markOrphaned(obo, previous, eid, epoch)
         print("Creating EDM output objects finished")
 
 

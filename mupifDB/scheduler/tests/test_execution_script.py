@@ -127,6 +127,12 @@ def test_exec_script_profile_and_model_servers(execScript, monkeypatch, caplog):
     assert _FakeWorkflow.initMetadata['Execution']['ExecutionProfileIndex'] == 1
 
 
+def test_exec_script_lease_lost(execScript):
+    """A write refused because the run's lease was taken over (409) ends the script without setting a status."""
+    from mupifDB.api.client_util import ConflictResponse
+    assert execScript(fail=('solve', ConflictResponse('409 lease'))) == (1, ['Running'])
+
+
 def test_exec_script_workflow_error(execScript):
     """
     A workflow raising during solve exits with 1 and is marked Failed.
