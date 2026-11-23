@@ -88,7 +88,9 @@ def env(tmp_path, monkeypatch):
     config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12)
     e.monitor = SchedulerMonitor(None, capacity=config.max_jobs)
     e.cleanups = []
+    e.removed = []
     e.scheduler = Scheduler(config, e.backend, e.runner, findModelServers=e.servers.find, serverLoad=e.servers.load, monitor=e.monitor,
+                            removeModelServer=lambda name, uri: e.removed.append((name, uri)) or True,
                             terminateModelJobs=lambda jobmanagers, uri: e.cleanups.append((jobmanagers, uri)) or ['1@x'])
 
     def drain():
@@ -669,3 +671,54 @@ def test_restarted_execution_listed_once(env):
     env.scheduler.schedulePass()
     env.drain()
     assert [(j[0], j[2]) for j in env.monitor.getStatistics()['lastJobs']] == [('E0', 'Finished')]
+
+
+def test_unreachable_server_removed_after_timeout(env, clock, caplog):
+    """
+    A model server unreachable for stale_server_timeout is removed from the nameserver, reported
+    once while waiting; one answering again is forgotten.
+
+    A crashed instance used to stay in the nameserver for ever, with a warning every pass.
+    """
+    import logging
+    env.scheduler.config.stale_server_timeout = 300
+    env.servers.add('CVUT.demo01~gone', base='CVUT.demo01', free=None)
+    env.servers.add('CVUT.demo01~flaky', base='CVUT.demo01', free=None)
+    found = {c.nsName: c for c in env.servers.find(core.modelplacement.ModelRequirement(model='m', identity=frozenset({'CVUT.demo01'})))}
+    gone, flaky = found['CVUT.demo01~gone'], found['CVUT.demo01~flaky']
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        for t in (0, 100, 200):
+            clock[0] = 1000 + t
+            assert env.scheduler.checkedServerLoad(gone) is None
+            assert env.scheduler.checkedServerLoad(flaky) is None
+        # reported once, not every pass
+        assert caplog.text.count('Model server CVUT.demo01~gone') == 1
+        env.servers.free['CVUT.demo01~flaky'] = 2
+        assert env.scheduler.checkedServerLoad(flaky).free == 2
+        assert 'Model server CVUT.demo01~flaky answers again' in caplog.text
+        clock[0] = 1000 + 300
+        env.scheduler.checkedServerLoad(gone)
+        env.servers.free['CVUT.demo01~flaky'] = None
+        env.scheduler.checkedServerLoad(flaky)
+    # removed after 300 s unreachable; the flaky one's time starts again when it failed again
+    assert env.removed == [('CVUT.demo01~gone', 'PYRO:CVUT.demo01~gone@host:1')]
+    assert 'Removed model server CVUT.demo01~gone from the nameserver: unreachable for 300 s' in caplog.text
+    # stale_server_timeout 0: never removed
+    env.scheduler.config.stale_server_timeout = 0
+    clock[0] = 1000 + 10000
+    env.scheduler.checkedServerLoad(flaky)
+    assert len(env.removed) == 1
+
+
+def test_passes_use_the_checked_load(env, clock):
+    """The budget of a pass asks for the loads through checkedServerLoad, so a dead server in the nameserver is eventually removed."""
+    env.scheduler.config.stale_server_timeout = 60
+    env.servers.add('CVUT.demo01~gone', base='CVUT.demo01', free=None)
+    env.backend.addExecution('E0')
+    env.scheduler.schedulePass()
+    clock[0] += 61
+    env.backend.addExecution('E1')
+    env.scheduler.schedulePass()
+    env.drain()
+    assert [n for n, _ in env.removed] == ['CVUT.demo01~gone']
+    assert env.backend.status('E0') == env.backend.status('E1') == 'Finished'

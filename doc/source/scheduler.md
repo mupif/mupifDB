@@ -68,6 +68,8 @@ Which of them may run a model, and which are preferred, is chosen per execution 
 
 The **workflow chooses** the server when it allocates a model (mupif `mupif.modelplacement`): servers with a free slot first, then those with more preferred tags, then the least loaded (used share of their job slots), at random among equal ones; if the chosen server refuses (full, unreachable), it tries the next one. The scheduler only checks that the models can find free slots before it starts the workflow (above), using the same ranking for its own count; it does not tell the workflow where to run, so the choice is also right for workflows run without the scheduler.
 
+**Model servers which crash** (killed, host down) leave their nameserver entry behind. A model server of the same base name removes such entries when it starts, and the scheduler removes an entry whose server stayed unreachable for `stale_server_timeout` (300 s; it asks only while executions wait for those servers). Until then an unreachable server is skipped, and reported once. A model server checks its own entry every 30 s and registers again if it is missing (also after a nameserver restart), so a live server removed by mistake comes back by itself. Running model jobs of a stopped or crashed model server keep running until their workflow ends.
+
 Where the models ran is shown in
 
 - the **execution log**: for each model, the profile, the compatible servers with their load, the server chosen and every server skipped with the reason; then `Model servers used: …`;
@@ -133,6 +135,7 @@ All settings can be set by environment variables; `python -m mupifDB.scheduler -
 | `MUPIFDB_SCHEDULER_KEEP_FAILED_WORKDIRS` | 0 | Number of working directories of failed executions kept in `<work_dir>/failed` (0: none). |
 | `MUPIFDB_SCHEDULER_CACHE_DIR` | `<work_dir>/mupifDB-package-cache` | Directory caching downloaded workflow packages. |
 | `MUPIFDB_SCHEDULER_CACHE_MAX_BYTES` | 1 GiB | Size of the package cache above which the least recently used packages are removed (0: no cache). |
+| `MUPIFDB_SCHEDULER_STALE_SERVER_TIMEOUT` | 300 | Seconds a model server registered in the nameserver may stay unreachable before the scheduler removes its entry; 0: never. |
 | `MUPIFDB_SCHEDULER_STAT_FILE` | `/var/lib/mupif/persistent/scheduler-stat.json` | File keeping the statistics across restarts. |
 | `MUPIFDB_SCHEDULER_PIDFILE` | `mupifDB_scheduler_pidfile` | PID file preventing a second scheduler; the REST API reads it (relative to its working directory) to report whether the scheduler runs. |
 

@@ -11,6 +11,8 @@ Needs mupif with `mupif.modelplacement` (mupif branch `feature/execution-profile
 - **Execution profiles** (`ExecutionProfiles` of the workflow metadata) are supported again. An execution selects one by `ExecutionProfileIndex` (`POST /executions/create`; default `-1`: no requirements). A profile restricts the model servers by required tags and prefers some by optional tags. An execution asking for a profile its workflow does not have fails with a log saying why. Workflows are stored with their profiles; workflows registered before have none until they are uploaded again.
 - **The model servers used are shown**: in the execution log, in the new `ModelServers` field of the execution record, in the scheduler log, and in the statistics (`lastJobs`, new `modelServerJobs`: running executions per model server).
 - Leftover model-server jobs are looked for on the servers the execution used.
+- **Crashed model servers leave the nameserver.** The scheduler removes a model server that stayed unreachable for `stale_server_timeout` (300 s). It reports an unreachable server once instead of every pass. Model servers (mupif) also remove dead entries of their name when they start, and register again if their entry disappears.
+- The scheduler counts executions whose models are not allocated yet, so it no longer starts more than the model servers can take (seen as executions requeued out of order). An execution started again is listed once in the statistics.
 - New record fields: `Workflow.ExecutionProfiles`, `Workflow.Models[].ModelID`, `WorkflowExecution.ExecutionProfileIndex`, `WorkflowExecution.ModelServers`. These keys used to be dropped silently, because the record models do not forbid unknown keys.
 
 ### Phase 2: restructured scheduler

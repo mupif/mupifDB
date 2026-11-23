@@ -219,6 +219,7 @@ def terminateExecutionModelJobs(ns, jobmanagers: list[str], loggerURI: str) -> l
     :return: keys of the jobs terminated
     """
     import mupif as mp
+    import Pyro5.errors
     location = pyroLocation(loggerURI)
     ns = threadProxy(ns)
     terminated = []
@@ -229,6 +230,9 @@ def terminateExecutionModelJobs(ns, jobmanagers: list[str], loggerURI: str) -> l
                 if job.remoteLogUri and pyroLocation(job.remoteLogUri) == location:
                     server.terminateJob(job.key)
                     terminated.append(job.key)
+        except Pyro5.errors.CommunicationError as e:
+            # the server is gone (crashed): there is nothing to clean up, and it is reported elsewhere
+            log.warning(f'Cannot clean up jobs of model server {name}: it does not answer ({e})')
         except Exception:
             log.exception(f'Cannot clean up jobs of jobmanager {name}')
     return terminated

@@ -119,7 +119,8 @@ class Scheduler:
 
     def __init__(self, config: SchedulerConfig, backend: ExecutionBackend, runner: JobRunner,
                  findModelServers: Callable[[Any], list], serverLoad: Callable[[Any], Any], monitor: SchedulerMonitor,
-                 terminateModelJobs: Callable[[list[str], str], list[str]] = lambda jobmanagers, loggerURI: []):
+                 terminateModelJobs: Callable[[list[str], str], list[str]] = lambda jobmanagers, loggerURI: [],
+                 removeModelServer: Callable[[str, str], bool] = lambda name, uri: False):
         """
         Set up the scheduler; nothing runs until :meth:`run`.
 
@@ -130,6 +131,9 @@ class Scheduler:
                                  :func:`mupif.modelplacement.findModelServers`)
         :param serverLoad: ``model server -> load`` (None if unreachable; see
                            :func:`mupif.modelplacement.serverLoad`)
+        :param removeModelServer: ``(registered name, URI) -> removed``: removes the nameserver entry
+                                  of a model server, if it still points to that URI (see
+                                  :meth:`checkedServerLoad`)
         :param monitor: statistics
         :param terminateModelJobs: ``(jobmanagers, loggerURI) -> keys of terminated jobs``: terminates
                                    the model-server jobs of an execution (see
@@ -140,6 +144,9 @@ class Scheduler:
         self.runner = runner
         self.findModelServers = findModelServers
         self.serverLoad = serverLoad
+        self.removeModelServer = removeModelServer
+        #: (registered name, URI) of model servers which did not answer -> monotonic time of the first failure
+        self.unreachableSince: dict[tuple[str, str], float] = {}
         self.monitor = monitor
         self.terminateModelJobs = terminateModelJobs
         #: protects :attr:`jobs`
@@ -292,7 +299,7 @@ class Scheduler:
         if free <= 0:
             return 0
         pending = self.backend.pendingExecutions(limit=self.config.fetch_limit)
-        budget = ResourceBudget(self.backend.getWorkflow, self.findModelServers, self.serverLoad)
+        budget = ResourceBudget(self.backend.getWorkflow, self.findModelServers, self.checkedServerLoad)
         self.reserveInFlight(budget)
         taken = 0
         for rec in pending:
@@ -560,6 +567,43 @@ class Scheduler:
         except Exception:
             log.exception(f'{weid}: could not clean up its model-server jobs')
         return rec
+
+    def checkedServerLoad(self, server: Any) -> Any:
+        """
+        Return the load of a model server (None if unreachable); remove it from the nameserver once it stayed unreachable too long.
+
+        A model server killed or crashed leaves its nameserver entry behind; the scheduler, which
+        asks the compatible servers every pass, would try it for ever (a warning per pass). Now an
+        unreachable server is reported once; if it is still unreachable after
+        ``stale_server_timeout`` seconds, its entry is removed (only if it still points to the same
+        server) and reported. A live server removed by mistake (e.g. a network problem between it
+        and the scheduler) registers again by itself (mupif ``watchRegistration``). A server which
+        answers again is reported too.
+
+        :param server: compatible model server (``nsName``, ``uri``; see mupif.modelplacement.Candidate)
+        :return: its load, None if it cannot be reached
+        """
+        key = (server.nsName, str(server.uri))
+        load = self.serverLoad(server)
+        now = time.monotonic()
+        if load is not None:
+            if self.unreachableSince.pop(key, None) is not None:
+                log.info(f'Model server {server.nsName} answers again')
+            return load
+        since = self.unreachableSince.setdefault(key, now)
+        if since == now:
+            log.warning(f'Model server {server.nsName} ({server.uri}) does not answer; skipped while unreachable'
+                        + (f', its nameserver entry is removed after {self.config.stale_server_timeout:.0f} s' if self.config.stale_server_timeout > 0 else ''))
+        elif 0 < self.config.stale_server_timeout <= now - since:
+            del self.unreachableSince[key]
+            try:
+                removed = self.removeModelServer(server.nsName, str(server.uri))
+            except Exception:
+                log.exception(f'Could not remove model server {server.nsName} from the nameserver')
+                removed = False
+            if removed:
+                log.warning(f'Removed model server {server.nsName} from the nameserver: unreachable for {now - since:.0f} s')
+        return None
 
     def reserveInFlight(self, budget: ResourceBudget) -> None:
         """

@@ -50,6 +50,7 @@ class SchedulerConfig(pydantic.BaseModel):
     keep_failed_workdirs: int = pydantic.Field(0, ge=0, description='Number of working directories of failed executions kept in <work_dir>/failed for debugging (0: none).')
     cache_dir: str = pydantic.Field('', description='Directory caching downloaded workflow packages (empty: <work_dir>/mupifDB-package-cache).')
     cache_max_bytes: int = pydantic.Field(1 << 30, ge=0, description='Size of the workflow package cache above which the least recently used packages are removed (0: no cache).')
+    stale_server_timeout: float = pydantic.Field(300., ge=0, description='Seconds a model server registered in the nameserver may stay unreachable before the scheduler removes its entry (a crashed server leaves it behind); a live server removed by mistake registers again by itself. 0: never removed.')
     stat_file: str = pydantic.Field('/var/lib/mupif/persistent/scheduler-stat.json', description='File keeping the statistics across restarts.')
     pidfile: str = pydantic.Field('mupifDB_scheduler_pidfile', description='PID file preventing a second scheduler from starting; the REST API reads it (relative to its working directory) to report whether the scheduler runs.')
 
