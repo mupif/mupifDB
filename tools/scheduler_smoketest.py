@@ -32,7 +32,8 @@ Scenarios used during the scheduler refactoring (letters match the refactoring p
 * **D** workflow crash: ``--delay 30`` and kill the execution subprocess from another shell;
   the execution must end as ``Failed`` and not stay ``Running``;
 * **E** scheduler restart: ``--delay 30``, then stop/kill the scheduler mid-run and restart it;
-* **K** missing input: ``--skip-input Value_2``; the execution must fail.
+* **K** missing input: ``--skip-input Value_2``; the execution must fail;
+* **P** execution profiles (phase 4): ``--wid <workflow with ExecutionProfiles> --profile N``.
 
 Example::
 
@@ -145,7 +146,7 @@ def submit(args: argparse.Namespace, version: int) -> list[ExecutionReport]:
     inputs = {('Value_1', '1'): args.value1, ('Value_2', '2'): args.value2, ('Delay', 'delay'): args.delay}
     reports = []
     for i in range(args.count):
-        weid = restApiControl.createExecution(args.wid, version=version, ip='127.0.0.1')['inserted_id']
+        weid = restApiControl.createExecution(args.wid, version=version, ip='127.0.0.1', executionProfileIndex=args.profile)['inserted_id']
         for (name, objid), value in inputs.items():
             if name in args.skip_input:
                 continue
@@ -297,6 +298,8 @@ def main() -> int:
     ap.add_argument('--delay', type=float, default=2., help='Delay input in seconds, i.e. model run time (default: %(default)s)')
     ap.add_argument('--value1', type=float, default=3., help='Value_1 input (default: %(default)s)')
     ap.add_argument('--value2', type=float, default=2., help='Value_2 input (default: %(default)s)')
+    ap.add_argument('--profile', type=int, default=-1, metavar='N',
+                    help='execution profile of the workflow to run the executions with (default: -1, the default profile)')
     ap.add_argument('--skip-input', action='append', default=[], metavar='NAME', help='leave this input unset (repeatable)')
     ap.add_argument('--expect', choices=['finished', 'failed', 'any'], default='finished',
                     help='required final status of every execution (default: %(default)s)')
