@@ -19,7 +19,7 @@ from mupifDB.scheduler.core import Scheduler
 from mupifDB.scheduler.monitor import SchedulerMonitor
 from mupifDB.scheduler.runner import JobResult
 from mupifDB.scheduler.staging import StagingError
-from mupifDB.scheduler.tests.fakes import FakeBackend
+from mupifDB.scheduler.tests.fakes import FakeBackend, FakeModelServers
 
 
 class FakeRunner:
@@ -72,7 +72,8 @@ def env(tmp_path, monkeypatch):
     Build a scheduler over an in-memory database.
 
     The namespace returned has ``backend`` (FakeBackend with workflow ``wf`` on jobmanager
-    ``CVUT.demo01``), ``runner``, ``freeSlots`` (jobmanager -> slots, 100 by default), ``monitor``,
+    ``CVUT.demo01``), ``runner``, ``servers`` (FakeModelServers with ``CVUT.demo01`` registered),
+    ``freeSlots`` (``servers.free``: server -> slots, 100 by default, None: unreachable), ``monitor``,
     ``cleanups`` (calls to terminate model-server jobs) and ``scheduler`` (``max_jobs=3``), plus
     ``drain()`` waiting for all job threads.
     """
@@ -80,12 +81,14 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(restApiControl, 'setStatScheduler', lambda **kw: None)
     log = tmp_path / 'workflow.log'
     log.write_bytes(b'workflow output')
-    e = types.SimpleNamespace(backend=FakeBackend(), runner=FakeRunner(log), freeSlots={})
+    e = types.SimpleNamespace(backend=FakeBackend(), runner=FakeRunner(log), servers=FakeModelServers())
+    e.servers.add('CVUT.demo01')
+    e.freeSlots = e.servers.free
     e.backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
     config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12)
     e.monitor = SchedulerMonitor(None, capacity=config.max_jobs)
     e.cleanups = []
-    e.scheduler = Scheduler(config, e.backend, e.runner, freeJobSlots=lambda jm: e.freeSlots.get(jm, 100), monitor=e.monitor,
+    e.scheduler = Scheduler(config, e.backend, e.runner, findModelServers=e.servers.find, serverLoad=e.servers.load, monitor=e.monitor,
                             terminateModelJobs=lambda jobmanagers, uri: e.cleanups.append((jobmanagers, uri)) or ['1@x'])
 
     def drain():
@@ -454,7 +457,10 @@ def test_log_records_carry_the_execution(env, caplog):
     tagged = [r for r in caplog.records if r.name == 'scheduler' and getattr(r, 'weid', None) == 'E0']
     assert tagged and any('Finished' in r.getMessage() for r in tagged)
     assert names == ['job:E0']
-    assert all(getattr(r, 'weid', None) is None for r in caplog.records if 'taken' in r.getMessage())
+    # the main loop tags its line about the execution explicitly (with its profile and model servers) ...
+    assert [r.weid for r in caplog.records if 'taken' in r.getMessage()] == ['E0']
+    # ... but the job thread's execution does not leak into the main loop's context
+    assert core.currentExecution.get() is None
 
 
 def test_notifications_do_not_hold_job_slots(env):
@@ -523,3 +529,54 @@ def test_queue_sampling_failure_is_not_fatal(env, caplog):
     env.scheduler.sampleQueue()
     assert env.monitor.stat.tasks.dbRunning is None
     assert 'Could not count the executions' in caplog.text
+
+
+# --- several model servers, execution profiles -----------------------------------------------------
+
+def _waitLaunched(env, weid, timeout=5):
+    """Wait until the job thread of *weid* has launched its (fake) workflow."""
+    t0 = time.time()
+    while weid not in env.runner.launched:
+        assert time.time() - t0 < timeout, f'{weid} not launched'
+        time.sleep(0.01)
+
+
+def test_instances_add_capacity(env):
+    """Executions are admitted up to the free slots of all instances of the model server together."""
+    env.freeSlots['CVUT.demo01'] = 1
+    env.servers.add('CVUT.demo01~node2', base='CVUT.demo01', free=1)
+    for i in range(3):
+        env.backend.addExecution(f'E{i}')
+    assert env.scheduler.schedulePass() == 2
+    env.drain()
+    assert env.backend.status('E2') == 'Pending'
+
+
+def test_unknown_profile_fails(env):
+    """An execution asking for an execution profile its workflow does not have fails at once, with a log telling why."""
+    env.backend.addExecution('E0', profile=2)
+    assert env.scheduler.schedulePass() == 0
+    env.drain()
+    assert env.backend.statuses('E0') == ['Failed']
+    assert b'Execution profile #2' in env.backend.logs['E0']
+    assert env.backend.notified == ['E0']
+
+
+def test_profile_selects_servers(env, caplog):
+    """The execution's profile decides the compatible servers; the scheduler log names the profile."""
+    import logging
+    env.backend.addWorkflow('wfp', 1, jobmanagers=('CVUT.demo01',),
+                            profiles=[{'Name': 'fast', 'Models': [{'Name': 'm0', 'RequiredModelMetadata': ['Runtime_seconds']}]}])
+    env.backend.addExecution('E0', wid='wfp', profile=0)
+    env.backend.addExecution('E1', wid='wfp')
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        # no server is tagged Runtime_seconds: E0 cannot be placed (costs an attempt), E1 (default profile) can
+        assert env.scheduler.schedulePass() == 1
+    assert env.backend.executions['E0'].Attempts == 1
+    assert 'E1 taken (attempts so far: 0; profile default; m0: 1 compatible model server(s))' in caplog.text
+    env.servers.add('CVUT.demo01~fast', base='CVUT.demo01', tags=('Runtime_seconds',))
+    env.scheduler.backoff.clear()
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        assert env.scheduler.schedulePass() == 1
+    env.drain()
+    assert 'E0 taken (attempts so far: 1; profile #0 "fast"; m0: 1 compatible model server(s))' in caplog.text

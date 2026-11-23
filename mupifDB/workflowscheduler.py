@@ -30,7 +30,7 @@ from mupifDB.scheduler.backend import RestBackend
 from mupifDB.scheduler.config import SchedulerConfig
 from mupifDB.scheduler.core import Scheduler
 from mupifDB.scheduler.monitor import SchedulerMonitor
-from mupifDB.scheduler.resources import modelServerFreeSlots, terminateExecutionModelJobs
+from mupifDB.scheduler.resources import terminateExecutionModelJobs, threadProxy
 from mupifDB.scheduler.runner import JobRunner
 from mupifDB.scheduler.staging import PackageCache, stageWorkflow
 
@@ -54,8 +54,14 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     monitor = SchedulerMonitor(config.stat_file, capacity=config.max_jobs)
     cache = PackageCache(config.cache_dir or os.path.join(config.work_dir, 'mupifDB-package-cache'), config.cache_max_bytes) if config.cache_max_bytes else None
     runner = JobRunner(config, nsUri=str(ns._pyroUri), stage=lambda record, directory: stageWorkflow(record, directory, cache=cache))
-    scheduler = Scheduler(config, RestBackend(), runner, freeJobSlots=lambda jm: modelServerFreeSlots(ns, jm), monitor=monitor,
-                          terminateModelJobs=lambda jobmanagers, loggerURI: terminateExecutionModelJobs(ns, jobmanagers, loggerURI))
+    from mupif import modelplacement
+    scheduler = Scheduler(config, RestBackend(), runner,
+                          # compatible model servers and their load, the way workflows find them (mupif.modelplacement);
+                          # a Pyro proxy belongs to one thread: the nameserver is asked through a proxy of the calling thread
+                          findModelServers=lambda req: modelplacement.findModelServers(threadProxy(ns), req),
+                          serverLoad=lambda server: modelplacement.serverLoad(server.uri),
+                          monitor=monitor,
+                          terminateModelJobs=lambda servers, loggerURI: terminateExecutionModelJobs(ns, servers, loggerURI))
     monitor.onStop = scheduler.stop
     monitor.onDrain = scheduler.setDrain
     # copy the statistics of the previous run to the database before anything changes

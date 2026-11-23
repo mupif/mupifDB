@@ -38,27 +38,37 @@ class FakeBackend:
 
     # --- setup ---------------------------------------------------------------------------------
 
-    def addWorkflow(self, wid: str = 'wf', version: int = 1, jobmanagers: tuple[str, ...] = ('CVUT.demo01',), modulename: str = 'fakewf') -> Any:
+    def addWorkflow(self, wid: str = 'wf', version: int = 1, jobmanagers: tuple[str, ...] = ('CVUT.demo01',), modulename: str = 'fakewf',
+                    profiles: list[dict] | None = None) -> Any:
         """
-        Add a workflow whose models use the given jobmanagers.
+        Add a workflow whose models (``m0``, ``m1``, ...) use the given jobmanagers.
 
+        :param profiles: execution profiles, as in the workflow metadata (dicts)
         :return: the workflow record
         """
         rec = types.SimpleNamespace(wid=wid, Version=version, modulename=modulename, GridFSID=f'file-{wid}-{version}',
-                                    Models=[types.SimpleNamespace(Name=f'm{i}', Jobmanager=jm) for i, jm in enumerate(jobmanagers)])
+                                    Models=[types.SimpleNamespace(Name=f'm{i}', Jobmanager=jm, ModelID=None, Instantiate=None) for i, jm in enumerate(jobmanagers)],
+                                    ExecutionProfiles=profiles or [])
         self.workflows[(wid, version)] = rec
         return rec
 
-    def addExecution(self, weid: str, wid: str = 'wf', version: int = 1, status: str = 'Pending', attempts: int = 0, loggerURI: str | None = None) -> Any:
+    def addExecution(self, weid: str, wid: str = 'wf', version: int = 1, status: str = 'Pending', attempts: int = 0, loggerURI: str | None = None,
+                     profile: int = -1) -> Any:
         """
         Add an execution; executions are submitted in the order they are added.
 
+        :param profile: execution profile index (-1: the default profile)
         :return: the execution record
         """
         rec = types.SimpleNamespace(dbID=weid, Status=status, Attempts=attempts, WorkflowID=wid, WorkflowVersion=version, submitted=next(self._submitted),
-                                    loggerURI=loggerURI)
+                                    loggerURI=loggerURI, ExecutionProfileIndex=profile, ModelServers={})
         self.executions[weid] = rec
         return rec
+
+    def setModelServers(self, weid: str, modelServers: dict[str, str]) -> None:
+        """Store the model servers of an execution, as the execution script does once its models are allocated."""
+        with self.lock:
+            self.executions[weid].ModelServers = dict(modelServers)
 
     def status(self, weid: str) -> str:
         """Return the current status of an execution."""
@@ -148,3 +158,42 @@ class FakeBackend:
             for r in self.executions.values():
                 counts[r.Status] = counts.get(r.Status, 0) + 1
             return counts
+
+
+class FakeModelServers:
+    """
+    Registered model servers for the scheduler, without a nameserver.
+
+    Provides the two functions the scheduler takes: :meth:`find` (like
+    :func:`mupif.modelplacement.findModelServers`) and :meth:`load` (like
+    :func:`mupif.modelplacement.serverLoad`). Free slots come from :attr:`free` (server name ->
+    slots, 100 if not given, None: unreachable).
+    """
+
+    def __init__(self):
+        #: registered name -> tags (as a model server registers them: type:jobmanager, its base name, ...)
+        self.tags: dict[str, set[str]] = {}
+        #: registered name -> free slots (None: unreachable); 100 if missing
+        self.free: dict[str, int | None] = {}
+        #: maximum slots of every server
+        self.max = 100
+        #: number of load queries per server
+        self.queries: dict[str, int] = {}
+
+    def add(self, name: str, base: str | None = None, tags: tuple[str, ...] = (), free: int | None = 100) -> None:
+        """Register a model server *name* (an instance of *base*, default: *name*) with extra *tags*."""
+        self.tags[name] = {'type:jobmanager', base or name, *tags}
+        self.free[name] = free
+
+    def find(self, req):
+        """Compatible servers of a requirement (see mupif.modelplacement.findModelServers)."""
+        from mupif.modelplacement import Candidate
+        return [Candidate(nsName=n, uri=f'PYRO:{n}@host:1', tags=frozenset(t), score=len(t & req.optional))
+                for n, t in sorted(self.tags.items()) if (t & req.identity) and req.required <= t]
+
+    def load(self, server):
+        """Load of a server (see mupif.modelplacement.serverLoad)."""
+        from mupif.modelplacement import Load
+        self.queries[server.nsName] = self.queries.get(server.nsName, 0) + 1
+        free = self.free.get(server.nsName, 100)
+        return None if free is None else Load(free=free, max=self.max)
