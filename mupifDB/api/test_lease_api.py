@@ -162,3 +162,30 @@ def test_edm_write_fenced(api):
     # (and fails further on: there is no such EDM database here)
     for headers in ({'X-MupifDB-Lease': lease}, {}):
         assert loose.patch('/api/EDM/nodb/Type/000000000000000000000000', json=body, headers=headers).status_code != 409
+
+
+def test_scheduler_statistics_aggregated(api):
+    """The statistics of the live schedulers are added up (queue numbers: maximum); dead schedulers do not count."""
+    client, main, _ = api
+    main.db.Schedulers.delete_many({})
+    future, past = main.datetime(2100, 1, 1), main.datetime(2000, 1, 1)
+    main.db.Schedulers.insert_many([
+        {'_id': 'a', 'HeartbeatExpires': future, 'Stats': {'runningTasks': 3, 'scheduledTasks': 1, 'processedTasks': 10, 'pendingTasks': 5, 'capacity': 4}},
+        {'_id': 'b', 'HeartbeatExpires': future, 'Stats': {'runningTasks': 1, 'scheduledTasks': 0, 'processedTasks': 7, 'pendingTasks': 4, 'capacity': 4}},
+        {'_id': 'gone', 'HeartbeatExpires': past, 'Stats': {'runningTasks': 9, 'scheduledTasks': 9, 'processedTasks': 9, 'pendingTasks': 9, 'capacity': 9}},
+    ])
+    st = client.get('/api/scheduler_statistics').json()
+    assert st == {'runningTasks': 4, 'scheduledTasks': 1, 'load': 50, 'processedTasks': 17, 'waitingTasks': 6, 'pendingTasks': 5}
+    assert main.schedulers_statistics()[0] is True
+    # all gone: not alive
+    main.db.Schedulers.update_many({}, {'$set': {'HeartbeatExpires': past}})
+    assert main.schedulers_statistics() == (False, {})
+
+
+def test_scheduler_statistics_without_registry(api):
+    """Deployments whose scheduler does not register (older versions): the former single statistics document."""
+    client, main, _ = api
+    main.db.Schedulers.delete_many({})
+    main.db.Stat.delete_many({})
+    main.db.Stat.insert_one({'scheduler': {'runningTasks': 2, 'scheduledTasks': 1, 'load': 25, 'processedTasks': 5}})
+    assert client.get('/api/scheduler_statistics').json() == {'runningTasks': 2, 'scheduledTasks': 1, 'load': 25, 'processedTasks': 5}

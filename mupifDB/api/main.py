@@ -2240,31 +2240,49 @@ def insert_log(data: dict, request: Request, current_user: User_Model = Depends(
 # Stats
 # --------------------------------------------------
 
+def schedulers_statistics() -> tuple[bool, dict]:
+    """
+    Statistics of the schedulers of the deployment: ``(any scheduler alive, counters)``.
+
+    Schedulers send their counters with their heartbeat (registry ``Schedulers``, see
+    mupifDB.api.leases); the counters of the live ones are added up: running, scheduled and
+    processed executions, and the load over their summed capacity. The database queue (pending)
+    is the same for all, so its maximum is taken; waiting = pending + scheduled. Without any
+    registered scheduler (older schedulers), the single statistics document ``Stat`` and the
+    pidfile of a scheduler on this host are used, as before.
+    """
+    live = leases.liveSchedulers(db.Schedulers)
+    stats = [r.get('Stats') or {} for r in db.Schedulers.find({'_id': {'$in': sorted(live)}})] if live else []
+    if not stats:
+        if db.Schedulers.estimated_document_count() == 0:
+            rec = db.Stat.find_one() or {}
+            alive = False
+            try:
+                with open('mupifDB_scheduler_pidfile') as f:
+                    alive = psutil.pid_exists(int(f.read()))
+            except (OSError, ValueError):
+                pass
+            return alive, dict(rec.get('scheduler', {}))
+        return False, {}
+    total = lambda k: sum(int(s.get(k) or 0) for s in stats)
+    running, scheduled = total('runningTasks'), total('scheduledTasks')
+    pending = max(int(s.get('pendingTasks') or 0) for s in stats)
+    capacity = total('capacity')
+    return True, dict(runningTasks=running, scheduledTasks=scheduled, processedTasks=total('processedTasks'), pendingTasks=pending,
+                      waitingTasks=pending + scheduled, load=(round(100 * running / capacity) if capacity else max(float(s.get('load') or 0) for s in stats)))
+
+
 @api_router.get("/status", tags=["Stats"])
 def get_status(current_user: User_Model = Depends(get_current_authenticated_user)):
     mupifDBStatus = 'OK'
-    schedulerStatus = 'OK'
-
-    pidfile = 'mupifDB_scheduler_pidfile'
-    if not os.path.exists(pidfile):
-        schedulerStatus = 'Failed'
-    else:
-        with open(pidfile, "r") as f:
-            try:
-                pid = int(f.read())
-                if not psutil.pid_exists(pid):
-                    schedulerStatus = 'Failed'
-            except (OSError, ValueError):
-                schedulerStatus = 'Failed'
-    rec=db.Stat.find_one()
-    # pprint(rec)
-    statRec=models.MupifDBStatus_Model.Stat_Model.model_validate(rec)
+    # several schedulers may run, on other hosts: alive if any has a live heartbeat
+    alive, stat = schedulers_statistics()
     return models.MupifDBStatus_Model(
-        schedulerStatus=schedulerStatus,
+        schedulerStatus='OK' if alive else 'Failed',
         mupifDBStatus=mupifDBStatus,
         # roundtrip to execution_statistics below via API request back to us? wth
         totalStat=mupifDB.schedulerstat.getGlobalStat(),
-        schedulerStat=statRec.scheduler
+        schedulerStat=models.MupifDBStatus_Model.Stat_Model.SchedulerStat_Model.model_validate({k: v for k, v in stat.items() if k in SCHEDULER_STAT_KEYS})
     )
 
 
@@ -2326,14 +2344,9 @@ SCHEDULER_STAT_KEYS = ["runningTasks", "scheduledTasks", "load", "processedTasks
 @api_router.get("/scheduler_statistics", tags=["Stats"])
 @api_router.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
-    table = db.Stat
-    output = {}
-    for s in table.find():
-        for k in SCHEDULER_STAT_KEYS:
-            if k in s["scheduler"]:
-                output[k] = s["scheduler"][k]
-        break
-    return output
+    """Counters of the schedulers, summed over the live ones (see :func:`schedulers_statistics`)."""
+    _, stat = schedulers_statistics()
+    return {k: stat[k] for k in SCHEDULER_STAT_KEYS if k in stat}
 
 
 class M_ModifyStatistics(BaseModel):

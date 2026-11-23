@@ -259,3 +259,26 @@ def test_unregister_never_raises(synced):
             raise ConnectionError('nameserver down')
     m.ns = Down()
     m.unregister()
+
+
+def test_name_per_scheduler():
+    """Several schedulers may run: each registers its monitor under its own name, and reports its identity."""
+    m = SchedulerMonitor(None, capacity=4, schedulerId='node2')
+    assert m.nsName == 'mupif.scheduler.node2'
+    assert m.getStatistics()['schedulerId'] == 'node2'
+    assert m.heartbeatStats()['capacity'] == 4
+    # without an identity (older callers): the former name
+    assert SchedulerMonitor(None, capacity=4).nsName == 'mupif.scheduler'
+
+
+def test_unregister_own_name_only():
+    """At shutdown a monitor removes its own entry, not another scheduler's."""
+    class NS:
+        def __init__(self): self.entries = {'mupif.scheduler.a': 'PYRO:a@h:1', 'mupif.scheduler.b': 'PYRO:b@h:1'}
+        def lookup(self, name): return self.entries[name]
+        def remove(self, name): self.entries.pop(name)
+    ns = NS()
+    m = SchedulerMonitor(None, capacity=4, schedulerId='a')
+    m.ns, m.uri = ns, 'PYRO:a@h:1'
+    m.unregister()
+    assert ns.entries == {'mupif.scheduler.b': 'PYRO:b@h:1'}

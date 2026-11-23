@@ -51,7 +51,7 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     :param ns: Pyro nameserver proxy
     :return: the scheduler, ready to :meth:`~mupifDB.scheduler.core.Scheduler.run`
     """
-    monitor = SchedulerMonitor(config.stat_file, capacity=config.max_jobs)
+    monitor = SchedulerMonitor(config.stat_file, capacity=config.max_jobs, schedulerId=config.scheduler_id)
     cache = PackageCache(config.cache_dir or os.path.join(config.work_dir, 'mupifDB-package-cache'), config.cache_max_bytes) if config.cache_max_bytes else None
     runner = JobRunner(config, nsUri=str(ns._pyroUri), stage=lambda record, directory: stageWorkflow(record, directory, cache=cache))
     from mupif import modelplacement, pyroutil

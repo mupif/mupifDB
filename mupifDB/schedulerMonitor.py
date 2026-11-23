@@ -81,9 +81,10 @@ def main():
     global scheduler
     ns = mp.pyroutil.connectNameserver()
     ns_uri = str(ns._pyroUri)
+    schedulerId = None
    
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "r:")
+        opts, args = getopt.getopt(sys.argv[1:], "r:i:")
         # print(opts, args)
     except getopt.GetoptError as err: 
         # print help information and exit: 
@@ -98,13 +99,21 @@ def main():
         #            host = a
         if o in ("-r",):
             refreshRate = a
+        elif o in ("-i",):
+            schedulerId = a
         else:
             assert False, "unhandled option"
     
     # print("huhu:"+host+str(port))
 
-    # locate scheduler, request remote proxy
-    schedulerURI = ns.lookup('mupif.scheduler')
+    # locate the scheduler: several may run, each registered as mupif.scheduler.<id> with the
+    # metadata type:scheduler; -i <id> chooses one, else the first one (by name)
+    found = ns.yplookup(meta_any={'type:scheduler'}, return_metadata=False)
+    names = sorted(n for n in found if schedulerId is None or n in (f'mupif.scheduler.{schedulerId}', schedulerId))
+    if not names:
+        print('No scheduler registered in the nameserver' + (f' with ID {schedulerId}' if schedulerId else ''))
+        sys.exit(1)
+    schedulerURI = found[names[0]]
     # get local port of jobmanager (from uri)
     scheduler = Pyro5.api.Proxy(schedulerURI)
 

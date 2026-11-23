@@ -63,14 +63,20 @@ class SchedulerMonitor:
     updated by the scheduler while it runs, persisted by :meth:`persist`.
     """
 
-    def __init__(self, statFile: str | None, capacity: int, onStop: Callable[[], None] = lambda: None):
+    def __init__(self, statFile: str | None, capacity: int, onStop: Callable[[], None] = lambda: None, schedulerId: str | None = None):
         """
         Load the statistics of the previous run, if any.
 
         :param statFile: file keeping the statistics across restarts (None: do not persist)
         :param capacity: number of executions that can run at once (for the load percentage)
         :param onStop: called by :meth:`stop` to stop the scheduler
+        :param schedulerId: identity of the scheduler; the monitor registers in the nameserver as
+                            ``mupif.scheduler.<schedulerId>`` (several schedulers may run at once;
+                            readers find them by the metadata ``type:scheduler``)
         """
+        self.schedulerId = schedulerId
+        #: name in the nameserver
+        self.nsName = NS_NAME + (f'.{schedulerId}' if schedulerId else '')
         self.statFile = statFile
         self.onStop = onStop
         self.lock = threading.RLock()
@@ -298,6 +304,8 @@ class SchedulerMonitor:
             failedTasks48=h48.failed,
             load48=h48.load,
             draining=self.draining,
+            #: identity of the scheduler (several may run at once)
+            schedulerId=self.schedulerId,
             # --- load of the scheduler: added keys, ignored by older readers
             #: executions that can run at once (to sum the capacity of several schedulers)
             capacity=s.capacity,
@@ -360,15 +368,15 @@ class SchedulerMonitor:
             claim = getattr(ns, '_pyroClaimOwnership', None)
             if claim is not None:
                 claim()
-            if self.uri is not None and str(ns.lookup(NS_NAME)) != str(self.uri):
-                log.info(f'{NS_NAME} in the nameserver belongs to another scheduler now, not removing it')
+            if self.uri is not None and str(ns.lookup(self.nsName)) != str(self.uri):
+                log.info(f'{self.nsName} in the nameserver belongs to another scheduler now, not removing it')
                 return
-            ns.remove(NS_NAME)
-            log.info(f'Removed {NS_NAME} from the nameserver')
+            ns.remove(self.nsName)
+            log.info(f'Removed {self.nsName} from the nameserver')
         except Pyro5.errors.NamingError:
             pass  # not registered (any more)
         except Exception:
-            log.exception(f'Could not remove {NS_NAME} from the nameserver')
+            log.exception(f'Could not remove {self.nsName} from the nameserver')
 
     def registerPyro(self, *, daemon, ns, uri, appName, exclusiveDaemon):
         """Accept the registration callback of :func:`mupif.pyroutil.runServer` (nothing to do)."""
@@ -386,5 +394,5 @@ class SchedulerMonitor:
         # an exclusive daemon in a non-daemon thread, which keeps the process alive after the
         # scheduler has shut down
         daemon = mp.pyroutil.getDaemon(proxy=ns)
-        self.uri = mp.pyroutil.runServer(ns=ns, appName=NS_NAME, app=self, daemon=daemon, metadata={'type:scheduler'})
+        self.uri = mp.pyroutil.runServer(ns=ns, appName=self.nsName, app=self, daemon=daemon, metadata={'type:scheduler'})
         return self.uri
