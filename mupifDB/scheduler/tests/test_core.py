@@ -580,3 +580,45 @@ def test_profile_selects_servers(env, caplog):
         assert env.scheduler.schedulePass() == 1
     env.drain()
     assert 'E0 taken (attempts so far: 1; profile #0 "fast"; m0: 1 compatible model server(s))' in caplog.text
+
+
+def test_model_servers_in_statistics(env, caplog):
+    """
+    The model servers the workflow chose (stored in the record by the execution script) appear in
+    the log, with the execution in the statistics, and in the running executions per model server.
+    """
+    import logging
+    env.servers.add('CVUT.demo01~node2', base='CVUT.demo01')
+    env.backend.addExecution('E0')
+    env.backend.addExecution('E1')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    _waitLaunched(env, 'E1')
+    # as the execution script does once the models are allocated
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01~node2'})
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        env.scheduler.refreshPlacements()
+        env.scheduler.refreshPlacements()   # known already: not counted twice
+    assert 'E0: models allocated on model servers m0→CVUT.demo01~node2' in caplog.text
+    st = env.monitor.getStatistics()
+    assert st['modelServerJobs'] == {'CVUT.demo01~node2': 1}
+    lastJobs = {j[0]: j for j in st['lastJobs']}
+    assert lastJobs['E0'][5] == {'m0': 'CVUT.demo01~node2'} and lastJobs['E1'][5] == {}
+    # E1 stores its servers just before it ends: they are shown with it, nothing stays counted
+    env.backend.setModelServers('E1', {'m0': 'CVUT.demo01'})
+    env.drain()
+    st = env.monitor.getStatistics()
+    assert st['modelServerJobs'] == {}
+    assert {j[0]: j[5] for j in st['lastJobs']} == {'E0': {'m0': 'CVUT.demo01~node2'}, 'E1': {'m0': 'CVUT.demo01'}}
+
+
+def test_leftover_jobs_on_servers_used(env):
+    """Leftover model jobs are looked for on the servers the execution used, if known, else on every compatible one."""
+    env.servers.add('CVUT.demo01~node2', base='CVUT.demo01')
+    env.backend.addExecution('E0', loggerURI='PYRO:log-E0')
+    env.backend.addExecution('E1', loggerURI='PYRO:log-E1')
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01~node2'})
+    env.scheduler.schedulePass()
+    env.drain()
+    assert sorted(env.cleanups) == [(['CVUT.demo01', 'CVUT.demo01~node2'], 'PYRO:log-E1'), (['CVUT.demo01~node2'], 'PYRO:log-E0')]

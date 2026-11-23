@@ -94,6 +94,9 @@ class SchedulerMonitor:
         self.stat.tasks.pending = 0
         self.stat.tasks.waiting = 0
         self.stat.tasks.dbRunning = None
+        self.stat.modelServerJobs = {}
+        #: running executions (started, not finished) -> their model servers once known (see :meth:`placed`)
+        self._running: dict[str, dict[str, str] | None] = {}
         # size the history lists (empty in a new SchedulerStat) before anything is stored in them
         self.stat.advanceTime()
         #: nameserver proxy and URI of the monitor, once registered by :meth:`runServer`
@@ -133,20 +136,58 @@ class SchedulerMonitor:
             self.stat.tasks.scheduled = max(0, self.stat.tasks.scheduled - 1)
             self.stat.tasks.running += 1
             self.stat.lastJobNew(SchedulerStat.JobInfo(we_id=weid, wid=wid, status='Running', started=datetime.datetime.now(), finished=None))
+            self._running[weid] = None
             self._changed()
         self.syncDb()
 
-    def finished(self, weid: str, status: str) -> None:
+    def placed(self, weid: str, modelServers: dict[str, str]) -> None:
+        """
+        Record the model servers the models of a running execution were allocated on.
+
+        Counted in :attr:`SchedulerStat.modelServerJobs` until :meth:`finished`; shown with the
+        execution in :attr:`SchedulerStat.lastJobs`. Ignored for an execution which is not running
+        (it may have finished meanwhile) or whose servers are recorded already.
+
+        :param weid: execution ID
+        :param modelServers: model name -> model server (registered name)
+        """
+        with self.lock:
+            if weid not in self._running or self._running[weid] is not None:
+                return
+            self._running[weid] = dict(modelServers)
+            # an execution with two models on one server counts once there
+            for server in set(modelServers.values()):
+                self.stat.modelServerJobs[server] = self.stat.modelServerJobs.get(server, 0) + 1
+            self.stat.lastJobPlaced(weid, modelServers)
+            self._changed()
+
+    def _unplace(self, weid: str) -> dict[str, str] | None:
+        """Stop counting a running execution on its model servers (call with :attr:`lock` held); return its servers."""
+        modelServers = self._running.pop(weid, None)
+        for server in set((modelServers or {}).values()):
+            n = self.stat.modelServerJobs.get(server, 0) - 1
+            if n > 0:
+                self.stat.modelServerJobs[server] = n
+            else:
+                self.stat.modelServerJobs.pop(server, None)
+        return modelServers
+
+    def finished(self, weid: str, status: str, modelServers: dict[str, str] | None = None) -> None:
         """
         Count the end of a workflow process.
 
         :param weid: execution ID
         :param status: outcome: ``Finished``, ``Failed``, or ``Pending`` (returned to the queue, not
                        counted as processed)
+        :param modelServers: the model servers of the execution, as finally stored by its script
+                             (shown with the execution if they were not known before)
         """
         with self.lock:
             self.stat.advanceTime()
             self.stat.tasks.running = max(0, self.stat.tasks.running - 1)
+            known = self._unplace(weid)
+            if modelServers and not known:
+                self.stat.lastJobPlaced(weid, modelServers)
             if status != 'Pending':
                 self.stat.tasks.processed += 1
                 self.stat.countEvent('processed')
@@ -261,6 +302,8 @@ class SchedulerMonitor:
             pendingTasks=s.tasks.pending,
             #: executions Running according to the database (None: not sampled yet)
             dbRunningTasks=s.tasks.dbRunning,
+            #: model server -> executions of this scheduler running models on it now
+            modelServerJobs=dict(s.modelServerJobs),
             #: peak running / waiting executions in each hour of the last 48 h (oldest first)
             running48=h48.running,
             waiting48=h48.waiting,
