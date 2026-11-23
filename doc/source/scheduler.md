@@ -30,7 +30,7 @@ The owner of an execution is notified by e-mail of its final status (if notifica
 
 ## Main loop
 
-Every `poll_interval` seconds (20 s) the scheduler takes pending executions, **oldest submitted first**, at most as many as it has free job slots (`max_jobs`, 30). For each candidate it counts one slot for every remote model of the workflow on a compatible model server (see [Model servers](#model-servers-instances-and-execution-profiles)). The compatible servers and their free slots are read once per pass and consumed by the executions taken in that pass, so no more executions are started than the model servers can serve:
+Every `poll_interval` seconds (20 s) the scheduler takes pending executions, **oldest submitted first**, at most as many as it has free job slots (`max_jobs`, 30). For each candidate it counts one slot for every remote model of the workflow on a compatible model server (see [Model servers](#model-servers-instances-and-execution-profiles)). Models marked `Instantiate: false` are templates which the workflow allocates itself later, maybe several times (e.g. one per loop iteration): for them no slot is counted, a compatible server only has to be registered and reachable. The compatible servers and their free slots are read once per pass and consumed by the executions taken in that pass, so no more executions are started than the model servers can serve:
 
 - a slot for every model: the execution is taken (`Scheduled`) and handed to a job thread;
 - the compatible model servers are busy (too few free slots): the execution waits for a later pass; this is normal queueing and does not count as an attempt;
@@ -55,7 +55,7 @@ The workflow output is stored with the execution as its log (`ExecutionLog`).
 
 **Timeout.** An execution may run for the `Timeout` declared in its workflow metadata (seconds), or for `default_job_timeout` if the workflow declares none (default: no limit). When exceeded, the workflow gets SIGTERM, which makes the execution script terminate the workflow and its models, then SIGKILL after `kill_grace` seconds; the execution fails. Workflows registered before the scheduler refactoring have no stored timeout until they are uploaded again.
 
-**Model-server jobs left behind.** If a workflow process dies without terminating its models (killed, crashed), the scheduler terminates the model-server jobs belonging to the execution after its run, so they do not keep their slots. It looks for them on the model servers the execution used (`ModelServers` of the execution), or on all compatible ones if the script died before storing them.
+**Model-server jobs left behind.** If a workflow process dies without terminating its models (killed, crashed), the scheduler terminates the model-server jobs belonging to the execution after its run, so they do not keep their slots. It looks for them on the model servers the execution used (`ModelServers` of the execution, stored once the models are allocated at initialization), and on all servers compatible with the other models: the templates (`Instantiate: false`), whose copies the workflow allocates later, or all models if the script died before storing them.
 
 ## Model servers, instances and execution profiles
 

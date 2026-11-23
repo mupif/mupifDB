@@ -516,24 +516,26 @@ class Scheduler:
         else:
             self.monitor.dropped(weid)
 
-    def compatibleServers(self, workflow: Any, profileIndex: int) -> list[str]:
+    def compatibleServers(self, workflow: Any, profileIndex: int, exclude: set[str] = frozenset()) -> list[str]:
         """
         Return the registered names of all model servers compatible with the models of *workflow*.
 
-        Used when the servers an execution's models run on are not known (e.g. its script died
-        before storing them). An unknown execution profile falls back to the default one, which
-        is a superset of the servers of any profile, as far as identities go.
+        Used for the models whose servers are not known (e.g. the script died before storing them,
+        or templates which the workflow allocates later). An unknown execution profile falls back
+        to the default one, which is a superset of the servers of any profile, as far as identities go.
 
         :param workflow: workflow record
         :param profileIndex: execution profile of the execution
+        :param exclude: models left out (their servers are known)
         """
         try:
             reqs = modelplacement.modelRequirements(workflow, profileIndex)
         except ValueError:
             reqs = modelplacement.modelRequirements(workflow, -1)
         names = set()
-        for req in reqs.values():
-            names.update(c.nsName for c in self.findModelServers(req))
+        for model, req in reqs.items():
+            if model not in exclude:
+                names.update(c.nsName for c in self.findModelServers(req))
         return sorted(names)
 
     def terminateLeftoverModelJobs(self, weid: str, workflow: Any = None) -> Any:
@@ -544,8 +546,10 @@ class Scheduler:
         killed (or stopped while blocked in a call to a model) leaves them running, occupying slots
         on the model servers (finding #17). The jobs are looked for on the model servers the
         execution used (``ModelServers`` of the record, stored by the execution script once its
-        models were allocated) or, if not stored, on every compatible model server. Best effort:
-        errors are logged.
+        models were allocated at initialization), and on every server compatible with the models
+        not stored there: all models if nothing was stored, else the templates (``Instantiate:
+        false``), whose copies the workflow allocated later, on servers not recorded anywhere.
+        Best effort: errors are logged.
 
         :param weid: execution ID
         :param workflow: workflow record of the execution (read if not given)
@@ -557,11 +561,12 @@ class Scheduler:
             loggerURI = getattr(rec, 'loggerURI', None)
             if not loggerURI:
                 return rec
-            servers = sorted(set((getattr(rec, 'ModelServers', None) or {}).values()))
-            if not servers:
-                if workflow is None:
-                    workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
-                servers = self.compatibleServers(workflow, getattr(rec, 'ExecutionProfileIndex', -1))
+            stored = dict(getattr(rec, 'ModelServers', None) or {})
+            if workflow is None:
+                workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
+            # the servers used at initialization, plus every server the other models (templates,
+            # or all if nothing was stored) may have been allocated on
+            servers = sorted(set(stored.values()) | set(self.compatibleServers(workflow, getattr(rec, 'ExecutionProfileIndex', -1), exclude=set(stored))))
             if servers and (terminated := self.terminateModelJobs(servers, loggerURI)):
                 log.warning(f'{weid}: terminated model-server jobs left by its workflow: {terminated}')
         except Exception:

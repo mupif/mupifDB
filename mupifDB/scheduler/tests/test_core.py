@@ -629,6 +629,25 @@ def test_leftover_jobs_on_servers_used(env):
     assert sorted(env.cleanups) == [(['CVUT.demo01', 'CVUT.demo01~node2'], 'PYRO:log-E1'), (['CVUT.demo01~node2'], 'PYRO:log-E0')]
 
 
+def test_leftover_jobs_of_templates(env):
+    """
+    Copies of a template (Instantiate false) are allocated by the workflow after the model servers
+    were stored: leftover jobs are also looked for on every server compatible with the template.
+    """
+    env.servers.add('pre')
+    env.servers.add('post')
+    env.servers.add('post~2', base='post')
+    env.backend.addWorkflow('wft', 1, jobmanagers=('pre', 'post'), templates=('m1',))
+    env.backend.addExecution('E0', wid='wft', loggerURI='PYRO:log-E0')
+    env.runner.gate = threading.Event()
+    assert env.scheduler.schedulePass() == 1
+    _waitLaunched(env, 'E0')
+    # the script stores the servers of the models allocated at initialization: m0 only
+    env.backend.setModelServers('E0', {'m0': 'pre'})
+    env.drain()
+    assert env.cleanups == [(['post', 'post~2', 'pre'], 'PYRO:log-E0')]
+
+
 def test_in_flight_executions_hold_their_slots(env):
     """
     Executions started but whose workflows have not allocated their models yet keep their slots in the next pass.
