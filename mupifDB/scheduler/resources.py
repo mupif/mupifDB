@@ -58,9 +58,11 @@ class ResourceBudget:
     same slots. Without the budget, all pending executions of a pass were checked against the same
     free slots, so many more executions were started than the model servers could serve.
 
-    Slots taken by executions started in an earlier pass but whose models are not allocated yet are
-    not known here; such an execution finds no free slot when it starts, exits with code 2 and is
-    returned to Pending.
+    The model servers count a slot only once a workflow has allocated its model. Executions started
+    in an earlier pass whose models are not allocated yet are therefore counted in the budget by the
+    scheduler before the pass (:meth:`~mupifDB.scheduler.core.Scheduler.reserveInFlight`). Slots
+    taken by other clients meanwhile are not known here; an execution which finds no free slot when
+    it starts exits with code 2 and is returned to Pending.
 
     Every remote model of the workflow is counted, also those marked ``Instantiate: false``: mupif
     allocates them at initialization too (it reads the flag through ``BaseMeta.get``, which ignores
