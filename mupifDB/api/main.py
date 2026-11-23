@@ -14,7 +14,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
-from fastapi import APIRouter, FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
+from fastapi import APIRouter, FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status, Header
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
@@ -381,6 +381,33 @@ def ForbiddenError(detail):
 def ConflictError(detail):
     'A lease condition failed (execution taken by another scheduler, lease lost); see mupifDB.api.leases.'
     return HTTPException(status_code=409, detail=detail)
+
+
+def require_lease(uid: str, x_mupifdb_lease: Optional[str] = Header(default=None)) -> Optional[str]:
+    """
+    Fencing of writes to execution *uid* (dependency of the endpoints writing to an execution).
+
+    While the execution is held under a lease, the request must name that lease in the header
+    ``X-MupifDB-Lease: <weid>:<scheduler_id>:<epoch>``; a scheduler, or a workflow, whose lease was
+    taken over cannot overwrite the work of the new holder. Executions not held may be written
+    without the header. See :func:`mupifDB.api.leases.checkLease`; a refusal is 409.
+    """
+    leases.checkLease(db.WorkflowExecutions, uid, x_mupifdb_lease)
+    return x_mupifdb_lease
+
+
+def require_lease_if_given(x_mupifdb_lease: Optional[str] = Header(default=None)) -> Optional[str]:
+    """
+    Fencing of EDM writes made by a workflow (dependency of the EDM write endpoints).
+
+    EDM objects are not part of an execution record; a workflow writing its outputs sends its lease,
+    which names its execution, and the write is refused (409) if that lease is no longer current.
+    Requests without the header (users, tools) are not affected.
+    """
+    if x_mupifdb_lease is not None:
+        weid, _, _ = leases.parseLease(x_mupifdb_lease)
+        leases.checkLease(db.WorkflowExecutions, weid, x_mupifdb_lease)
+    return x_mupifdb_lease
 
 # Transaction support for MongoDB, used to re-validate a record after validation,
 # aborting the transaction automatically if it does not validate.
@@ -1596,26 +1623,26 @@ def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_c
 
 
 @api_router.patch("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
-def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, obj_id, True, data, current_user)
 
 
 @api_router.patch("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
-def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, obj_id, False, data, current_user)
 
 
 @api_router.patch("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
-def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, '', True, data, current_user)
 
 
 @api_router.patch("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
-def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, '', False, data, current_user)
 
 
@@ -1778,7 +1805,7 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     value: str
 
 @api_router.patch("/executions/{uid}/set_onto_base_object_id", tags=["Executions"], response_model=models.ExecutionEntityResponse)
-def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
+def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)) -> models.ExecutionEntityResponse:
     perms.TODO()
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}}, return_document=ReturnDocument.AFTER, session=session)
@@ -1790,7 +1817,7 @@ class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
     data: list[dict]
 
 @api_router.patch("/executions/{uid}/set_onto_base_object_id_multiple", tags=["Executions"])
-def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     for d in data: modify_execution_id(uid,d, current_user=current_user)
     return get_execution(uid, current_user=current_user)
 
@@ -1799,7 +1826,7 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
     value: list[str]
 
 @api_router.patch("/executions/{uid}/set_onto_base_object_ids", tags=["Executions"])
-def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}}, return_document=ReturnDocument.AFTER, session=session)
         if rec is None: raise NotFoundError(f'Execution with uid={uid} or EDM mapping with name={data.name} not found.')
@@ -1813,8 +1840,18 @@ class M_ModifyExecution(BaseModel):
     value: str | Dict[str, str]
 
 @api_router.patch("/executions/{uid}/set_param", tags=["Executions"])
-def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     perms.TODO()
+    # the lease fields are written by the lease operations only (mupifDB.api.leases)
+    if data.key in leases.LEASE_FIELDS:
+        raise HTTPException(status_code=400, detail=f'{data.key} is set by the lease operations only.')
+    if data.key == 'Status':
+        if data.value == 'Scheduled':
+            # taking an execution must be atomic between schedulers: PATCH executions/{uid}/claim
+            raise ConflictError('Executions are taken with PATCH executions/{uid}/claim, not by setting Status=Scheduled.')
+        cur = db.WorkflowExecutions.find_one({'_id': bson.objectid.ObjectId(uid)}, {'Status': 1, 'LeaseExpires': 1})
+        if cur is not None and cur.get('Status') in leases.LEASED and cur.get('LeaseExpires') is not None:
+            raise ConflictError(f'Execution {uid} is held by a scheduler: its status changes through POST executions/{{uid}}/transition.')
     with db_transaction() as session:
         if data.key == 'Status':
             if data.value == 'Created':
@@ -1879,11 +1916,15 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
 @api_router.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     execution_record = perms.ensure(get_execution(uid, current_user=current_user).entity, perm='modify')
-    if execution_record.Status == 'Created' or True:
-        data = type('', (), {})()
-        mod=M_ModifyExecution(key = "Status",value = "Pending")
-        return modify_execution_set_param(uid, mod, current_user=current_user)
-    return None
+    # an execution taken by a scheduler cannot be queued again (it used to be: "== 'Created' or True"),
+    # another scheduler would run it a second time
+    if execution_record.Status in ('Scheduled', 'Running'):
+        raise ConflictError(f'Execution {uid} is {execution_record.Status}: it cannot be scheduled again until it ends.')
+    mod=M_ModifyExecution(key = "Status",value = "Pending")
+    ret = modify_execution_set_param(uid, mod, current_user=current_user, _lease=None)
+    # scheduled by the user: no retry delay left from earlier attempts
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid)}, {'$set': {'NotBefore': None, 'Deferrals': 0}})
+    return ret
 
 
 # --------------------------------------------------
@@ -3092,7 +3133,7 @@ class PatchData(pydantic.BaseModel):
     data: Union[List[Dict[str,Any]],Dict[str,Any]]
 
 @api_router.patch('/EDM/{db}/{type}/{id}', tags=["EDM"])
-def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_user: User_Model = Depends(get_current_authenticated_user)):
+def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)):
     path,data=patchData.path,patchData.data
     RR=_resolve_path_head(db=db,type=type,id=id,path=path)
 
@@ -3122,7 +3163,7 @@ def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_u
 
 
 @api_router.post('/EDM/{db}/{type}', tags=["EDM"])
-def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)) -> str:
     def _new_object(klass,dta,path,tracker):
         klassSchema=GG.schema_get_type(db,klass)
         rec=_api_value_to_db_rec__obj(dta,klass,klassSchema)
@@ -3164,7 +3205,7 @@ def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model =
 
 
 @api_router.post('/EDM/{db}/blob/upload', tags=["EDM"])
-def dms_api_blob_upload(db: str, blob: fastapi.UploadFile, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def dms_api_blob_upload(db: str, blob: fastapi.UploadFile, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)) -> str:
     'Streming blob upload'
     fs = gridfs.GridFS(GG.db_get(db))
     return str(fs.put(blob.file, filename=blob.filename))
@@ -3267,7 +3308,7 @@ def dms_api_path_safe_links(db:str, type:str, id:str, paths:str='', debug:bool=F
 
 
 @api_router.get('/EDM/{db}/{type}/{id}/clone', tags=["EDM"])
-def dms_api_path_clone_get(db:str,type:str,id:str,shallow:str='', current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def dms_api_path_clone_get(db:str,type:str,id:str,shallow:str='', current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)) -> str:
     dump=dms_api_path_get(db=db,type=type,id=id,path=None,max_level=-1,tracking=True,meta=True,shallow=shallow)
     return dms_api_object_post(db=db,type=type,data=dump)
 

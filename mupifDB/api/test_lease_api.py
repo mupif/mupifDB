@@ -97,3 +97,68 @@ def test_scheduler_account_required(api):
     finally:
         user.rights_admin = True
         os.environ.pop('MUPIFDB_SCHEDULER_ACCOUNTS', None)
+
+
+# --- fencing -------------------------------------------------------------------------------------
+
+def held(client, main, **fields) -> tuple[str, str]:
+    """An execution claimed and set Running by scheduler s1; return (ID, its lease header value)."""
+    weid = add(main, **fields)
+    client.patch(f'/api/executions/{weid}/claim', json={'scheduler_id': 's1', 'lease_seconds': 60})
+    client.post(f'/api/executions/{weid}/transition', json={'scheduler_id': 's1', 'epoch': 1, 'to': 'Running'})
+    return weid, f'{weid}:s1:1'
+
+
+def test_set_param_fenced(api):
+    client, main, _ = api
+    weid, lease = held(client, main)
+    body = {'key': 'loggerURI', 'value': 'PYRO:log@h:1'}
+    # held: the write must name the current lease
+    assert client.patch(f'/api/executions/{weid}/set_param', json=body).status_code == 409
+    assert client.patch(f'/api/executions/{weid}/set_param', json=body, headers={'X-MupifDB-Lease': f'{weid}:s1:7'}).status_code == 409
+    assert client.patch(f'/api/executions/{weid}/set_param', json=body, headers={'X-MupifDB-Lease': lease}).status_code == 200
+    # lease fields and taking an execution are reserved to the lease operations; statuses of a held
+    # execution change through transitions only
+    h = {'X-MupifDB-Lease': lease}
+    assert client.patch(f'/api/executions/{weid}/set_param', json={'key': 'SchedulerID', 'value': 'x'}, headers=h).status_code == 400
+    assert client.patch(f'/api/executions/{weid}/set_param', json={'key': 'Status', 'value': 'Finished'}, headers=h).status_code == 409
+    free = add(main)
+    assert client.patch(f'/api/executions/{free}/set_param', json={'key': 'Status', 'value': 'Scheduled'}).status_code == 409
+    # not held: writable as before
+    assert client.patch(f'/api/executions/{free}/set_param', json={'key': 'label', 'value': 'x'}).status_code == 200
+
+
+def test_schedule_not_while_held(api):
+    client, main, _ = api
+    weid, lease = held(client, main)
+    assert client.patch(f'/api/executions/{weid}/schedule').status_code == 409
+    done = add(main, 'Finished', NotBefore=main.datetime(2100, 1, 1), Deferrals=3)
+    assert client.patch(f'/api/executions/{done}/schedule').status_code == 200
+    rec = main.db.WorkflowExecutions.find_one({'_id': bson.ObjectId(done)})
+    assert rec['Status'] == 'Pending' and rec['NotBefore'] is None and rec['Deferrals'] == 0
+
+
+def test_output_item_fenced(api):
+    client, main, _ = api
+    outputs = str(main.db.IOData.insert_one({'Type': 'Outputs', 'DataSet': [{'Name': 'r', 'Type': 'mupif.Property', 'TypeID': 'x', 'ValueType': 'Scalar',
+                                                                              'Units': '', 'ObjID': '', 'Compulsory': False, 'Object': {}}]}).inserted_id)
+    weid, lease = held(client, main, Outputs=outputs)
+    body = {'object': {'Value': 6}}
+    assert client.patch(f'/api/executions/{weid}/output_item/r/', json=body, headers={'X-MupifDB-Lease': f'{weid}:s1:7'}).status_code == 409
+    r = client.patch(f'/api/executions/{weid}/output_item/r/', json=body, headers={'X-MupifDB-Lease': lease})
+    assert r.status_code == 200 and r.json() is True
+
+
+def test_edm_write_fenced(api):
+    client, main, _ = api
+    from fastapi.testclient import TestClient
+    loose = TestClient(main.app, raise_server_exceptions=False)
+    weid, lease = held(client, main)
+    body = {'path': 'x', 'data': {'value': 1}}
+    # a workflow whose lease was taken over: refused before anything is written
+    r = loose.patch('/api/EDM/nodb/Type/000000000000000000000000', json=body, headers={'X-MupifDB-Lease': f'{weid}:s1:7'})
+    assert r.status_code == 409
+    # with the current lease, or without a lease (users, tools), the request passes the fence
+    # (and fails further on: there is no such EDM database here)
+    for headers in ({'X-MupifDB-Lease': lease}, {}):
+        assert loose.patch('/api/EDM/nodb/Type/000000000000000000000000', json=body, headers=headers).status_code != 409
