@@ -168,8 +168,9 @@ class Scheduler:
         log.info('Entering main loop to check for Pending executions')
         while not self.stopEvent.is_set():
             try:
-                self.schedulePass()
+                # placements first: jobs whose models are allocated stop being counted as in flight
                 self.refreshPlacements()
+                self.schedulePass()
                 self.sampleQueue()
                 self.monitor.persist()
             except Exception:
@@ -292,6 +293,7 @@ class Scheduler:
             return 0
         pending = self.backend.pendingExecutions(limit=self.config.fetch_limit)
         budget = ResourceBudget(self.backend.getWorkflow, self.findModelServers, self.serverLoad)
+        self.reserveInFlight(budget)
         taken = 0
         for rec in pending:
             if taken >= free:
@@ -559,19 +561,46 @@ class Scheduler:
             log.exception(f'{weid}: could not clean up its model-server jobs')
         return rec
 
+    def reserveInFlight(self, budget: ResourceBudget) -> None:
+        """
+        Count the slots of executions taken earlier whose workflows have not allocated their models yet.
+
+        The model servers report a slot as used only once the workflow has allocated its model,
+        which takes a few seconds after the start (staging, starting Python, importing the
+        workflow). A pass in between saw those slots as free and took more executions than the
+        servers could serve; the extra ones found no free slot, exited with code 2 and were
+        requeued (seen with two instances and a short poll interval). Such in-flight jobs are now
+        counted in the budget first, as if they were new executions. A job stops being in flight
+        when :meth:`refreshPlacements` finds its models allocated. Errors are ignored: the count is
+        only a better estimate.
+
+        :param budget: the budget of the current pass
+        """
+        with self.lock:
+            inFlight = [j for j in self.jobs.values() if not j.allocated]
+        for job in inFlight:
+            try:
+                budget.reserve(job.record.WorkflowID, job.record.WorkflowVersion, getattr(job.record, 'ExecutionProfileIndex', -1))
+            except Exception:
+                pass
+
     def refreshPlacements(self) -> None:
         """
         Take the model servers of running executions from their records, for the statistics.
 
         The workflow chooses a model server for each model when it allocates it, and the execution
         script stores the choice in the execution record (``ModelServers``) right after. For every
-        running job whose servers are not known yet, the record is read (at most one REST call per
-        such job and pass, only until known), the servers are logged and given to the statistics
-        (:meth:`SchedulerMonitor.placed`). Best effort: errors are logged at debug level, and the
-        next pass tries again.
+        running job whose models are not known to be allocated yet, the record is read (at most one
+        REST call per such job and pass, only until allocated), the servers are logged and given to
+        the statistics (:meth:`SchedulerMonitor.placed`). A job is allocated once its record has
+        ``ModelServers``, or ``workflowURI`` (set by the execution script after ``initialize()``
+        also with workflows of older mupif versions, which do not report their servers); until
+        then :meth:`reserveInFlight` counts its slots. Both fields are cleared by the REST API when
+        the execution becomes ``Running``, so values of an earlier attempt do not count. Best
+        effort: errors are logged at debug level, and the next pass tries again.
         """
         with self.lock:
-            jobs = [j for j in self.jobs.values() if j.launched and j.modelServers is None]
+            jobs = [j for j in self.jobs.values() if j.launched and not j.allocated]
         for job in jobs:
             try:
                 rec = self.backend.getExecution(job.weid)
@@ -580,8 +609,12 @@ class Scheduler:
                 continue
             modelServers = dict(getattr(rec, 'ModelServers', None) or {})
             if not modelServers:
+                if getattr(rec, 'workflowURI', None):
+                    # initialized, but its workflow does not report model servers (older mupif)
+                    job.allocated = True
                 continue
             job.modelServers = modelServers
+            job.allocated = True
             log.info(f'{job.weid}: models allocated on model servers {_formatServers(modelServers)}', extra={'weid': job.weid})
             self.monitor.placed(job.weid, modelServers)
 

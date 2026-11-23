@@ -86,6 +86,9 @@ class Job:
     launched: bool = False
     #: model name -> model server the workflow allocated it on, once known (see Scheduler.refreshPlacements)
     modelServers: dict[str, str] | None = None
+    #: the workflow has allocated its models (the model servers count their slots from then on);
+    #: until then the scheduler counts them itself (see Scheduler.reserveInFlight)
+    allocated: bool = False
 
     def stop(self, reason: str) -> None:
         """

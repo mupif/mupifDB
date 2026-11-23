@@ -618,10 +618,43 @@ def test_leftover_jobs_on_servers_used(env):
     env.servers.add('CVUT.demo01~node2', base='CVUT.demo01')
     env.backend.addExecution('E0', loggerURI='PYRO:log-E0')
     env.backend.addExecution('E1', loggerURI='PYRO:log-E1')
-    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01~node2'})
+    env.runner.gate = threading.Event()
     env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    # as the execution script does once the models are allocated (E1's script died before)
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01~node2'})
     env.drain()
     assert sorted(env.cleanups) == [(['CVUT.demo01', 'CVUT.demo01~node2'], 'PYRO:log-E1'), (['CVUT.demo01~node2'], 'PYRO:log-E0')]
+
+
+def test_in_flight_executions_hold_their_slots(env):
+    """
+    Executions started but whose workflows have not allocated their models yet keep their slots in the next pass.
+
+    The model servers count a slot only once the model is allocated; the scheduler took more
+    executions in between, which then found no free slot and were requeued (exit code 2).
+    """
+    env.freeSlots['CVUT.demo01'] = 2
+    for i in range(4):
+        env.backend.addExecution(f'E{i}')
+    env.runner.gate = threading.Event()
+    assert env.scheduler.schedulePass() == 2
+    _waitLaunched(env, 'E0')
+    _waitLaunched(env, 'E1')
+    # the model server still reports 2 free slots: the workflows have not allocated their models
+    assert env.scheduler.schedulePass() == 0
+    # E0 allocated its model (the server counts it now: 1 free); E1 is still in flight
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01'})
+    env.freeSlots['CVUT.demo01'] = 1
+    env.scheduler.refreshPlacements()
+    assert env.scheduler.schedulePass() == 0
+    # E1's workflow is initialized but does not report model servers (older mupif): no longer in flight
+    env.backend.executions['E1'].workflowURI = 'PYRO:wf-E1'
+    env.freeSlots['CVUT.demo01'] = 0
+    env.scheduler.refreshPlacements()
+    assert [j.allocated for j in env.scheduler.jobs.values()] == [True, True]
+    env.freeSlots['CVUT.demo01'] = 1
+    assert env.scheduler.schedulePass() == 1
 
 
 def test_restarted_execution_listed_once(env):

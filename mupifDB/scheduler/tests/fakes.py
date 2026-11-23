@@ -129,6 +129,10 @@ class FakeBackend:
             self._maybeFail('setStatus', weid, status)
             rec = self.executions[weid]
             rec.Status = status
+            if status == 'Running':
+                # like the REST API: fields set by the execution script belong to one attempt
+                rec.ModelServers = {}
+                rec.workflowURI = None
             if status == 'Pending' and not keepAttempts:
                 rec.Attempts = 0
             self.history.append((weid, status))

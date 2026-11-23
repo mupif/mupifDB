@@ -1830,7 +1830,11 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
                     {"$set": {
                         'StartDate': datetime.now().isoformat(),
                         'EndDate': None,
-                        'ExecutionLog': None
+                        'ExecutionLog': None,
+                        # set again by the execution script once the models are allocated; values of
+                        # an earlier attempt (e.g. interrupted by a scheduler restart) must not count
+                        'ModelServers': {},
+                        'workflowURI': None
                     }},
                     session=session)
             if data.value in ('Finished','Failed'):
