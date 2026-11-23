@@ -46,7 +46,7 @@ import mupif as mp
 import Pyro5.api
 import pydantic
 import json
-from typing import Any, List, Literal, Optional, Iterator, TypeVar, Callable
+from typing import Any, Dict, List, Literal, Optional, Iterator, TypeVar, Callable
 from rich import print_json
 from rich.pretty import pprint
 from pathlib import Path
@@ -824,7 +824,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in {'py', 'zip', 'txt', 'json', 'xml'}
 
 
-def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[], timeout: int = 0):
+def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInputs, workflowOutputs, modulename, classname, models_md, EDM_Mapping:List[models.EDMMapping_Model]=[], timeout: int = 0, executionProfiles: list = []):
     """
     Inserts new workflow definition into DB.
     Note there is workflow versioning schema: the current (latest) workflow version are stored in workflows collection.
@@ -837,6 +837,7 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
     @param workflowOutputs workflow output metadata (list of dicts)
     @param modulename
     @param classname
+    @param executionProfiles execution profiles from the workflow metadata (requirements on model servers, see mupif.modelplacement)
     """
     return insertWorkflowDefinition_model(
         source=source,
@@ -854,7 +855,8 @@ def insertWorkflowDefinition(*, wid, description, source, useCase, workflowInput
             classname=classname,
             Models=models_md,
             EDMMapping=EDM_Mapping,
-            Timeout=timeout
+            Timeout=timeout,
+            ExecutionProfiles=executionProfiles or []
         )
     )
 
@@ -986,6 +988,7 @@ async def upload_workflow_and_dependencies(
                         models_md = meta.get('Models', [])
                         EDM_Mapping = meta.get('EDMMapping', [])
                         timeout = int(meta.get('Timeout', 0) or 0)
+                        executionProfiles = meta.get('ExecutionProfiles') or []
                     else:
                         log.error(f"File {workflow_file.filename} contains {len(classes)} classes (must be one). Classes: {classes}")
                         raise HTTPException(
@@ -1034,7 +1037,8 @@ async def upload_workflow_and_dependencies(
                     classname=classname,
                     models_md=models_md,
                     EDM_Mapping=EDM_Mapping,
-                    timeout=timeout
+                    timeout=timeout,
+                    executionProfiles=executionProfiles
                 )
             else:
                 log.error('Workflow data incomplete. Not adding workflow.')
@@ -1285,6 +1289,9 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
     perms.TODO(wec)
 
     wdoc = get_workflow_by_version(workflow_id=wec.wid, workflow_version=wec.version, current_user=current_user).entity
+    # the execution profile must exist; negative is the default profile (every workflow has it)
+    if wec.ExecutionProfileIndex >= len(wdoc.ExecutionProfiles):
+        raise HTTPException(status_code=422, detail=f'Execution profile #{wec.ExecutionProfileIndex} requested, but workflow {wec.wid} version {wdoc.Version} has {len(wdoc.ExecutionProfiles)} execution profile(s).')
 
     @pydantic.validate_call(validate_return=True)
     def createIODataSet(workflowDoc: models.Workflow_Model, type: Literal['Inputs','Outputs'], no_edm=False):
@@ -1321,6 +1328,7 @@ def create_execution(wec: models.WorkflowExecutionCreate_Model, current_user: Us
         Inputs=inputsId,
         Outputs=outputsId,
         EDMMapping=([] if wec.no_edm else wdoc.EDMMapping),
+        ExecutionProfileIndex=max(-1, wec.ExecutionProfileIndex),
     )
     return insert_execution(data=ex, current_user=current_user)
 
@@ -1775,7 +1783,8 @@ def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, cur
 
 class M_ModifyExecution(BaseModel):
     key: str
-    value: str
+    #: a string for most parameters (the record validates and converts it); a dict for ModelServers
+    value: str | Dict[str, str]
 
 @api_router.patch("/executions/{uid}/set_param", tags=["Executions"])
 def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):

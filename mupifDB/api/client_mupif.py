@@ -8,7 +8,7 @@ from .. import models
 from .client_util import *
 from rich import print_json
 from rich.pretty import pprint
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple, Any, Dict
 
 thisDir = os.path.dirname(os.path.abspath(__file__))
 
@@ -264,6 +264,10 @@ def setExecutionOntoBaseObjectIDMultiple(execution_id, data):
 def setExecutionOntoBaseObjectIDs(execution_id, name, value):
     return rPatch(f"{API_PREFIX}executions/{execution_id}/set_onto_base_object_ids/", json={"name": str(name), "value": _dump(value)}, headers=getRequestHeaders())
 
+def setExecutionModelServers(execution_id: str, modelServers: Dict[str, str]):
+    """Store the model servers the models of an execution were allocated on (model name -> registered server name)."""
+    return setExecutionParameter(execution_id, "ModelServers", dict(modelServers))
+
 def setExecutionAttemptsCount(execution_id, val):
     return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 
@@ -274,8 +278,8 @@ def setExecutionStatus(execution_id: str, status: models.ExecutionStatus_Literal
         setExecutionAttemptsCount(execution_id, 0)
     return setExecutionParameter(execution_id, "Status", status)
 
-def createExecution(wid: str, version: int, ip: str, no_edm=False):
-    wec = models.WorkflowExecutionCreate_Model(wid=wid, version=version, ip=ip, no_edm=no_edm)
+def createExecution(wid: str, version: int, ip: str, no_edm=False, executionProfileIndex: int = -1):
+    wec = models.WorkflowExecutionCreate_Model(wid=wid, version=version, ip=ip, no_edm=no_edm, ExecutionProfileIndex=executionProfileIndex)
     return rPost(f"{API_PREFIX}executions/create/", json=wec.model_dump(mode='json'), headers=getRequestHeaders())
 
 pydantic.validate_call(validate_return=True)
