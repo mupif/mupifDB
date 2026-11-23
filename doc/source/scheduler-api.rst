@@ -36,6 +36,15 @@ Running an execution
 .. automodule:: mupifDB.scheduler.runner
    :members:
 
+Leases (several schedulers)
+---------------------------
+
+.. automodule:: mupifDB.scheduler.leases
+   :members:
+
+.. automodule:: mupifDB.api.leases
+   :members:
+
 Model-server resources
 ----------------------
 

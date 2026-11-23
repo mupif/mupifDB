@@ -33,7 +33,9 @@ Scenarios used during the scheduler refactoring (letters match the refactoring p
   the execution must end as ``Failed`` and not stay ``Running``;
 * **E** scheduler restart: ``--delay 30``, then stop/kill the scheduler mid-run and restart it;
 * **K** missing input: ``--skip-input Value_2``; the execution must fail;
-* **P** execution profiles (phase 4): ``--wid <workflow with ExecutionProfiles> --profile N``.
+* **P** execution profiles (phase 4): ``--wid <workflow with ExecutionProfiles> --profile N``;
+* **S** several schedulers (phase 5): ``--count 20 --delay 10 --check-single-take --expect-schedulers 2``
+  with two schedulers running (``make scheduler scheduler2``).
 
 Example::
 
@@ -87,6 +89,9 @@ class ExecutionReport:
     #: set if the execution was observed as ``Finished``/``Failed`` before its log was stored;
     #: users polling the record (e.g. the web UI) see the same inconsistent state
     final_before_log: bool = False
+    #: scheduler which ran the execution last, and the number of claims/takeovers (lease epoch)
+    scheduler: Optional[str] = None
+    epoch: int = 0
     extra: dict = field(default_factory=dict)
 
     def isFinal(self) -> bool:
@@ -165,6 +170,7 @@ def refresh(rep: ExecutionReport) -> None:
     """
     rec = restApiControl.getExecutionRecord(rep.weid)
     rep.status, rep.attempts, rep.start, rep.end = rec.Status, rec.Attempts, rec.StartDate, rec.EndDate
+    rep.scheduler, rep.epoch = getattr(rec, 'SchedulerID', None), int(getattr(rec, 'LeaseEpoch', 0) or 0)
     rep.has_log = bool(rec.ExecutionLog)
     rep.activated |= rep.status in ACTIVE_STATUSES
     rep.final_before_log |= rep.status in ('Finished', 'Failed') and not rep.has_log
@@ -261,6 +267,11 @@ def check(args: argparse.Namespace, reports: list[ExecutionReport], completed: b
             failures.append(f'{rep.weid}: no ExecutionLog stored')
     if args.max_concurrent is not None and (mc := maxConcurrency(reports, args.overlap_tolerance)) > args.max_concurrent:
         failures.append(f'{mc} executions ran concurrently, at most {args.max_concurrent} allowed')
+    if args.check_single_take:
+        # each execution taken once: one claim, no takeover (lease epoch 1)
+        failures += [f'{rep.weid}: taken {rep.epoch} times (lease epoch), expected once' for rep in reports if rep.epoch != 1]
+    if args.expect_schedulers is not None and (n := len({r.scheduler for r in reports if r.scheduler})) != args.expect_schedulers:
+        failures.append(f'executions were run by {n} scheduler(s), expected {args.expect_schedulers}')
     if args.check_order:
         started = sorted((r for r in reports if r.start), key=lambda r: r.start)
         if [r.submitted for r in started] != sorted(r.submitted for r in started):
@@ -281,6 +292,11 @@ def printTable(reports: list[ExecutionReport]) -> None:
         print(fmt.format(r.submitted, r.weid, r.status, r.attempts, r.start.strftime('%H:%M:%S') if r.start else '',
                          r.end.strftime('%H:%M:%S') if r.end else '', dur, '' if r.result is None else f'{r.result:g}', 'yes' if r.has_log else 'no'))
     print(f'max. concurrently running: {maxConcurrency(reports)}')
+    if any(r.scheduler for r in reports):
+        by = {}
+        for r in reports:
+            by[r.scheduler] = by.get(r.scheduler, 0) + 1
+        print('executions per scheduler: ' + ', '.join(f'{s}: {n}' for s, n in sorted(by.items(), key=lambda x: str(x[0]))))
     if seen := sum(r.final_before_log for r in reports):
         print(f'note: {seen} execution(s) were observed as final before their log was stored')
 
@@ -298,6 +314,8 @@ def main() -> int:
     ap.add_argument('--delay', type=float, default=2., help='Delay input in seconds, i.e. model run time (default: %(default)s)')
     ap.add_argument('--value1', type=float, default=3., help='Value_1 input (default: %(default)s)')
     ap.add_argument('--value2', type=float, default=2., help='Value_2 input (default: %(default)s)')
+    ap.add_argument('--check-single-take', action='store_true', help='fail if an execution was taken more than once (lease epoch != 1: claimed again or taken over)')
+    ap.add_argument('--expect-schedulers', type=int, default=None, metavar='N', help='fail unless the executions were run by exactly N schedulers')
     ap.add_argument('--profile', type=int, default=-1, metavar='N',
                     help='execution profile of the workflow to run the executions with (default: -1, the default profile)')
     ap.add_argument('--skip-input', action='append', default=[], metavar='NAME', help='leave this input unset (repeatable)')
