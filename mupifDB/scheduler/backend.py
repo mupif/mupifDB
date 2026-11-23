@@ -7,11 +7,43 @@ implements it with the REST API client (:mod:`mupifDB.restApiControl`); the test
 also documents every change the scheduler makes to the database.
 """
 
+import dataclasses
+import os
+import socket
+import uuid
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Optional, Protocol
 
 #: statuses the scheduler sets
 SchedulerStatus = Literal['Created', 'Pending', 'Scheduled', 'Running', 'Finished', 'Failed']
+#: retry delay ``(base, maximum, jitter)``: ``min(base * 2**Deferrals, maximum)``, varied by ±jitter
+Backoff = tuple[float, float, float]
+
+
+@dataclasses.dataclass(frozen=True)
+class Lease:
+    """
+    The lease an execution is held under by this scheduler (see :mod:`mupifDB.api.leases`).
+
+    Every write made for the execution names it (:meth:`header`); after a takeover by another
+    scheduler (new epoch) such writes are refused, and :class:`LeaseLost` is raised.
+    """
+    weid: str
+    schedulerId: str
+    epoch: int
+
+    def header(self) -> str:
+        """Value of the request header ``X-MupifDB-Lease``."""
+        return f'{self.weid}:{self.schedulerId}:{self.epoch}'
+
+
+class LeaseLost(Exception):
+    """
+    A lease condition failed: the execution is not (any more) held under the lease, or was taken by another scheduler.
+
+    Not a transient error: the scheduler must drop what it was doing with the execution, without
+    writing anything more for it (another scheduler holds it, or nobody does).
+    """
 
 
 class ExecutionBackend(Protocol):
@@ -84,12 +116,14 @@ class ExecutionBackend(Protocol):
         :param attempts: new count
         """
 
-    def storeLog(self, weid: str, path: Path) -> None:
+    def storeLog(self, weid: str, path: Path, lease: Optional[Lease] = None) -> None:
         """
         Upload a log file and link it to the execution as ``ExecutionLog``.
 
         :param weid: execution ID
         :param path: log file
+        :param lease: the lease the execution is held under (the write is refused if it is not current)
+        :raises LeaseLost: if the lease is not current
         """
 
     def notifyOwner(self, weid: str) -> None:
@@ -98,6 +132,55 @@ class ExecutionBackend(Protocol):
 
         :param weid: execution ID
         """
+
+    # --- leases (several schedulers; see mupifDB.api.leases) ------------------------------------
+
+    def claim(self, weid: str) -> tuple[Any, Lease]:
+        """
+        Take a pending, due execution under a new lease (``Pending -> Scheduled``).
+
+        :return: the updated record and its lease
+        :raises LeaseLost: if another scheduler took it, or it is not pending or not due
+        """
+
+    def transition(self, lease: Lease, to: SchedulerStatus, *, incAttempts: int = 0, resetAttempts: bool = False,
+                   backoff: Optional[Backoff] = None, renew: bool = False) -> Any:
+        """
+        Change the status of an execution held under *lease* (see :func:`mupifDB.api.leases.transition`).
+
+        :param incAttempts: added to ``Attempts``
+        :param resetAttempts: set ``Attempts`` to 0
+        :param backoff: when returning to ``Pending``: retry delay (not claimed before it passed)
+        :param renew: renew the lease (when the workflow is launched)
+        :return: the updated record
+        :raises LeaseLost: if the execution is not held under *lease* any more
+        """
+
+    def defer(self, weid: str, backoff: Backoff) -> bool:
+        """
+        Postpone a pending execution whose resources are unavailable, counting an attempt.
+
+        :return: whether this scheduler deferred it (False: another one did, or claimed it, meanwhile)
+        """
+
+    def takeOver(self, limit: int) -> list[tuple[Any, Lease]]:
+        """Take over executions whose lease expired, held by schedulers which are not alive (see :func:`mupifDB.api.leases.takeOver`)."""
+
+    def takeOverOwn(self) -> list[tuple[Any, Lease]]:
+        """Take over the executions of an earlier process of this scheduler (same ID), at its start."""
+
+    def acquireIdentity(self) -> bool:
+        """Take the scheduler identity for this process; False if another live process holds it."""
+
+    def heartbeat(self, leases: list[Lease], stats: Optional[dict] = None, draining: Optional[bool] = None) -> tuple[bool, set[str]]:
+        """
+        Renew the heartbeat of the scheduler and the given leases.
+
+        :return: (whether this process still holds the identity, IDs of the executions still held)
+        """
+
+    def releaseIdentity(self) -> None:
+        """Give up the identity at a clean shutdown."""
 
     def statusCounts(self) -> dict[str, int]:
         """
@@ -112,7 +195,81 @@ class ExecutionBackend(Protocol):
 
 
 class RestBackend:
-    """:class:`ExecutionBackend` implemented with the REST API client and the e-mail notifications."""
+    """
+    :class:`ExecutionBackend` implemented with the REST API client and the e-mail notifications.
+
+    :param schedulerId: identity of the scheduler (``scheduler_id``)
+    :param leaseSeconds: validity of leases and of the heartbeat, renewed by the scheduler
+    """
+
+    def __init__(self, schedulerId: str = '', leaseSeconds: float = 600.):
+        self.schedulerId = schedulerId
+        self.leaseSeconds = leaseSeconds
+        #: this process (an identity is held by one process at a time)
+        self.instance = uuid.uuid4().hex
+
+    @staticmethod
+    def _lease(rec: Any) -> Lease:
+        return Lease(weid=str(rec.dbID), schedulerId=rec.SchedulerID, epoch=int(rec.LeaseEpoch))
+
+    def claim(self, weid: str) -> tuple[Any, Lease]:
+        """See :meth:`ExecutionBackend.claim`."""
+        from mupifDB import restApiControl
+        from mupifDB.api.client_util import ConflictResponse
+        try:
+            rec = restApiControl.claimExecution(weid, self.schedulerId, self.leaseSeconds)
+        except ConflictResponse as e:
+            raise LeaseLost(str(e)) from e
+        return rec, self._lease(rec)
+
+    def transition(self, lease: Lease, to: SchedulerStatus, *, incAttempts: int = 0, resetAttempts: bool = False,
+                   backoff: Optional[Backoff] = None, renew: bool = False) -> Any:
+        """See :meth:`ExecutionBackend.transition`."""
+        from mupifDB import restApiControl
+        from mupifDB.api.client_util import ConflictResponse
+        try:
+            return restApiControl.transitionExecution(lease.weid, lease.schedulerId, lease.epoch, to, incAttempts=incAttempts,
+                                                      resetAttempts=resetAttempts, backoff=backoff,
+                                                      leaseSeconds=(self.leaseSeconds if renew else None))
+        except ConflictResponse as e:
+            raise LeaseLost(str(e)) from e
+
+    def defer(self, weid: str, backoff: Backoff) -> bool:
+        """See :meth:`ExecutionBackend.defer`."""
+        from mupifDB import restApiControl
+        from mupifDB.api.client_util import ConflictResponse
+        try:
+            restApiControl.deferExecution(weid, backoff)
+            return True
+        except ConflictResponse:
+            return False
+
+    def takeOver(self, limit: int) -> list[tuple[Any, Lease]]:
+        """See :meth:`ExecutionBackend.takeOver`."""
+        from mupifDB import restApiControl
+        return [(r, self._lease(r)) for r in restApiControl.takeOverExecutions(self.schedulerId, self.leaseSeconds, limit)]
+
+    def takeOverOwn(self) -> list[tuple[Any, Lease]]:
+        """See :meth:`ExecutionBackend.takeOverOwn`."""
+        from mupifDB import restApiControl
+        return [(r, self._lease(r)) for r in restApiControl.takeOverOwnExecutions(self.schedulerId, self.instance, self.leaseSeconds)]
+
+    def acquireIdentity(self) -> bool:
+        """See :meth:`ExecutionBackend.acquireIdentity`."""
+        from mupifDB import restApiControl
+        return restApiControl.acquireSchedulerIdentity(self.schedulerId, self.instance, socket.gethostname(), os.getpid(), self.leaseSeconds)
+
+    def heartbeat(self, leases: list[Lease], stats: Optional[dict] = None, draining: Optional[bool] = None) -> tuple[bool, set[str]]:
+        """See :meth:`ExecutionBackend.heartbeat`."""
+        from mupifDB import restApiControl
+        r = restApiControl.schedulerHeartbeat(self.schedulerId, self.instance, self.leaseSeconds, self.leaseSeconds,
+                                              [(l.weid, l.epoch) for l in leases], stats=stats, draining=draining)
+        return bool(r['identity']), set(r['held'])
+
+    def releaseIdentity(self) -> None:
+        """See :meth:`ExecutionBackend.releaseIdentity`."""
+        from mupifDB import restApiControl
+        restApiControl.releaseSchedulerIdentity(self.schedulerId, self.instance)
 
     def pendingExecutions(self, limit: int) -> list[Any]:
         """See :meth:`ExecutionBackend.pendingExecutions`."""
@@ -149,13 +306,18 @@ class RestBackend:
         from mupifDB import restApiControl
         restApiControl.setExecutionAttemptsCount(weid, attempts)
 
-    def storeLog(self, weid: str, path: Path) -> None:
+    def storeLog(self, weid: str, path: Path, lease: Optional[Lease] = None) -> None:
         """See :meth:`ExecutionBackend.storeLog`."""
         from mupifDB import restApiControl
+        from mupifDB.api.client_util import ConflictResponse, leaseContext
         with open(path, 'rb') as f:
             logId = restApiControl.uploadBinaryFile(f)
         if logId is not None:
-            restApiControl.setExecutionParameter(weid, 'ExecutionLog', logId)
+            try:
+                with leaseContext(lease.header() if lease is not None else None):
+                    restApiControl.setExecutionParameter(weid, 'ExecutionLog', logId)
+            except ConflictResponse as e:
+                raise LeaseLost(str(e)) from e
 
     def notifyOwner(self, weid: str) -> None:
         """See :meth:`ExecutionBackend.notifyOwner`."""

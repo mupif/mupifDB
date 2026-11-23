@@ -1,4 +1,4 @@
-"""Fixtures of the API tests: a throwaway MongoDB server (skipped when ``mongod`` is missing)."""
+"""Shared test fixtures: a throwaway MongoDB server (skipped when ``mongod`` is missing)."""
 
 import os
 import shutil
