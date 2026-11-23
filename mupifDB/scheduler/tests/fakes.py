@@ -39,15 +39,17 @@ class FakeBackend:
     # --- setup ---------------------------------------------------------------------------------
 
     def addWorkflow(self, wid: str = 'wf', version: int = 1, jobmanagers: tuple[str, ...] = ('CVUT.demo01',), modulename: str = 'fakewf',
-                    profiles: list[dict] | None = None) -> Any:
+                    profiles: list[dict] | None = None, templates: tuple[str, ...] = ()) -> Any:
         """
         Add a workflow whose models (``m0``, ``m1``, ...) use the given jobmanagers.
 
         :param profiles: execution profiles, as in the workflow metadata (dicts)
+        :param templates: names of the models marked ``Instantiate: false`` (allocated by the workflow later)
         :return: the workflow record
         """
         rec = types.SimpleNamespace(wid=wid, Version=version, modulename=modulename, GridFSID=f'file-{wid}-{version}',
-                                    Models=[types.SimpleNamespace(Name=f'm{i}', Jobmanager=jm, ModelID=None, Instantiate=None) for i, jm in enumerate(jobmanagers)],
+                                    Models=[types.SimpleNamespace(Name=f'm{i}', Jobmanager=jm, ModelID=None, Instantiate=(False if f'm{i}' in templates else None))
+                                            for i, jm in enumerate(jobmanagers)],
                                     ExecutionProfiles=profiles or [])
         self.workflows[(wid, version)] = rec
         return rec

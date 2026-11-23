@@ -109,6 +109,26 @@ def test_invalid_profile():
         _budget(servers, backend).reserve('wf', 1, 0)
 
 
+def test_templates_checked_not_counted():
+    """
+    A model with Instantiate false (a template the workflow allocates later, maybe several times) costs
+    no slot at admission, but a compatible server must be registered and reachable.
+    """
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('pre', free=2)
+    servers.add('post', free=0)
+    backend.addWorkflow('wf', 1, jobmanagers=('pre', 'post'), templates=('m1',))
+    b = _budget(servers, backend)
+    r = b.reserve('wf', 1)
+    # 'post' is full, but m1 is only allocated later by the workflow: admitted, nothing counted there
+    assert r.status == OK and r.counted == {'m0': 'pre'} and r.templates == ['m1']
+    assert str(r) == 'profile default; m0: 1 compatible model server(s), m1: 1 compatible model server(s) (template, no slot counted)'
+    assert {n: l.free for n, l in b.loads.items()} == {'pre': 1, 'post': 0}
+    # no server for the template: the execution could not complete
+    servers.free['post'] = None
+    assert _budget(servers, backend).reserve('wf', 1).status == UNAVAILABLE
+
+
 def test_terminate_execution_model_jobs(monkeypatch):
     """
     Only the jobs logging to the execution script's Pyro daemon are terminated; an unreachable jobmanager is skipped.

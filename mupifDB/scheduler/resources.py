@@ -39,9 +39,12 @@ class Reservation:
     compatible: dict[str, int] = dataclasses.field(default_factory=dict)
     #: model -> model server its slot was counted on (the workflow may choose another one)
     counted: dict[str, str] = dataclasses.field(default_factory=dict)
+    #: models with ``Instantiate: false`` (templates allocated by the workflow later): checked, not counted
+    templates: list[str] = dataclasses.field(default_factory=list)
 
     def __str__(self):
-        models = ', '.join(f'{m}: {n} compatible model server(s)' for m, n in self.compatible.items())
+        models = ', '.join(f'{m}: {n} compatible model server(s)' + (' (template, no slot counted)' if m in self.templates else '')
+                           for m, n in self.compatible.items())
         return f'profile {self.profile}' + (f'; {models}' if models else '; no remote models')
 
 
@@ -64,9 +67,11 @@ class ResourceBudget:
     taken by other clients meanwhile are not known here; an execution which finds no free slot when
     it starts exits with code 2 and is returned to Pending.
 
-    Every remote model of the workflow is counted, also those marked ``Instantiate: false``: mupif
-    allocates them at initialization too (it reads the flag through ``BaseMeta.get``, which ignores
-    keys not declared by ``ModelInWorkflowMeta``).
+    Models marked ``Instantiate: false`` are templates: the workflow allocates copies of them itself
+    later, maybe several (e.g. one per loop iteration), so how many slots they need and when is not
+    known at the start. No slot is counted for them; the execution is only admitted if some
+    compatible server of each of them is registered and reachable. (Older mupif versions ignored
+    the flag and allocated templates at initialization; the scheduler counted them then.)
     """
 
     #: values of :attr:`Reservation.status`
@@ -162,7 +167,12 @@ class ResourceBudget:
             if not reachable:
                 log.info(f'Model {name} of workflow {wid}: no compatible model server registered and reachable ({req.describe()})')
                 return dataclasses.replace(res, status=self.UNAVAILABLE)
-            ranked = modelplacement.rankCandidates(reachable, loads, self._rng)
+            if not req.instantiate:
+                # a template, allocated by the workflow later (see the class documentation): a
+                # server which can run it is enough, no slot is counted
+                res.templates.append(name)
+                continue
+            ranked =modelplacement.rankCandidates(reachable, loads, self._rng)
             best = ranked[0]
             if loads[best.nsName].free <= 0:
                 return dataclasses.replace(res, status=self.BUSY)
