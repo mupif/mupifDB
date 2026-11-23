@@ -98,7 +98,7 @@ def env(tmp_path, monkeypatch):
     e.servers.add('CVUT.demo01')
     e.freeSlots = e.servers.free
     e.backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
-    config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12)
+    config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12, scheduler_id='s1')
     e.monitor = SchedulerMonitor(None, capacity=config.max_jobs)
     e.cleanups = []
     e.removed = []
@@ -240,7 +240,7 @@ def test_recover_expired(env):
 
 def test_run_survives_errors_and_stops(env, monkeypatch):
     """The main loop continues after a failing pass (finding #16) and ends promptly on stop() (finding #1)."""
-    monkeypatch.setattr(core, 'runningExecutionProcesses', lambda: set())
+    monkeypatch.setattr(core, 'runningExecutionProcesses', lambda schedulerId=None: {})
     env.backend.addExecution('E0')
     calls = []
 
@@ -974,3 +974,48 @@ def test_duplicate_identity_refuses_to_start(env):
     assert other.acquireIdentity()
     with pytest.raises(RuntimeError, match='held by another running scheduler'):
         env.scheduler.run()
+
+
+
+# --- identity and startup --------------------------------------------------------------------------
+
+def test_restart_takes_back_own_executions(env, monkeypatch):
+    """
+    A scheduler restarted under the same ID takes its interrupted executions back at once (no
+    waiting for the leases), kills its leftover workflow processes, cleans up and requeues them;
+    other schedulers' executions are left alone.
+    """
+    killed = []
+    proc = types.SimpleNamespace(pid=4711, terminate=lambda: killed.append('E0'), wait=lambda t: None, kill=lambda: None)
+    monkeypatch.setattr(core, 'runningExecutionProcesses', lambda schedulerId=None: {'E0': proc} if schedulerId == 's1' else {})
+    far = env.now[0] + 500
+    env.backend.addExecution('E0', status='Running', SchedulerID='s1', LeaseEpoch=1, LeaseExpires=far, loggerURI='PYRO:log-E0')
+    env.backend.addExecution('E1', status='Scheduled', SchedulerID='s1', LeaseEpoch=4, LeaseExpires=far)
+    env.backend.addExecution('E2', status='Running', SchedulerID='s2', LeaseEpoch=1, LeaseExpires=far)
+    assert env.backend.acquireIdentity()
+    assert env.scheduler.recoverOwn() == 2
+    assert killed == ['E0']
+    assert [(env.backend.status(w), env.backend.executions[w].LeaseEpoch) for w in ('E0', 'E1', 'E2')] == [('Pending', 2), ('Pending', 5), ('Running', 1)]
+    assert env.cleanups == [(['CVUT.demo01'], 'PYRO:log-E0')]
+
+
+def test_leftover_processes_of_this_scheduler_only(monkeypatch):
+    """Two schedulers may share a host: only the workflow processes started under this scheduler's ID are found."""
+    import psutil
+
+    def proc(weid, sid, denied=False):
+        def environ():
+            if denied:
+                raise psutil.AccessDenied()
+            return {'MUPIFDB_SCHEDULER_ID': sid} if sid else {}
+        return types.SimpleNamespace(info={'cmdline': ['python3', '/tmp/x/workflow_execution_script.py', '-eid', weid]}, environ=environ)
+    procs = [proc('A', 's1'), proc('B', 's2'), proc('C', None), proc('D', 's1', denied=True),
+             types.SimpleNamespace(info={'cmdline': ['bash']}, environ=lambda: {})]
+    monkeypatch.setattr(psutil, 'process_iter', lambda attrs: iter(procs))
+    assert set(core.runningExecutionProcesses('s1')) == {'A'}
+    assert set(core.runningExecutionProcesses()) == {'A', 'B', 'C', 'D'}
+
+
+def test_default_identity_is_the_host_name():
+    import socket
+    assert SchedulerConfig().scheduler_id == socket.gethostname()

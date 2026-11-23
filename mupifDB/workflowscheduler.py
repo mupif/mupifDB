@@ -116,6 +116,10 @@ def main(config: SchedulerConfig | None = None) -> None:
             installSignalHandlers(scheduler)
             try:
                 scheduler.run()
+            except RuntimeError as e:
+                # e.g. the scheduler identity is held by another running scheduler
+                log.error(f'Not starting: {e}')
+                raise SystemExit(1)
             finally:
                 # do not leave a dead scheduler in the nameserver: the monitoring pages would
                 # list it (unreachable) until the next start

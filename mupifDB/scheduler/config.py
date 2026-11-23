@@ -33,8 +33,8 @@ class SchedulerConfig(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='forbid', validate_assignment=True)
 
-    scheduler_id: str = pydantic.Field(default_factory=lambda: f'{socket.gethostname()}-{os.getpid()}',
-                                       description='Identifier of this scheduler process (default: host name and process ID).')
+    scheduler_id: str = pydantic.Field(default_factory=socket.gethostname,
+                                       description='Identity of this scheduler (default: host name). Several schedulers may run at once, each with its own ID; a restarted scheduler with the same ID takes its interrupted executions back at once. Two schedulers on one host need different IDs (and pidfile, stat_file, work_dir).')
     max_jobs: int = pydantic.Field(30, ge=1, description='Maximum number of executions run at the same time.')
     poll_interval: float = pydantic.Field(20., gt=0, description='Seconds between two passes over the pending executions.')
     startup_delay: float = pydantic.Field(5., ge=0, description='Seconds to wait at startup, giving the other services of a freshly started deployment time to come up.')

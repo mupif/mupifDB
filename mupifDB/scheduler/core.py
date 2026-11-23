@@ -98,19 +98,27 @@ class InputsIncompleteError(Exception):
     """Compulsory inputs of the execution are not set; running it cannot succeed."""
 
 
-def runningExecutionProcesses() -> set[str]:
+def runningExecutionProcesses(schedulerId: str | None = None) -> dict[str, Any]:
     """
     Find execution subprocesses alive on this host.
 
-    :return: execution IDs of all running ``workflow_execution_script.py -eid <ID>`` processes
+    :param schedulerId: only those started by the scheduler with this ID (``MUPIFDB_SCHEDULER_ID``
+                        in their environment); other schedulers may run on the same host
+    :return: execution ID -> process (psutil), for the running ``workflow_execution_script.py -eid <ID>`` processes
     """
     import psutil
-    weids = set()
+    found = {}
     for proc in psutil.process_iter(['cmdline']):
         cmd = proc.info['cmdline'] or []
         if any(c.endswith('workflow_execution_script.py') for c in cmd) and '-eid' in cmd[:-1]:
-            weids.add(cmd[cmd.index('-eid') + 1])
-    return weids
+            if schedulerId is not None:
+                try:
+                    if proc.environ().get('MUPIFDB_SCHEDULER_ID') != schedulerId:
+                        continue
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    continue
+            found[cmd[cmd.index('-eid') + 1]] = proc
+    return found
 
 
 class Scheduler:
@@ -183,6 +191,7 @@ class Scheduler:
             raise RuntimeError(f'Scheduler identity {self.config.scheduler_id} is held by another running scheduler process; '
                                'give each scheduler its own scheduler_id')
         log.info(f'Scheduler identity {self.config.scheduler_id} taken')
+        self.recoverOwn()
         self.keeper.start()
         log.info('Entering main loop to check for Pending executions')
         while not self.stopEvent.is_set():
@@ -711,6 +720,49 @@ class Scheduler:
             self.monitor.placed(job.weid, modelServers)
 
     # --- startup --------------------------------------------------------------------------------
+
+    def recoverOwn(self) -> int:
+        """
+        At startup: take back the executions left by an earlier process of this scheduler (same ``scheduler_id``) and requeue them.
+
+        The earlier process crashed or was killed (it would have released its identity and requeued
+        them at a clean shutdown). Its workflow processes normally died with it; any still alive on
+        this host (started under this scheduler ID) are killed first, so that no execution runs
+        twice. Then the executions are taken over at once -- without waiting for their leases to
+        expire, which is safe since this process holds the identity -- their model-server jobs are
+        cleaned up and they return to ``Pending`` (attempt count kept). Errors are logged.
+
+        :return: number of executions taken back
+        """
+        try:
+            leftovers = runningExecutionProcesses(self.config.scheduler_id)
+        except Exception:
+            log.exception('Could not look for leftover workflow processes')
+            leftovers = {}
+        for weid, proc in leftovers.items():
+            log.warning(f'{weid}: workflow process {proc.pid} left by an earlier run of this scheduler; terminating it', extra={'weid': weid})
+            try:
+                proc.terminate()
+                proc.wait(self.config.kill_grace)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        try:
+            taken = self.backend.takeOverOwn()
+        except Exception:
+            log.exception('Could not take back the executions of the earlier run of this scheduler')
+            return 0
+        for rec, lease in taken:
+            log.warning(f'{rec.dbID} was left {rec.Status} by an earlier run of this scheduler; returned to Pending', extra={'weid': rec.dbID})
+            if rec.Status == 'Running':
+                self.terminateLeftoverModelJobs(rec.dbID, lease=lease)
+            try:
+                self.backend.transition(lease, 'Pending')
+            except Exception:
+                log.exception(f'Could not return {rec.dbID} to Pending')
+        return len(taken)
 
     def recoverExpired(self, limit: int = 50) -> int:
         """
