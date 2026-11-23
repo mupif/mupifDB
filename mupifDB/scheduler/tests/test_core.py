@@ -19,7 +19,8 @@ from mupifDB.scheduler.core import Scheduler
 from mupifDB.scheduler.monitor import SchedulerMonitor
 from mupifDB.scheduler.runner import JobResult
 from mupifDB.scheduler.staging import StagingError
-from mupifDB.scheduler.tests.fakes import FakeBackend, FakeModelServers
+from mupifDB.scheduler.backend import Lease
+from mupifDB.scheduler.tests.fakes import FakeBackend, FakeModelServers, FakeStore
 
 
 class FakeRunner:
@@ -37,6 +38,8 @@ class FakeRunner:
         self.outcomes = {}
         self.timeouts = {}
         self.onRun = None
+        #: called with the job right after the launch (e.g. to set what the execution script would)
+        self.afterLaunch = None
         self.gate = None
         self.launched = []
         self.logFile = logFile
@@ -51,6 +54,8 @@ class FakeRunner:
         if isinstance(outcome, Exception):
             raise outcome
         onLaunch()
+        if self.afterLaunch is not None:
+            self.afterLaunch(job)
         with self.lock:
             self.launched.append(job.weid)
         if outcome == 'untilStopped':
@@ -75,13 +80,21 @@ def env(tmp_path, monkeypatch):
     ``CVUT.demo01``), ``runner``, ``servers`` (FakeModelServers with ``CVUT.demo01`` registered),
     ``freeSlots`` (``servers.free``: server -> slots, 100 by default, None: unreachable), ``monitor``,
     ``cleanups`` (calls to terminate model-server jobs) and ``scheduler`` (``max_jobs=3``), plus
-    ``drain()`` waiting for all job threads.
+    ``drain()`` waiting for all job threads. ``now[0]`` is the database's clock (retry delays,
+    leases); ``loggerURIs`` (execution -> URI) are stored right after the launch, as the execution
+    script does.
     """
     from mupifDB import restApiControl
     monkeypatch.setattr(restApiControl, 'setStatScheduler', lambda **kw: None)
     log = tmp_path / 'workflow.log'
     log.write_bytes(b'workflow output')
-    e = types.SimpleNamespace(backend=FakeBackend(), runner=FakeRunner(log), servers=FakeModelServers())
+    e = types.SimpleNamespace(now=[1000.], loggerURIs={}, runner=FakeRunner(log), servers=FakeModelServers())
+    e.backend = FakeBackend(FakeStore(clock=lambda: e.now[0]))
+
+    def scriptStarted(job):
+        if job.weid in e.loggerURIs:
+            e.backend.executions[job.weid].loggerURI = e.loggerURIs[job.weid]
+    e.runner.afterLaunch = scriptStarted
     e.servers.add('CVUT.demo01')
     e.freeSlots = e.servers.free
     e.backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
@@ -143,10 +156,10 @@ def test_unavailable_resources_use_attempts(env):
 
 
 def test_failed_status_change_is_not_taken(env):
-    """An execution whose change to Scheduled fails stays Pending and is not run (finding #5)."""
+    """An execution whose claim fails (REST API error) stays Pending and is not run (finding #5)."""
     env.backend.addExecution('E0')
     env.backend.addExecution('E1')
-    env.backend.failures['setStatus'] = lambda weid, status: RuntimeError('REST API error') if (weid, status) == ('E0', 'Scheduled') else None
+    env.backend.failures['claim'] = lambda weid: RuntimeError('REST API error') if weid == 'E0' else None
     assert env.scheduler.schedulePass() == 1
     env.drain()
     assert env.backend.status('E0') == 'Pending' and env.runner.launched == ['E1']
@@ -155,7 +168,7 @@ def test_failed_status_change_is_not_taken(env):
 @pytest.mark.parametrize('outcome,statuses,attempts,notified', [
     ('Finished', ['Scheduled', 'Running', 'Finished'], 1, True),
     ('Failed', ['Scheduled', 'Running', 'Failed'], 1, True),
-    ('Pending', ['Scheduled', 'Running', 'Pending'], 1, False),      # no resources: retried, attempt kept
+    ('Pending', ['Scheduled', 'Running', 'Pending'], 0, False),      # no free slot at the start: retried, the attempt not counted
 ])
 def test_job_outcomes(env, outcome, statuses, attempts, notified):
     """The outcome of the run is stored with the log; the owner is notified of final statuses only."""
@@ -205,20 +218,24 @@ def test_error_after_launch_fails(env):
 def test_unscheduled_execution_left_alone(env):
     """An execution changed by someone else after it was taken is neither run nor modified."""
     rec = env.backend.addExecution('E0', status='Created')
-    env.scheduler.jobs['E0'] = core.Job(weid='E0', record=rec)
+    env.scheduler.jobs['E0'] = core.Job(weid='E0', record=rec, lease=Lease('E0', 's1', 1))
     env.scheduler.runJob(env.scheduler.jobs['E0'])
     assert env.backend.statuses('E0') == [] and env.runner.launched == [] and env.scheduler.jobs == {}
 
 
-def test_recover_interrupted_executions(env, monkeypatch):
-    """At startup Scheduled/Running leftovers return to Pending (attempts kept), unless their process still runs."""
-    env.backend.addExecution('S1', status='Scheduled', attempts=1)
-    env.backend.addExecution('R1', status='Running', attempts=2)
-    env.backend.addExecution('R2', status='Running', attempts=1)
-    monkeypatch.setattr(core, 'runningExecutionProcesses', lambda: {'R2'})
-    env.scheduler.recoverInterruptedExecutions()
-    assert [env.backend.status(w) for w in ('S1', 'R1', 'R2')] == ['Pending', 'Pending', 'Running']
-    assert env.backend.executions['R1'].Attempts == 2
+def test_recover_expired(env):
+    """
+    Executions whose lease expired, held by schedulers which are not alive, are taken over and
+    returned to Pending (attempts kept); records from before leases count as expired.
+    """
+    env.backend.addExecution('S1', status='Scheduled', attempts=1)                  # before leases
+    env.backend.addExecution('R1', status='Running', attempts=2, SchedulerID='gone', LeaseEpoch=3, LeaseExpires=env.now[0] - 1)
+    env.backend.addExecution('R2', status='Running', SchedulerID='gone', LeaseEpoch=1, LeaseExpires=env.now[0] + 60)   # not expired
+    env.backend.addExecution('R3', status='Running', SchedulerID='live', LeaseEpoch=1, LeaseExpires=env.now[0] - 1)   # holder alive
+    env.backend.schedulers['live'] = {'Instance': 'x', 'HeartbeatExpires': env.now[0] + 60}
+    assert env.scheduler.recoverExpired() == 2
+    assert [env.backend.status(w) for w in ('S1', 'R1', 'R2', 'R3')] == ['Pending', 'Pending', 'Running', 'Running']
+    assert env.backend.executions['R1'].Attempts == 2 and env.backend.executions['R1'].LeaseEpoch == 4
 
 
 def test_run_survives_errors_and_stops(env, monkeypatch):
@@ -296,12 +313,13 @@ def test_shutdown_lets_short_workflows_finish(env):
 
 def test_job_stopped_before_launch_is_not_started(env):
     """A taken execution whose job is stopped before its workflow starts returns to Pending without running."""
-    rec = env.backend.addExecution('E0', status='Scheduled', attempts=2)
-    job = core.Job(weid='E0', record=rec)
+    env.backend.addExecution('E0', attempts=2)
+    rec, lease = env.backend.claim('E0')
+    job = core.Job(weid='E0', record=rec, lease=lease)
     job.stop('shutdown')
     env.scheduler.jobs['E0'] = job
     env.scheduler.runJob(job)
-    assert env.runner.launched == [] and env.backend.statuses('E0') == ['Pending']
+    assert env.runner.launched == [] and env.backend.statuses('E0') == ['Scheduled', 'Pending']
     assert env.backend.executions['E0'].Attempts == 2
 
 
@@ -312,19 +330,19 @@ def test_leftover_model_jobs_are_terminated(env):
     Finding #17: a killed workflow left its model jobs running, occupying model-server slots
     indefinitely. Without a loggerURI (the script died before storing it) there is nothing to match.
     """
-    env.backend.addExecution('E0', loggerURI='PYRO:log-E0')
+    env.backend.addExecution('E0')
     env.backend.addExecution('E1')
+    env.loggerURIs['E0'] = 'PYRO:log-E0'
     env.scheduler.schedulePass()
     env.drain()
     assert env.cleanups == [(['CVUT.demo01'], 'PYRO:log-E0')]
 
 
-def test_recovery_terminates_model_jobs_of_running_executions(env, monkeypatch):
-    """Executions left Running by a killed scheduler get their model-server jobs terminated before being requeued."""
-    monkeypatch.setattr(core, 'runningExecutionProcesses', lambda: set())
+def test_recovery_terminates_model_jobs_of_running_executions(env):
+    """Executions taken over from a scheduler which is gone get their model-server jobs terminated before being requeued."""
     env.backend.addExecution('R1', status='Running', loggerURI='PYRO:log-R1')
     env.backend.addExecution('S1', status='Scheduled', loggerURI='PYRO:log-S1')
-    env.scheduler.recoverInterruptedExecutions()
+    env.scheduler.recoverExpired()
     assert env.cleanups == [(['CVUT.demo01'], 'PYRO:log-R1')]
 
 
@@ -374,57 +392,68 @@ def clock(monkeypatch):
     return now
 
 
-def test_backoff_grows_and_is_capped(env, clock):
-    """Delays after consecutive transient failures double from retry_backoff up to retry_backoff_max [S4]."""
+def delay(env, weid):
+    """Seconds until an execution may be claimed again (its retry delay)."""
+    nb = env.backend.executions[weid].NotBefore
+    return None if nb is None else round(nb - env.now[0])
+
+
+def test_backoff_grows_and_is_capped(env):
+    """Delays after consecutive transient failures double from retry_backoff up to retry_backoff_max [S4]; kept with the execution."""
     env.scheduler.config.retry_jitter = 0
-    delays = [env.scheduler.deferRetry('E0') for _ in range(9)]
+    env.backend.addExecution('E0')
+    delays = []
+    for _ in range(9):
+        assert env.backend.defer('E0', env.scheduler.backoff)
+        delays.append(delay(env, 'E0'))
+        env.backend.due('E0')
     assert delays == [10, 20, 40, 80, 160, 320, 600, 600, 600]
 
 
-def test_unreachable_model_server_is_retried_later(env, clock):
+def test_unreachable_model_server_is_retried_later(env):
     """
     An execution whose model server is unreachable is not tried again before its delay has passed [S4].
 
     It used to be tried at every pass (every 20 s), so a model server down for a few minutes
-    exhausted the attempt limit of its executions.
+    exhausted the attempt limit of its executions. The delay is stored with the execution, so other
+    schedulers respect it too.
     """
     env.scheduler.config.retry_jitter = 0
     env.backend.addExecution('E0')
     env.freeSlots['CVUT.demo01'] = None
     env.scheduler.schedulePass()
     env.scheduler.schedulePass()
-    assert env.backend.executions['E0'].Attempts == 1            # second pass skipped it
-    clock[0] += 11
+    assert env.backend.executions['E0'].Attempts == 1            # second pass: not due, not listed
+    env.now[0] += 11
     env.scheduler.schedulePass()
     assert env.backend.executions['E0'].Attempts == 2
 
 
-def test_no_slot_at_start_is_retried_later(env, clock):
-    """An execution returned to Pending because no model-server slot was free at its start is deferred."""
+def test_no_slot_at_start_is_retried_later(env):
+    """An execution returned to Pending because no model-server slot was free at its start is deferred, its attempt not counted."""
     env.backend.addExecution('E0')
     env.runner.outcomes['E0'] = 'Pending'
     env.scheduler.schedulePass()
     env.drain()
-    assert env.scheduler.deferred('E0')
+    assert delay(env, 'E0') > 0 and env.backend.executions['E0'].Attempts == 0
     env.scheduler.executor = core.concurrent.futures.ThreadPoolExecutor(max_workers=3)
     assert env.scheduler.schedulePass() == 0
 
 
-def test_busy_model_server_is_not_deferred(env, clock):
+def test_busy_model_server_is_not_deferred(env):
     """Waiting for a busy model server is normal queueing: no delay, the execution keeps its place."""
     env.backend.addExecution('E0')
     env.freeSlots['CVUT.demo01'] = 0
     env.scheduler.schedulePass()
-    assert not env.scheduler.deferred('E0') and env.backend.executions['E0'].Attempts == 0
+    assert delay(env, 'E0') is None and env.backend.executions['E0'].Attempts == 0
 
 
-def test_final_outcome_clears_the_delay(env, clock):
-    """Once an execution reaches a final status, its retry delay is forgotten."""
-    env.backend.addExecution('E0')
-    env.scheduler.backoff['E0'] = (0., 3)
+def test_final_outcome_clears_the_delay(env):
+    """Once an execution reaches a final status, its consecutive delays are forgotten."""
+    env.backend.addExecution('E0', Deferrals=3)
     env.scheduler.schedulePass()
     env.drain()
-    assert env.backend.status('E0') == 'Finished' and 'E0' not in env.scheduler.backoff
+    assert env.backend.status('E0') == 'Finished' and env.backend.executions['E0'].Deferrals == 0
 
 
 def test_drain_mode(env):
@@ -559,7 +588,8 @@ def test_unknown_profile_fails(env):
     env.backend.addExecution('E0', profile=2)
     assert env.scheduler.schedulePass() == 0
     env.drain()
-    assert env.backend.statuses('E0') == ['Failed']
+    # claimed first, so that only one scheduler fails it and notifies the owner
+    assert env.backend.statuses('E0') == ['Scheduled', 'Failed']
     assert b'Execution profile #2' in env.backend.logs['E0']
     assert env.backend.notified == ['E0']
 
@@ -575,13 +605,13 @@ def test_profile_selects_servers(env, caplog):
         # no server is tagged Runtime_seconds: E0 cannot be placed (costs an attempt), E1 (default profile) can
         assert env.scheduler.schedulePass() == 1
     assert env.backend.executions['E0'].Attempts == 1
-    assert 'E1 taken (attempts so far: 0; profile default; m0: 1 compatible model server(s))' in caplog.text
+    assert 'E1 taken (attempts so far: 0; profile default; m0: 1 compatible model server(s); lease epoch 1)' in caplog.text
     env.servers.add('CVUT.demo01~fast', base='CVUT.demo01', tags=('Runtime_seconds',))
-    env.scheduler.backoff.clear()
+    env.backend.due('E0')
     with caplog.at_level(logging.INFO, logger='scheduler'):
         assert env.scheduler.schedulePass() == 1
     env.drain()
-    assert 'E0 taken (attempts so far: 1; profile #0 "fast"; m0: 1 compatible model server(s))' in caplog.text
+    assert 'E0 taken (attempts so far: 1; profile #0 "fast"; m0: 1 compatible model server(s); lease epoch 1)' in caplog.text
 
 
 def test_model_servers_in_statistics(env, caplog):
@@ -618,8 +648,9 @@ def test_model_servers_in_statistics(env, caplog):
 def test_leftover_jobs_on_servers_used(env):
     """Leftover model jobs are looked for on the servers the execution used, if known, else on every compatible one."""
     env.servers.add('CVUT.demo01~node2', base='CVUT.demo01')
-    env.backend.addExecution('E0', loggerURI='PYRO:log-E0')
-    env.backend.addExecution('E1', loggerURI='PYRO:log-E1')
+    env.backend.addExecution('E0')
+    env.backend.addExecution('E1')
+    env.loggerURIs.update(E0='PYRO:log-E0', E1='PYRO:log-E1')
     env.runner.gate = threading.Event()
     env.scheduler.schedulePass()
     _waitLaunched(env, 'E0')
@@ -638,7 +669,8 @@ def test_leftover_jobs_of_templates(env):
     env.servers.add('post')
     env.servers.add('post~2', base='post')
     env.backend.addWorkflow('wft', 1, jobmanagers=('pre', 'post'), templates=('m1',))
-    env.backend.addExecution('E0', wid='wft', loggerURI='PYRO:log-E0')
+    env.backend.addExecution('E0', wid='wft')
+    env.loggerURIs['E0'] = 'PYRO:log-E0'
     env.runner.gate = threading.Event()
     assert env.scheduler.schedulePass() == 1
     _waitLaunched(env, 'E0')
@@ -686,7 +718,7 @@ def test_restarted_execution_listed_once(env):
     while env.scheduler.jobs:
         time.sleep(0.01)
     env.runner.outcomes['E0'] = 'Finished'
-    env.scheduler.backoff.clear()
+    env.backend.due('E0')
     env.scheduler.schedulePass()
     env.drain()
     assert [(j[0], j[2]) for j in env.monitor.getStatistics()['lastJobs']] == [('E0', 'Finished')]
@@ -741,3 +773,87 @@ def test_passes_use_the_checked_load(env, clock):
     env.drain()
     assert [n for n, _ in env.removed] == ['CVUT.demo01~gone']
     assert env.backend.status('E0') == env.backend.status('E1') == 'Finished'
+
+
+# --- several schedulers on one database (leases) ---------------------------------------------------
+
+@pytest.fixture
+def pair(env, tmp_path):
+    """A second scheduler ``s2`` (own runner, monitor) sharing ``env``'s database; returns it."""
+    log = tmp_path / 'workflow2.log'
+    log.write_bytes(b'workflow output 2')
+    runner2 = FakeRunner(log)
+    config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12, scheduler_id='s2')
+    s2 = Scheduler(config, FakeBackend(env.backend.store, 's2'), runner2, findModelServers=env.servers.find, serverLoad=env.servers.load,
+                   monitor=SchedulerMonitor(None, capacity=3), terminateModelJobs=lambda jms, uri: env.cleanups.append((jms, uri)) or [])
+    s2.runner2 = runner2
+    yield s2
+    s2.executor.shutdown(wait=True)
+    s2.notifier.shutdown(wait=True)
+
+
+def test_two_schedulers_take_each_execution_once(env, pair):
+    """Executions shared by two schedulers are each run exactly once (one claim, lease epoch 1)."""
+    for i in range(20):
+        env.backend.addExecution(f'E{i:02d}')
+    for _ in range(10):
+        env.scheduler.schedulePass()
+        pair.schedulePass()
+        time.sleep(0.02)
+    env.drain()
+    pair.executor.shutdown(wait=True)
+    recs = env.backend.executions.values()
+    assert all(r.Status == 'Finished' and r.LeaseEpoch == 1 for r in recs)
+    assert sorted(env.runner.launched + pair.runner2.launched) == sorted(env.backend.executions)
+    assert {r.SchedulerID for r in recs} == {'s1', 's2'}
+    assert all(env.backend.statuses(w) == ['Scheduled', 'Running', 'Finished'] for w in env.backend.executions)
+
+
+def test_two_schedulers_give_up_once(env, pair):
+    """An execution out of attempts returns to Created once, with one notification, whichever scheduler sees it."""
+    env.backend.addExecution('E0', attempts=13)
+    env.scheduler.schedulePass()
+    pair.schedulePass()
+    env.drain()
+    pair.notifier.shutdown(wait=True)
+    assert env.backend.statuses('E0') == ['Scheduled', 'Created'] and env.backend.notified == ['E0']
+    assert env.backend.executions['E0'].Attempts == 0
+
+
+def test_two_schedulers_count_an_unavailable_attempt_once(env, pair):
+    env.backend.addExecution('E0')
+    env.freeSlots['CVUT.demo01'] = None
+    env.scheduler.schedulePass()
+    pair.schedulePass()
+    assert env.backend.executions['E0'].Attempts == 1
+
+
+def test_lease_lost_while_running_writes_nothing(env, pair):
+    """
+    A scheduler whose execution was taken over while it ran (its lease expired, e.g. cut off from
+    the database) writes no outcome, sends no notification and does not clean up model jobs.
+    """
+    env.backend.addExecution('E0')
+    env.loggerURIs['E0'] = 'PYRO:log-E0'
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    # s1 could not renew: the lease expires and s2 takes the execution over
+    env.backend.expire('E0')
+    assert pair.recoverExpired() == 1
+    assert env.backend.executions['E0'].SchedulerID == 's2' and env.backend.status('E0') == 'Pending'
+    cleanupsByTakeover = list(env.cleanups)
+    env.drain()
+    rec = env.backend.executions['E0']
+    assert rec.Status == 'Pending' and rec.LeaseEpoch == 2
+    assert env.backend.notified == [] and env.cleanups == cleanupsByTakeover
+    assert 'E0' not in env.backend.logs           # the stale log was refused
+    assert env.monitor.stat.tasks.running == 0
+
+
+def test_script_gets_the_lease(tmp_path):
+    """The workflow subprocess gets the lease (its writes are fenced by the API) and the scheduler ID."""
+    from mupifDB.scheduler.runner import JobRunner
+    r = JobRunner(SchedulerConfig(work_dir=str(tmp_path), scheduler_id='s7'), nsUri='PYRO:ns@h:1')
+    env = r.environment(core.Job(weid='E0', record=None, lease=Lease('E0', 's7', 3)))
+    assert env['MUPIFDB_LEASE'] == 'E0:s7:3' and env['MUPIFDB_SCHEDULER_ID'] == 's7'

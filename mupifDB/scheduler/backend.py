@@ -58,7 +58,7 @@ class ExecutionBackend(Protocol):
 
     def pendingExecutions(self, limit: int) -> list[Any]:
         """
-        Return up to *limit* executions with status ``Pending``, oldest submitted first.
+        Return up to *limit* executions with status ``Pending`` which may be claimed now (retry delay passed), oldest submitted first.
 
         :param limit: maximum number of records
         :return: execution records
@@ -96,24 +96,6 @@ class ExecutionBackend(Protocol):
 
         :param weid: execution ID
         :return: true if the execution can run
-        """
-
-    def setStatus(self, weid: str, status: SchedulerStatus, keepAttempts: bool = False) -> None:
-        """
-        Change the status of an execution (the REST API also sets the matching dates).
-
-        :param weid: execution ID
-        :param status: new status
-        :param keepAttempts: when returning to ``Pending``: keep the attempt count (a retry by the
-                             scheduler) instead of resetting it (a new submission)
-        """
-
-    def setAttempts(self, weid: str, attempts: int) -> None:
-        """
-        Set the attempt count of an execution.
-
-        :param weid: execution ID
-        :param attempts: new count
         """
 
     def storeLog(self, weid: str, path: Path, lease: Optional[Lease] = None) -> None:
@@ -274,7 +256,7 @@ class RestBackend:
     def pendingExecutions(self, limit: int) -> list[Any]:
         """See :meth:`ExecutionBackend.pendingExecutions`."""
         from mupifDB import restApiControl
-        return restApiControl.getPendingExecutions(num_limit=limit, sort='SubmittedDate')
+        return restApiControl.getPendingExecutions(num_limit=limit, sort='SubmittedDate', ready=True)
 
     def executionsWithStatus(self, status: SchedulerStatus, limit: int) -> list[Any]:
         """See :meth:`ExecutionBackend.executionsWithStatus`."""
@@ -295,16 +277,6 @@ class RestBackend:
         """See :meth:`ExecutionBackend.inputsComplete`."""
         from mupifDB import restApiControl
         return restApiControl.checkExecutionInputs(weid)
-
-    def setStatus(self, weid: str, status: SchedulerStatus, keepAttempts: bool = False) -> None:
-        """See :meth:`ExecutionBackend.setStatus`."""
-        from mupifDB import restApiControl
-        restApiControl.setExecutionStatus(weid, status, revertPending=keepAttempts)
-
-    def setAttempts(self, weid: str, attempts: int) -> None:
-        """See :meth:`ExecutionBackend.setAttempts`."""
-        from mupifDB import restApiControl
-        restApiControl.setExecutionAttemptsCount(weid, attempts)
 
     def storeLog(self, weid: str, path: Path, lease: Optional[Lease] = None) -> None:
         """See :meth:`ExecutionBackend.storeLog`."""

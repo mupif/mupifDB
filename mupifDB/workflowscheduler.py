@@ -55,7 +55,7 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
     cache = PackageCache(config.cache_dir or os.path.join(config.work_dir, 'mupifDB-package-cache'), config.cache_max_bytes) if config.cache_max_bytes else None
     runner = JobRunner(config, nsUri=str(ns._pyroUri), stage=lambda record, directory: stageWorkflow(record, directory, cache=cache))
     from mupif import modelplacement, pyroutil
-    scheduler = Scheduler(config, RestBackend(), runner,
+    scheduler = Scheduler(config, RestBackend(config.scheduler_id, config.lease_seconds), runner,
                           # compatible model servers and their load, the way workflows find them (mupif.modelplacement);
                           # a Pyro proxy belongs to one thread: the nameserver is asked through a proxy of the calling thread
                           findModelServers=lambda req: modelplacement.findModelServers(threadProxy(ns), req),

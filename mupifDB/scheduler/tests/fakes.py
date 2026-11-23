@@ -233,23 +233,6 @@ class FakeBackend:
         with self.lock:
             self.notified.append(weid)
 
-    # old, unconditional status changes (replaced by the lease operations)
-    def setStatus(self, weid: str, status: str, keepAttempts: bool = False) -> None:
-        with self.lock:
-            self.store.maybeFail('setStatus', weid, status)
-            rec = self.executions[weid]
-            if status == 'Running':
-                rec.ModelServers = {}
-                rec.workflowURI = None
-            if status == 'Pending' and not keepAttempts:
-                rec.Attempts = 0
-            self.store.setStatus(rec, status)
-
-    def setAttempts(self, weid: str, attempts: int) -> None:
-        with self.lock:
-            self.store.maybeFail('setAttempts', weid, attempts)
-            self.executions[weid].Attempts = attempts
-
     # --- leases (as mupifDB.api.leases) --------------------------------------------------------
 
     def claim(self, weid: str) -> tuple[Any, Lease]:

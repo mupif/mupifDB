@@ -6,23 +6,34 @@ The scheduler: main loop, job threads and the status changes of executions.
 (``max_jobs``). Each execution taken is run by a job thread (:meth:`Scheduler.runJob`) through the
 :class:`~mupifDB.scheduler.runner.JobRunner`, which starts the workflow subprocess and waits for it.
 
+Several schedulers may run at once (normally on several hosts). An execution is taken under a
+**lease** (:mod:`mupifDB.api.leases`): claiming it is atomic between schedulers, and every later
+change made for it names the lease (:class:`~mupifDB.scheduler.backend.Lease`). If another
+scheduler took the execution over meanwhile, the change is refused
+(:class:`~mupifDB.scheduler.backend.LeaseLost`) and the job is dropped without writing anything.
+
 Status changes made here (database access through :class:`~mupifDB.scheduler.backend.ExecutionBackend`):
 
-* ``Pending -> Scheduled``: the execution is taken (only if this change succeeded);
+* ``Pending -> Scheduled``: the execution is claimed (fails if another scheduler claimed it);
 * ``Pending -> Created``: the resources of the execution stayed unavailable for ``max_attempts``
-  attempts (the owner is notified);
+  attempts (claimed first, so that only one scheduler does it; the owner is notified);
 * ``Pending -> Failed``: the execution asks for an execution profile its workflow does not have
-  (a short log tells the owner why);
+  (claimed first; a short log tells the owner why);
+* ``Pending`` with a retry delay: its resources are unavailable (an attempt is counted, by one
+  scheduler only, see :meth:`ExecutionBackend.defer`);
 * ``Scheduled -> Running``: the job thread starts the workflow subprocess (attempt count + 1);
 * ``Running -> Finished | Failed``: outcome of the run (the owner is notified), see
   :func:`~mupifDB.scheduler.runner.statusForExitCode`;
-* ``Running -> Pending``: no free model-server slot when the workflow started, or the scheduler is
-  shutting down; the execution is run again later (attempt count kept);
+* ``Running -> Pending``: no free model-server slot when the workflow started (the attempt is not
+  counted; retried after a delay), or the scheduler is shutting down;
 * ``Scheduled -> Pending``: the job thread failed before starting the workflow (e.g. REST API
-  unreachable); ``Scheduled -> Failed``: the workflow package cannot be used, or compulsory inputs
-  are not set (a short log tells the owner why);
-* at startup ``Scheduled | Running -> Pending``: executions interrupted by a previous run of the
-  scheduler (see :meth:`Scheduler.recoverInterruptedExecutions`).
+  unreachable; retried after a delay); ``Scheduled -> Failed``: the workflow package cannot be
+  used, or compulsory inputs are not set (a short log tells the owner why);
+* ``Scheduled | Running -> Pending`` after a takeover: executions whose lease expired, held by a
+  scheduler which is not alive (see :meth:`Scheduler.recoverExpired`).
+
+Retry delays are stored in the database (``NotBefore``, growing with consecutive delays), so all
+schedulers respect them and they survive restarts.
 
 Model servers: the scheduler checks that the models of an execution can find free slots on
 compatible model servers before it takes it (:class:`~mupifDB.scheduler.resources.ResourceBudget`,
@@ -47,7 +58,7 @@ from typing import Any, Callable
 
 from mupif import modelplacement
 
-from .backend import ExecutionBackend
+from .backend import ExecutionBackend, Lease, LeaseLost
 from .config import SchedulerConfig
 from .monitor import SchedulerMonitor
 from .resources import InvalidProfileError, ResourceBudget
@@ -77,17 +88,9 @@ class ExecutionLogFilter(logging.Filter):
 
 log.addFilter(ExecutionLogFilter())
 
-#: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
-RECOVERY_LIMIT = 100000
-
-
 def _formatServers(modelServers: dict[str, str]) -> str:
     """Format ``model -> model server`` for logs: ``m1→CVUT.demo01~node2, m2→…``."""
     return ', '.join(f'{m}→{s}' for m, s in sorted(modelServers.items()))
-
-
-class NotScheduledError(Exception):
-    """The execution handed to a job thread is no longer in the ``Scheduled`` state; it is left alone."""
 
 
 class InputsIncompleteError(Exception):
@@ -157,8 +160,6 @@ class Scheduler:
         self.stopEvent = threading.Event()
         #: set while draining: no new executions are taken, running ones continue (see :meth:`setDrain`)
         self.draining = threading.Event()
-        #: execution ID -> (monotonic time before which it is not tried again, consecutive transient failures)
-        self.backoff: dict[str, tuple[float, int]] = {}
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=config.max_jobs, thread_name_prefix='job')
         #: sends notifications to owners (e-mail) without holding up the job threads
         self.notifier = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='notify')
@@ -171,7 +172,7 @@ class Scheduler:
 
         Returns when the main loop has ended and all job threads have finished.
         """
-        self.recoverInterruptedExecutions()
+        self.recoverExpired()
         log.info('Entering main loop to check for Pending executions')
         while not self.stopEvent.is_set():
             try:
@@ -254,29 +255,17 @@ class Scheduler:
         with self.lock:
             return self.config.max_jobs - len(self.jobs)
 
-    def deferRetry(self, weid: str) -> float:
+    @property
+    def backoff(self) -> tuple[float, float, float]:
         """
-        Delay the next attempt of an execution after a transient failure [S4].
+        Retry delay after a transient failure [S4]: ``(retry_backoff, retry_backoff_max, retry_jitter)``.
 
-        The delay is ``retry_backoff`` doubled for every consecutive transient failure, at most
-        ``retry_backoff_max``, varied by ``retry_jitter``. Kept in memory: a restart retries at once.
-
-        :param weid: execution ID
-        :return: the delay in seconds
+        The delay is ``retry_backoff`` doubled for every consecutive delay of the execution (stored
+        with it, ``Deferrals``), at most ``retry_backoff_max``, varied by ``retry_jitter``; the
+        database computes it and stores the time of the next attempt (``NotBefore``), which every
+        scheduler respects (pending executions not due are not listed).
         """
-        with self.lock:
-            failures = self.backoff.get(weid, (0., 0))[1] + 1
-            delay = min(self.config.retry_backoff * 2 ** (failures - 1), self.config.retry_backoff_max)
-            delay *= 1 + random.uniform(-self.config.retry_jitter, self.config.retry_jitter)
-            self.backoff[weid] = (time.monotonic() + delay, failures)
-        log.info(f'{weid}: next attempt in {delay:.0f} s (transient failure #{failures})')
-        return delay
-
-    def deferred(self, weid: str) -> bool:
-        """Tell whether an execution must not be tried yet (see :meth:`deferRetry`)."""
-        with self.lock:
-            until = self.backoff.get(weid, (0., 0))[0]
-        return time.monotonic() < until
+        return (self.config.retry_backoff, self.config.retry_backoff_max, self.config.retry_jitter)
 
     def schedulePass(self) -> int:
         """
@@ -286,10 +275,10 @@ class Scheduler:
         compatible with each model under the execution's execution profile: an execution whose
         model servers are busy waits for a later pass without using up an attempt; one whose model
         servers (or workflow record) are unreachable uses up an attempt and is retried after a
-        growing delay (:meth:`deferRetry`), and after ``max_attempts`` attempts it returns to
-        ``Created``. An execution asking for an execution profile its workflow does not have
-        fails. Executions deferred after a transient failure are skipped until their delay has
-        passed.
+        growing delay (stored with the execution), and after ``max_attempts`` attempts it returns
+        to ``Created``. An execution asking for an execution profile its workflow does not have
+        fails. Only executions whose retry delay has passed are listed. An execution claimed by
+        another scheduler first is skipped.
 
         :return: number of executions taken
         """
@@ -309,82 +298,105 @@ class Scheduler:
             with self.lock:
                 if weid in self.jobs:
                     continue
-            if self.deferred(weid):
-                continue
             if rec.Attempts > self.config.max_attempts:
-                log.warning(f'{weid}: resources unavailable for {rec.Attempts} attempts, returning it to Created')
-                with self.lock:
-                    self.backoff.pop(weid, None)
-                try:
-                    self.backend.setStatus(weid, 'Created')
-                    self.notify(weid)
-                except Exception:
-                    log.exception(f'{weid}: could not return it to Created')
+                # claimed first: of several schedulers only one returns it and notifies the owner
+                self.giveUp(weid, 'Created', f'resources unavailable for {rec.Attempts} attempts, returning it to Created')
                 continue
             try:
                 resources = budget.reserve(rec.WorkflowID, rec.WorkflowVersion, getattr(rec, 'ExecutionProfileIndex', -1))
             except InvalidProfileError as e:
                 # will not change by waiting: fail it and tell the owner why
-                log.warning(f'{weid} cannot run: {e}', extra={'weid': weid})
-                self.storeMessageLog(weid, f'The execution was not started: {e}')
-                try:
-                    self.backend.setStatus(weid, 'Failed')
-                    self.notify(weid)
-                except Exception:
-                    log.exception(f'{weid}: could not set it to Failed')
+                self.giveUp(weid, 'Failed', f'cannot run: {e}', message=f'The execution was not started: {e}')
                 continue
             if resources.status == ResourceBudget.BUSY:
                 # the model servers are working on other executions: wait without using up an attempt
                 log.debug(f'{weid} waits for free model server slots')
                 continue
             if resources.status == ResourceBudget.UNAVAILABLE:
-                log.info(f'{weid} cannot be scheduled due to unavailable resources')
+                # an attempt is counted and the retry delayed; by one scheduler only per window
                 try:
-                    self.backend.setAttempts(weid, rec.Attempts + 1)
+                    if self.backend.defer(weid, self.backoff):
+                        log.info(f'{weid} cannot be scheduled due to unavailable resources; retried later (attempt {rec.Attempts + 1})', extra={'weid': weid})
                 except Exception:
-                    log.exception(f'{weid}: could not increase the attempt count')
-                self.deferRetry(weid)
+                    log.exception(f'{weid}: could not postpone it')
                 continue
-            # a job thread only runs Scheduled executions: one whose status could not be changed
+            # a job thread only runs executions this scheduler claimed: one taken by another
+            # scheduler meanwhile is skipped, one whose claim failed otherwise (REST API error)
             # stays Pending and is considered again in the next pass
             try:
-                self.backend.setStatus(weid, 'Scheduled')
-            except Exception:
-                log.exception(f'Could not set {weid} to Scheduled; not taking it')
+                claimed, lease = self.backend.claim(weid)
+            except LeaseLost:
+                log.debug(f'{weid} was taken by another scheduler')
                 continue
-            job = Job(weid=weid, record=rec)
+            except Exception:
+                log.exception(f'Could not claim {weid}; not taking it')
+                continue
+            job = Job(weid=weid, record=claimed, lease=lease)
             with self.lock:
                 self.jobs[weid] = job
             self.monitor.enqueued(weid)
             self.executor.submit(self.runJob, job)
             taken += 1
-            log.info(f'{weid} taken (attempts so far: {rec.Attempts}; {resources})', extra={'weid': weid})
+            log.info(f'{weid} taken (attempts so far: {rec.Attempts}; {resources}; lease epoch {lease.epoch})', extra={'weid': weid})
         return taken
+
+    def giveUp(self, weid: str, status: str, reason: str, message: str | None = None) -> None:
+        """
+        Claim a pending execution and end it without running it (``Created`` or ``Failed``), notifying its owner.
+
+        Claimed first, so that of several schedulers finding the same reason only one does it (and
+        the owner gets one notification). Errors are logged.
+
+        :param weid: execution ID
+        :param status: ``Created`` (back to the user) or ``Failed``
+        :param reason: for the scheduler log
+        :param message: stored as the execution's log, so that its owner sees why (optional)
+        """
+        try:
+            _, lease = self.backend.claim(weid)
+        except LeaseLost:
+            return
+        except Exception:
+            log.exception(f'{weid}: could not claim it to set it {status}')
+            return
+        log.warning(f'{weid}: {reason}', extra={'weid': weid})
+        if message:
+            self.storeMessageLog(weid, message, lease)
+        try:
+            self.backend.transition(lease, status, resetAttempts=(status == 'Created'))
+            self.notify(weid)
+        except LeaseLost:
+            log.warning(f'{weid}: lease lost before it could be set {status}', extra={'weid': weid})
+        except Exception:
+            log.exception(f'{weid}: could not set it {status}')
 
     # --- one execution (job thread) -------------------------------------------------------------
 
     def runJob(self, job: Job) -> None:
         """
-        Run one taken execution to its end and store the outcome; never raises.
+        Run one claimed execution to its end and store the outcome; never raises.
 
         Errors are handled here (see the module documentation for the resulting statuses): before
         the workflow subprocess is launched the execution returns to ``Pending`` (``Failed`` if its
-        workflow package cannot be used), after the launch it fails.
+        workflow package cannot be used), after the launch it fails. Every change is made under the
+        job's lease; if the lease was lost (another scheduler took the execution over), the job ends
+        without writing anything, notifying anybody or cleaning up model-server jobs (the new
+        holder did that).
 
-        :param job: the execution, set to ``Scheduled`` by :meth:`schedulePass`
+        :param job: the execution, claimed by :meth:`schedulePass` (``Scheduled``, ``job.lease``)
         """
-        weid = job.weid
+        weid, lease = job.weid, job.lease
         launched = False
         token = currentExecution.set(weid)
         thread = threading.current_thread()
         threadName, thread.name = thread.name, f'job:{weid}'
         try:
             rec = self.backend.getExecution(weid)
-            if rec.Status != 'Scheduled':
-                raise NotScheduledError(f'{weid} is {rec.Status}, not Scheduled')
+            if rec.Status != 'Scheduled' or rec.SchedulerID != lease.schedulerId or int(rec.LeaseEpoch) != lease.epoch:
+                raise LeaseLost(f'{weid} is {rec.Status} under {rec.SchedulerID}:{rec.LeaseEpoch}, not Scheduled under {lease.header()}')
             if job.stopRequested.is_set():
                 # shutting down before the workflow started: no point in starting it
-                self.backend.setStatus(weid, 'Pending', keepAttempts=True)
+                self.backend.transition(lease, 'Pending')
                 self.monitor.dropped(weid)
                 return
             workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
@@ -392,39 +404,42 @@ class Scheduler:
 
             def onLaunch():
                 nonlocal launched
-                self.backend.setStatus(weid, 'Running')
-                self.backend.setAttempts(weid, rec.Attempts + 1)
+                self.backend.transition(lease, 'Running', incAttempts=1, renew=True)
                 launched = True
                 job.launched = True
                 self.monitor.started(weid, rec.WorkflowID)
 
-            result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path),
+            result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path, lease),
                                      timeout=self.jobTimeout(workflow))
-            final = self.terminateLeftoverModelJobs(weid, workflow)
+            if result.stopReason == 'lease-lost':
+                raise LeaseLost(f'{weid}: lease lost while it ran')
+            final = self.terminateLeftoverModelJobs(weid, workflow, lease)
             # the model servers the workflow chose, as stored by the execution script (for the statistics)
             modelServers = dict(getattr(final, 'ModelServers', None) or {}) or job.modelServers
             log.warning(f'Workflow execution {weid} {result.status}' + (f' ({result.stopReason})' if result.stopReason else '')
                         + (f'; model servers: {_formatServers(modelServers)}' if modelServers else ''))
             if result.status == 'Pending' and result.stopReason is None:
-                # no free model-server slot when the workflow started: retry later, not at once
-                self.deferRetry(weid)
-            elif result.status != 'Pending':
-                with self.lock:
-                    self.backoff.pop(weid, None)
-            self.backend.setStatus(weid, result.status, keepAttempts=(result.status == 'Pending'))
+                # no free model-server slot when the workflow started: retry later, not at once; the
+                # attempt is not counted (it would send executions back to Created when several
+                # schedulers compete for the model servers)
+                self.backend.transition(lease, 'Pending', incAttempts=-1, backoff=self.backoff)
+            else:
+                self.backend.transition(lease, result.status)
             if result.status != 'Pending':
                 self.notify(weid)
             self.monitor.finished(weid, result.status, modelServers=modelServers)
-        except NotScheduledError:
-            log.exception(f'Execution {weid} is not Scheduled any more, not running it.')
-            self.monitor.dropped(weid)
+        except LeaseLost as e:
+            # another scheduler holds the execution now (it took it over after our lease expired):
+            # nothing more is written for it from here
+            log.warning(f'Execution {weid}: lease lost, dropping it without writing anything ({e})')
+            (self.monitor.finished(weid, 'Pending') if launched else self.monitor.dropped(weid))
         except InputsIncompleteError as e:
             log.warning(f'Execution {weid} failed: {e}')
-            self.storeMessageLog(weid, f'The execution was not started: {e}')
-            self._recover(weid, launched, permanent=True)
+            self.storeMessageLog(weid, f'The execution was not started: {e}', lease)
+            self._recover(weid, lease, launched, permanent=True)
         except Exception as e:
             log.exception(f'Execution of workflow {weid} failed.')
-            self._recover(weid, launched, permanent=isinstance(e, StagingError))
+            self._recover(weid, lease, launched, permanent=isinstance(e, StagingError))
         finally:
             with self.lock:
                 self.jobs.pop(weid, None)
@@ -465,12 +480,13 @@ class Scheduler:
         if not complete:
             raise InputsIncompleteError('some compulsory inputs are not set')
 
-    def storeMessageLog(self, weid: str, message: str) -> None:
+    def storeMessageLog(self, weid: str, message: str, lease: Lease | None = None) -> None:
         """
         Store a short message as the log of an execution that did not run, so that its owner sees why.
 
         :param weid: execution ID
         :param message: text of the log
+        :param lease: the lease the execution is held under
         """
         import tempfile
         from pathlib import Path
@@ -478,7 +494,7 @@ class Scheduler:
             with tempfile.TemporaryDirectory(dir=self.config.work_dir, prefix='mupifDB') as tmp:
                 path = Path(tmp) / 'scheduler.log'
                 path.write_text(message + '\n')
-                self.backend.storeLog(weid, path)
+                self.backend.storeLog(weid, path, lease)
         except Exception:
             log.exception(f'{weid}: could not store the message log')
 
@@ -492,24 +508,27 @@ class Scheduler:
         own = getattr(workflow, 'Timeout', 0) or 0
         return float(own) if own > 0 else self.config.default_job_timeout
 
-    def _recover(self, weid: str, launched: bool, permanent: bool) -> None:
+    def _recover(self, weid: str, lease: Lease, launched: bool, permanent: bool) -> None:
         """
         Set the status of an execution whose job failed with an exception.
 
         :param weid: execution ID
+        :param lease: the lease it is held under
         :param launched: whether its workflow subprocess was started
         :param permanent: the error will not go away by retrying (unusable workflow package)
         """
         try:
             if launched or permanent:
-                self.backend.setStatus(weid, 'Failed')
+                self.backend.transition(lease, 'Failed')
                 self.notify(weid)
             else:
-                self.deferRetry(weid)
-                self.backend.setStatus(weid, 'Pending', keepAttempts=True)
+                # transient (e.g. REST API unreachable): back to the queue, retried after a delay
+                self.backend.transition(lease, 'Pending', backoff=self.backoff)
+        except LeaseLost:
+            log.warning(f'{weid}: lease lost, its status is not changed from here')
         except Exception:
-            # REST API unreachable: nothing more can be done from here, the record is recovered
-            # when the scheduler restarts (interrupted Scheduled/Running executions)
+            # REST API unreachable: nothing more can be done from here; the lease is not renewed
+            # any more, so after it expires a scheduler takes the execution over and requeues it
             log.exception(f'Could not update status of execution {weid} after the failure.')
         if launched:
             self.monitor.finished(weid, 'Failed')
@@ -538,7 +557,7 @@ class Scheduler:
                 names.update(c.nsName for c in self.findModelServers(req))
         return sorted(names)
 
-    def terminateLeftoverModelJobs(self, weid: str, workflow: Any = None) -> Any:
+    def terminateLeftoverModelJobs(self, weid: str, workflow: Any = None, lease: Lease | None = None) -> Any:
         """
         Terminate model-server jobs still allocated for an execution whose workflow process has ended.
 
@@ -553,11 +572,16 @@ class Scheduler:
 
         :param weid: execution ID
         :param workflow: workflow record of the execution (read if not given)
+        :param lease: the lease the execution is held under: if it is not current any more, nothing
+                      is done (the record's ``loggerURI`` may be the new holder's)
         :return: the execution record as read here (None if it could not be read)
         """
         rec = None
         try:
             rec = self.backend.getExecution(weid)
+            if lease is not None and (rec.SchedulerID != lease.schedulerId or int(rec.LeaseEpoch) != lease.epoch):
+                log.warning(f'{weid}: lease lost, not cleaning up model-server jobs (the new holder does)')
+                return rec
             loggerURI = getattr(rec, 'loggerURI', None)
             if not loggerURI:
                 return rec
@@ -669,33 +693,31 @@ class Scheduler:
 
     # --- startup --------------------------------------------------------------------------------
 
-    def recoverInterruptedExecutions(self) -> None:
+    def recoverExpired(self, limit: int = 50) -> int:
         """
-        Return executions left ``Scheduled`` or ``Running`` by a previous scheduler run to ``Pending``.
+        Take over executions whose lease expired, held by schedulers which are not alive, and requeue them.
 
-        Executions in these states belong to the scheduler (there is a single scheduler per
-        deployment), so at startup they can only be leftovers of a previous run that crashed or was
-        killed. They are returned to ``Pending`` (keeping their attempt count) and go through the
-        normal scheduling; the model-server jobs of ``Running`` ones are terminated first. An
-        execution whose workflow process is still alive on this host is left alone: it outlived the
-        previous scheduler and finishes on its own.
+        A scheduler which crashed or was killed (its workflows die with it) leaves its executions
+        ``Scheduled``/``Running``; once their leases expired and its heartbeat ended, any scheduler
+        takes them over (atomically, :meth:`ExecutionBackend.takeOver`), terminates the model-server
+        jobs their workflows left behind and returns them to ``Pending`` (attempt count kept).
+        Records from before leases count as expired. Errors are logged.
+
+        :param limit: maximum number of executions taken over at once
+        :return: number of executions taken over
         """
-        log.info('Recovering executions interrupted by a previous scheduler run…')
-        alive = runningExecutionProcesses()
-        for status in ('Scheduled', 'Running'):
+        try:
+            taken = self.backend.takeOver(limit)
+        except Exception:
+            log.exception('Could not take over executions with expired leases')
+            return 0
+        for rec, lease in taken:
+            log.warning(f'{rec.dbID} was left {rec.Status} by a scheduler which is gone ({rec.SchedulerID if lease.epoch > 1 else "before leases"}); '
+                        f'taken over (epoch {lease.epoch}) and returned to Pending', extra={'weid': rec.dbID})
+            if rec.Status == 'Running':
+                self.terminateLeftoverModelJobs(rec.dbID, lease=lease)
             try:
-                records: list[Any] = self.backend.executionsWithStatus(status, RECOVERY_LIMIT)
+                self.backend.transition(lease, 'Pending')
             except Exception:
-                log.exception(f'Could not list {status} executions to recover')
-                continue
-            for rec in records:
-                if rec.dbID in alive:
-                    log.info(f'{rec.dbID} is {status}, its workflow process is still running; left alone')
-                    continue
-                log.warning(f'{rec.dbID} was left {status} by a previous scheduler run; returning it to Pending')
-                if status == 'Running':
-                    self.terminateLeftoverModelJobs(rec.dbID)
-                try:
-                    self.backend.setStatus(rec.dbID, 'Pending', keepAttempts=True)
-                except Exception:
-                    log.exception(f'Could not return {rec.dbID} to Pending')
+                log.exception(f'Could not return {rec.dbID} to Pending')
+        return len(taken)
