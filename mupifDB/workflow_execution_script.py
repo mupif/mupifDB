@@ -38,6 +38,29 @@ import Pyro5.errors
 NO_RESOURCES_EXCEPTION = 'mupif.modelserverbase.ModelServerNoResourcesException'
 
 
+def storeModelServers(weid: str, workflow) -> None:
+    """
+    Log and store the model servers the workflow allocated its models on (``ModelServers`` of the execution).
+
+    The workflow chooses a server for each model among the compatible ones (all instances of the
+    model server, servers of the same model ID; see mupif.modelplacement); the choice is in the
+    execution log, and in the record for the scheduler (statistics, clean-up of model-server jobs
+    left behind) and the users. Best effort: a failure to store it does not stop the execution.
+
+    :param weid: execution ID
+    :param workflow: the initialized workflow
+    """
+    # workflows of older mupif versions do not report it
+    modelServers = workflow.getModelServers() if hasattr(workflow, 'getModelServers') else {}
+    if not modelServers:
+        return
+    log.info('Model servers used: ' + ', '.join(f'{m} on {s}' for m, s in sorted(modelServers.items())))
+    try:
+        mupifDB.restApiControl.setExecutionModelServers(weid, modelServers)
+    except Exception:
+        log.exception('Could not store the model servers in the execution record')
+
+
 def isNoResourcesError(err: BaseException | None) -> bool:
     """
     Tell whether *err* (or an exception it was raised from) means "model server has no free slot".
@@ -182,7 +205,15 @@ def main():
         # scheduler finds (and terminates) model jobs left behind if this script dies abnormally
         mupifDB.restApiControl.setExecutionParameter(weid, 'loggerURI', logUri)
         workflow = workflow_class()
-        workflow.initialize(metadata={'Execution': {'ID': weid, 'Use_case_ID': workflow_record.UseCase, 'Task_ID': execution_record.Task_ID, 'Log_URI': logUri}})
+        executionMD = {'ID': weid, 'Use_case_ID': workflow_record.UseCase, 'Task_ID': execution_record.Task_ID, 'Log_URI': logUri}
+        # the execution profile chosen for the execution decides which model servers the workflow
+        # may allocate its models on (mupif.modelplacement); not passed for the default profile
+        profile = getattr(execution_record, 'ExecutionProfileIndex', -1)
+        if profile is not None and profile >= 0:
+            executionMD['ExecutionProfileIndex'] = profile
+            log.info(f'Execution profile #{profile}')
+        workflow.initialize(metadata={'Execution': executionMD})
+        storeModelServers(weid, workflow)
         wfUri = str(daemon.register(workflow))
         mupifDB.restApiControl.setExecutionParameter(weid, 'workflowURI', wfUri)
         mupifDB.workflowmanager.mapInputs(workflow, weid)
