@@ -236,6 +236,7 @@ def test_recover_expired(env):
     assert env.scheduler.recoverExpired() == 2
     assert [env.backend.status(w) for w in ('S1', 'R1', 'R2', 'R3')] == ['Pending', 'Pending', 'Running', 'Running']
     assert env.backend.executions['R1'].Attempts == 2 and env.backend.executions['R1'].LeaseEpoch == 4
+    assert env.backend.executions['R1'].LeaseTakenFrom == 'gone' and env.backend.executions['S1'].LeaseTakenFrom is None
 
 
 def test_run_survives_errors_and_stops(env, monkeypatch):

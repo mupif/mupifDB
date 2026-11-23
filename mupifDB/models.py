@@ -251,6 +251,8 @@ class WorkflowExecution_Model(MongoObj_Model):
     LeaseExpires: Optional[datetime.datetime]=None
     #: process which took the execution over at its start
     LeaseInstance: Optional[str]=None
+    #: the scheduler the execution was last taken over from (it was gone); None: never taken over
+    LeaseTakenFrom: Optional[str]=None
     #: the execution is not claimed before this time (retry delay); None: at once
     NotBefore: Optional[datetime.datetime]=None
     #: consecutive retry delays (the next delay grows with it); reset by a final outcome

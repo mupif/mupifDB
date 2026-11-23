@@ -55,7 +55,7 @@ ALLOWED_FROM = {
 #: a date before any lease (stands for a missing ``LeaseExpires``/``NotBefore`` in comparisons)
 _EPOCH0 = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 #: fields only the lease operations may write (refused by the generic parameter setter)
-LEASE_FIELDS = ('SchedulerID', 'LeaseEpoch', 'LeaseExpires', 'LeaseInstance', 'NotBefore', 'Deferrals')
+LEASE_FIELDS = ('SchedulerID', 'LeaseEpoch', 'LeaseExpires', 'LeaseInstance', 'LeaseTakenFrom', 'NotBefore', 'Deferrals')
 
 
 class LeaseError(Exception):
@@ -224,6 +224,8 @@ def takeOver(coll, schedulers, schedulerId: str, leaseSeconds: float, limit: int
         rec = majority(coll).find_one_and_update(
             {'Status': {'$in': list(LEASED)}, 'SchedulerID': {'$nin': sorted(live)}, '$expr': _expired('LeaseExpires')},
             [{'$set': {
+                # the previous holder, for the record (expressions of one $set stage read the old document)
+                'LeaseTakenFrom': {'$ifNull': ['$SchedulerID', None]},
                 'SchedulerID': _lit(schedulerId),
                 'LeaseEpoch': {'$add': [{'$ifNull': ['$LeaseEpoch', 0]}, 1]},
                 'LeaseExpires': _nowPlus(leaseSeconds),

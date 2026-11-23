@@ -140,6 +140,7 @@ def test_renew_and_takeover(db):
     expire(db, b)
     taken = leases.takeOver(coll, sch, 's2', 60, 10)
     assert [str(t['_id']) for t in taken] == [b] and taken[0]['SchedulerID'] == 's2' and taken[0]['LeaseEpoch'] == 2
+    assert taken[0]['LeaseTakenFrom'] == 's1'
     # s1 learns it lost b; its writes are refused
     assert leases.renew(coll, 's1', [(a, ra['LeaseEpoch']), (b, rb['LeaseEpoch'])], 60) == {a}
     assert leases.transition(coll, b, 's1', rb['LeaseEpoch'], 'Failed') is None

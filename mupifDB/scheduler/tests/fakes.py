@@ -79,7 +79,7 @@ class FakeStore:
         """
         rec = types.SimpleNamespace(dbID=weid, Status=status, Attempts=attempts, WorkflowID=wid, WorkflowVersion=version, submitted=next(self._submitted),
                                     loggerURI=loggerURI, ExecutionProfileIndex=profile, ModelServers={}, workflowURI=None,
-                                    SchedulerID=None, LeaseEpoch=0, LeaseExpires=None, LeaseInstance=None, NotBefore=None, Deferrals=0)
+                                    SchedulerID=None, LeaseEpoch=0, LeaseExpires=None, LeaseInstance=None, LeaseTakenFrom=None, NotBefore=None, Deferrals=0)
         for k, v in lease.items():
             setattr(rec, k, v)
         self.executions[weid] = rec
@@ -301,6 +301,7 @@ class FakeBackend:
                 if len(taken) >= limit:
                     break
                 if rec.Status in LEASED and rec.SchedulerID not in live and (rec.LeaseExpires is None or rec.LeaseExpires <= now):
+                    rec.LeaseTakenFrom = rec.SchedulerID
                     rec.SchedulerID, rec.LeaseEpoch, rec.LeaseExpires = self.schedulerId, rec.LeaseEpoch + 1, now + self.leaseSeconds
                     taken.append((self.store.copy(rec), self._lease(rec)))
             return taken

@@ -796,8 +796,9 @@ class Scheduler:
             log.exception('Could not take over executions with expired leases')
             return 0
         for rec, lease in taken:
-            log.warning(f'{rec.dbID} was left {rec.Status} by a scheduler which is gone ({rec.SchedulerID if lease.epoch > 1 else "before leases"}); '
-                        f'taken over (epoch {lease.epoch}) and returned to Pending', extra={'weid': rec.dbID})
+            previous = getattr(rec, 'LeaseTakenFrom', None) or 'a scheduler from before leases'
+            log.warning(f'{rec.dbID} was left {rec.Status} by {previous}, which is gone; taken over (epoch {lease.epoch}) and returned to Pending',
+                        extra={'weid': rec.dbID})
             if rec.Status == 'Running':
                 self.terminateLeftoverModelJobs(rec.dbID, lease=lease)
             try:
