@@ -50,10 +50,20 @@ class SchedulerConfig(pydantic.BaseModel):
     keep_failed_workdirs: int = pydantic.Field(0, ge=0, description='Number of working directories of failed executions kept in <work_dir>/failed for debugging (0: none).')
     cache_dir: str = pydantic.Field('', description='Directory caching downloaded workflow packages (empty: <work_dir>/mupifDB-package-cache).')
     cache_max_bytes: int = pydantic.Field(1 << 30, ge=0, description='Size of the workflow package cache above which the least recently used packages are removed (0: no cache).')
+    renew_interval: float = pydantic.Field(60., gt=0, description='Seconds between two renewals of the heartbeat and the leases (in one call to the REST API); must be well below lease_seconds.')
+    takeover_interval: float = pydantic.Field(60., gt=0, description='Seconds between two passes taking over executions of schedulers which are gone (lease expired, no heartbeat).')
+    takeover_limit: int = pydantic.Field(50, ge=1, description='Maximum number of executions taken over in one pass.')
     lease_seconds: float = pydantic.Field(600., gt=0, description='Validity in seconds of the lease under which an execution is held, and of the scheduler heartbeat; renewed by the scheduler. After a scheduler dies, other schedulers take its executions over once their leases expired (a restarted scheduler with the same scheduler_id takes them back at once).')
     stale_server_timeout: float = pydantic.Field(300., ge=0, description='Seconds a model server registered in the nameserver may stay unreachable before the scheduler removes its entry (a crashed server leaves it behind); a live server removed by mistake registers again by itself. 0: never removed.')
     stat_file: str = pydantic.Field('/var/lib/mupif/persistent/scheduler-stat.json', description='File keeping the statistics across restarts.')
     pidfile: str = pydantic.Field('mupifDB_scheduler_pidfile', description='PID file preventing a second scheduler from starting; the REST API reads it (relative to its working directory) to report whether the scheduler runs.')
+
+    @pydantic.model_validator(mode='after')
+    def _renewal_within_lease(self) -> 'SchedulerConfig':
+        # two renewals must fit in a lease, else a single failed renewal lets it expire
+        if self.renew_interval * 2 > self.lease_seconds:
+            raise ValueError(f'renew_interval ({self.renew_interval} s) must be at most half of lease_seconds ({self.lease_seconds} s)')
+        return self
 
     @classmethod
     def envVar(cls, name: str) -> str:

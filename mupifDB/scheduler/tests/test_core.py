@@ -857,3 +857,120 @@ def test_script_gets_the_lease(tmp_path):
     r = JobRunner(SchedulerConfig(work_dir=str(tmp_path), scheduler_id='s7'), nsUri='PYRO:ns@h:1')
     env = r.environment(core.Job(weid='E0', record=None, lease=Lease('E0', 's7', 3)))
     assert env['MUPIFDB_LEASE'] == 'E0:s7:3' and env['MUPIFDB_SCHEDULER_ID'] == 's7'
+
+
+# --- lease keeper ----------------------------------------------------------------------------------
+
+def startKeeping(env, *schedulers):
+    """Take the identities and let the keepers use the database clock ``env.now``."""
+    for s in schedulers:
+        assert s.backend.acquireIdentity()
+        s.keeper.clock = lambda: env.now[0]
+
+
+def tick(env, seconds, *schedulers):
+    """Let *seconds* pass, the keepers of *schedulers* renewing every ``renew_interval`` (60 s) as their threads do."""
+    for _ in range(int(seconds // 60)):
+        env.now[0] += 60
+        for s in schedulers:
+            s.keeper.step()
+
+
+def test_keeper_renews_and_takes_over_from_dead_schedulers(env, pair):
+    """
+    The keeper renews its leases; another scheduler takes an execution over only once its lease
+    expired and its scheduler is dead, and only after a whole lease period of contact; the old
+    scheduler, back, finds its lease lost, stops the workflow and writes nothing.
+    """
+    startKeeping(env, env.scheduler, pair)
+    env.backend.addExecution('E0')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    env.scheduler.keeper.step()
+    assert env.backend.executions['E0'].LeaseExpires == env.now[0] + 600
+    pair.keeper.step()                                  # s2: contact starts now
+    # s1 dies: its heartbeat and lease expire; s2 keeps renewing
+    tick(env, 540, pair)
+    assert env.backend.executions['E0'].SchedulerID == 's1'          # not expired yet
+    tick(env, 120, pair)
+    rec = env.backend.executions['E0']
+    assert rec.SchedulerID == 's2' and rec.LeaseEpoch == 2 and rec.Status == 'Pending'
+    # s1 is back: its lease is gone, the workflow is stopped, nothing is written
+    env.scheduler.keeper.step()
+    assert env.scheduler.jobs['E0'].stopReason == 'lease-lost'
+    env.drain()
+    assert env.backend.executions['E0'].Status == 'Pending' and env.backend.notified == []
+
+
+def test_keeper_no_takeover_after_full_outage(env, pair):
+    """
+    After a REST API/database outage longer than the lease, nobody takes over before a lease period
+    of contact; the owner renews first and keeps its execution (no mass re-run).
+    """
+    startKeeping(env, env.scheduler, pair)
+    env.backend.addExecution('E0')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    env.scheduler.keeper.step()
+    tick(env, 900, env.scheduler, pair)                 # s2 has had contact for long
+    # outage: nobody can renew for 15 minutes (every lease and heartbeat expires)
+    env.backend.failures['heartbeat'] = lambda leases: RuntimeError('API down')
+    tick(env, 900, env.scheduler, pair)
+    del env.backend.failures['heartbeat']
+    # back: s2 happens to come first, but its contact just started again
+    pair.keeper.step()
+    assert env.backend.executions['E0'].SchedulerID == 's1'
+    env.scheduler.keeper.step()                         # the owner renews
+    tick(env, 900, env.scheduler, pair)                 # s2 may take over now, but s1 lives and renews
+    rec = env.backend.executions['E0']
+    assert (rec.SchedulerID, rec.LeaseEpoch, rec.Status) == ('s1', 1, 'Running')
+    env.drain()
+    assert env.backend.status('E0') == 'Finished'
+
+
+def test_keeper_gap_interrupts_contact(env, pair):
+    """A renewal gap longer than a lease (e.g. a suspended process) restarts the contact period."""
+    startKeeping(env, pair)
+    pair.keeper.step()
+    env.now[0] += 700
+    pair.keeper.step()
+    assert pair.keeper.contactSince == env.now[0] and not pair.keeper.mayTakeOver(env.now[0] + 100)
+
+
+def test_keeper_identity_lost_stops_the_scheduler(env):
+    startKeeping(env, env.scheduler)
+    env.backend.addExecution('E0')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    # considered dead, its identity taken by another process
+    env.backend.kill('s1')
+    other = FakeBackend(env.backend.store, 's1')
+    assert other.acquireIdentity()
+    env.scheduler.keeper.step()
+    assert env.scheduler.stopEvent.is_set() and env.scheduler.jobs['E0'].stopReason == 'lease-lost'
+
+
+def test_lease_settings_checked():
+    with pytest.raises(Exception, match='renew_interval'):
+        SchedulerConfig(lease_seconds=60, renew_interval=40)
+
+
+def test_shutdown_releases_identity(env, monkeypatch):
+    """A cleanly stopped scheduler gives up its identity, so that a restart under the same ID need not wait."""
+    t = threading.Thread(target=env.scheduler.run)
+    t.start()
+    time.sleep(0.2)
+    assert env.backend.schedulers['s1']['HeartbeatExpires'] > env.now[0]
+    env.scheduler.stop()
+    t.join(10)
+    assert env.backend.schedulers['s1']['HeartbeatExpires'] <= env.now[0]
+
+
+def test_duplicate_identity_refuses_to_start(env):
+    other = FakeBackend(env.backend.store, 's1')
+    assert other.acquireIdentity()
+    with pytest.raises(RuntimeError, match='held by another running scheduler'):
+        env.scheduler.run()

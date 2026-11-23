@@ -86,6 +86,8 @@ class Job:
     launched: bool = False
     #: lease the execution is held under (see mupifDB.api.leases); writes for it name it
     lease: Any = None
+    #: the final status was stored (the lease released): the lease keeper does not renew it any more
+    outcomeStored: bool = False
     #: model name -> model server the workflow allocated it on, once known (see Scheduler.refreshPlacements)
     modelServers: dict[str, str] | None = None
     #: the workflow has allocated its models (the model servers count their slots from then on);

@@ -60,6 +60,7 @@ from mupif import modelplacement
 
 from .backend import ExecutionBackend, Lease, LeaseLost
 from .config import SchedulerConfig
+from .leases import LeaseKeeper
 from .monitor import SchedulerMonitor
 from .resources import InvalidProfileError, ResourceBudget
 from .runner import Job, JobRunner
@@ -163,16 +164,26 @@ class Scheduler:
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=config.max_jobs, thread_name_prefix='job')
         #: sends notifications to owners (e-mail) without holding up the job threads
         self.notifier = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='notify')
+        #: renews the heartbeat and the leases, takes over executions of dead schedulers (see :meth:`run`)
+        self.keeper = LeaseKeeper(self)
 
     # --- main loop ------------------------------------------------------------------------------
 
     def run(self) -> None:
         """
-        Run until :meth:`stop` is called: recover interrupted executions, then take pending ones every ``poll_interval``.
+        Run until :meth:`stop` is called: take the scheduler identity, start the lease keeper, then take pending executions every ``poll_interval``.
 
-        Returns when the main loop has ended and all job threads have finished.
+        Executions of schedulers which are gone are taken over by the lease keeper (not at once:
+        see :class:`~mupifDB.scheduler.leases.LeaseKeeper`). Returns when the main loop has ended
+        and all job threads have finished.
+
+        :raises RuntimeError: if another live process holds the scheduler identity (``scheduler_id``)
         """
-        self.recoverExpired()
+        if not self.backend.acquireIdentity():
+            raise RuntimeError(f'Scheduler identity {self.config.scheduler_id} is held by another running scheduler process; '
+                               'give each scheduler its own scheduler_id')
+        log.info(f'Scheduler identity {self.config.scheduler_id} taken')
+        self.keeper.start()
         log.info('Entering main loop to check for Pending executions')
         while not self.stopEvent.is_set():
             try:
@@ -232,7 +243,14 @@ class Scheduler:
                 remaining = list(self.jobs.values())
             for job in remaining:
                 job.stop('shutdown')
+        # the lease keeper renews the leases until here (drain), then the identity is released, so
+        # that a scheduler restarted under the same ID does not wait for the heartbeat to expire
         self.executor.shutdown(wait=True)
+        self.keeper.stop()
+        try:
+            self.backend.releaseIdentity()
+        except Exception:
+            log.exception('Could not release the scheduler identity')
         self.notifier.shutdown(wait=True)
         self.monitor.persist()
         log.info('Scheduler shut down')
@@ -425,6 +443,7 @@ class Scheduler:
                 self.backend.transition(lease, 'Pending', incAttempts=-1, backoff=self.backoff)
             else:
                 self.backend.transition(lease, result.status)
+            job.outcomeStored = True
             if result.status != 'Pending':
                 self.notify(weid)
             self.monitor.finished(weid, result.status, modelServers=modelServers)

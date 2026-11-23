@@ -263,6 +263,11 @@ class SchedulerMonitor:
 
     # --- Pyro API --------------------------------------------------------------------------------
 
+    def heartbeatStats(self) -> dict:
+        """Counters sent with the scheduler's heartbeat (registry ``Schedulers``; summed over schedulers by the REST API)."""
+        with self.lock:
+            return dict(self.stat.dbValues(), capacity=self.stat.capacity, draining=self.draining)
+
     @Pyro5.api.expose
     def getStatistics(self, raw=False):
         """
