@@ -11,6 +11,8 @@ Status changes made here (database access through :class:`~mupifDB.scheduler.bac
 * ``Pending -> Scheduled``: the execution is taken (only if this change succeeded);
 * ``Pending -> Created``: the resources of the execution stayed unavailable for ``max_attempts``
   attempts (the owner is notified);
+* ``Pending -> Failed``: the execution asks for an execution profile its workflow does not have
+  (a short log tells the owner why);
 * ``Scheduled -> Running``: the job thread starts the workflow subprocess (attempt count + 1);
 * ``Running -> Finished | Failed``: outcome of the run (the owner is notified), see
   :func:`~mupifDB.scheduler.runner.statusForExitCode`;
@@ -21,6 +23,13 @@ Status changes made here (database access through :class:`~mupifDB.scheduler.bac
   are not set (a short log tells the owner why);
 * at startup ``Scheduled | Running -> Pending``: executions interrupted by a previous run of the
   scheduler (see :meth:`Scheduler.recoverInterruptedExecutions`).
+
+Model servers: the scheduler checks that the models of an execution can find free slots on
+compatible model servers before it takes it (:class:`~mupifDB.scheduler.resources.ResourceBudget`,
+under the execution's execution profile); the workflow itself chooses the server for each model
+when it allocates it, and the execution script stores the choice in the execution record
+(``ModelServers``), from where the scheduler takes it for its statistics and the clean-up of
+model-server jobs (:meth:`Scheduler.refreshPlacements`).
 
 Threads: the main loop runs in the thread calling :meth:`Scheduler.run`; one job thread per running
 execution (at most ``max_jobs``); the Pyro daemon of the monitor. :attr:`Scheduler.jobs` (executions
@@ -36,10 +45,12 @@ import threading
 import time
 from typing import Any, Callable
 
+from mupif import modelplacement
+
 from .backend import ExecutionBackend
 from .config import SchedulerConfig
 from .monitor import SchedulerMonitor
-from .resources import ResourceBudget
+from .resources import InvalidProfileError, ResourceBudget
 from .runner import Job, JobRunner
 from .staging import StagingError
 
@@ -68,6 +79,11 @@ log.addFilter(ExecutionLogFilter())
 
 #: upper bound on the number of interrupted executions recovered at startup (the REST API pages its results)
 RECOVERY_LIMIT = 100000
+
+
+def _formatServers(modelServers: dict[str, str]) -> str:
+    """Format ``model -> model server`` for logs: ``m1→CVUT.demo01~node2, m2→…``."""
+    return ', '.join(f'{m}→{s}' for m, s in sorted(modelServers.items()))
 
 
 class NotScheduledError(Exception):
@@ -102,15 +118,22 @@ class Scheduler:
     """
 
     def __init__(self, config: SchedulerConfig, backend: ExecutionBackend, runner: JobRunner,
-                 freeJobSlots: Callable[[str], int | None], monitor: SchedulerMonitor,
-                 terminateModelJobs: Callable[[list[str], str], list[str]] = lambda jobmanagers, loggerURI: []):
+                 findModelServers: Callable[[Any], list], serverLoad: Callable[[Any], Any], monitor: SchedulerMonitor,
+                 terminateModelJobs: Callable[[list[str], str], list[str]] = lambda jobmanagers, loggerURI: [],
+                 removeModelServer: Callable[[str, str], bool] = lambda name, uri: False):
         """
         Set up the scheduler; nothing runs until :meth:`run`.
 
         :param config: settings
         :param backend: database access
         :param runner: runs one execution (see :class:`JobRunner`)
-        :param freeJobSlots: ``jobmanager name -> free job slots`` (None if unreachable)
+        :param findModelServers: ``requirement -> compatible model servers`` (see
+                                 :func:`mupif.modelplacement.findModelServers`)
+        :param serverLoad: ``model server -> load`` (None if unreachable; see
+                           :func:`mupif.modelplacement.serverLoad`)
+        :param removeModelServer: ``(registered name, URI) -> removed``: removes the nameserver entry
+                                  of a model server, if it still points to that URI (see
+                                  :meth:`checkedServerLoad`)
         :param monitor: statistics
         :param terminateModelJobs: ``(jobmanagers, loggerURI) -> keys of terminated jobs``: terminates
                                    the model-server jobs of an execution (see
@@ -119,7 +142,11 @@ class Scheduler:
         self.config = config
         self.backend = backend
         self.runner = runner
-        self.freeJobSlots = freeJobSlots
+        self.findModelServers = findModelServers
+        self.serverLoad = serverLoad
+        self.removeModelServer = removeModelServer
+        #: (registered name, URI) of model servers which did not answer -> monotonic time of the first failure
+        self.unreachableSince: dict[tuple[str, str], float] = {}
         self.monitor = monitor
         self.terminateModelJobs = terminateModelJobs
         #: protects :attr:`jobs`
@@ -148,6 +175,8 @@ class Scheduler:
         log.info('Entering main loop to check for Pending executions')
         while not self.stopEvent.is_set():
             try:
+                # placements first: jobs whose models are allocated stop being counted as in flight
+                self.refreshPlacements()
                 self.schedulePass()
                 self.sampleQueue()
                 self.monitor.persist()
@@ -249,21 +278,18 @@ class Scheduler:
             until = self.backoff.get(weid, (0., 0))[0]
         return time.monotonic() < until
 
-    def _workflowJobmanagers(self, wid: str, version: int) -> list[str]:
-        """Return the jobmanagers of the models of a workflow, one per model with a remote jobmanager."""
-        workflow = self.backend.getWorkflow(wid, version)
-        return [m.Jobmanager for m in workflow.Models if m.Jobmanager]
-
     def schedulePass(self) -> int:
         """
         Take pending executions, oldest submitted first, while job slots and model-server slots allow.
 
-        Model-server slots are budgeted for the pass (:class:`ResourceBudget`): an execution whose
+        Model-server slots are budgeted for the pass (:class:`ResourceBudget`), over the model servers
+        compatible with each model under the execution's execution profile: an execution whose
         model servers are busy waits for a later pass without using up an attempt; one whose model
         servers (or workflow record) are unreachable uses up an attempt and is retried after a
         growing delay (:meth:`deferRetry`), and after ``max_attempts`` attempts it returns to
-        ``Created``. Executions deferred after a transient failure are skipped until their delay
-        has passed.
+        ``Created``. An execution asking for an execution profile its workflow does not have
+        fails. Executions deferred after a transient failure are skipped until their delay has
+        passed.
 
         :return: number of executions taken
         """
@@ -273,7 +299,8 @@ class Scheduler:
         if free <= 0:
             return 0
         pending = self.backend.pendingExecutions(limit=self.config.fetch_limit)
-        budget = ResourceBudget(self._workflowJobmanagers, self.freeJobSlots)
+        budget = ResourceBudget(self.backend.getWorkflow, self.findModelServers, self.checkedServerLoad)
+        self.reserveInFlight(budget)
         taken = 0
         for rec in pending:
             if taken >= free:
@@ -294,12 +321,23 @@ class Scheduler:
                 except Exception:
                     log.exception(f'{weid}: could not return it to Created')
                 continue
-            resources = budget.reserve(rec.WorkflowID, rec.WorkflowVersion)
-            if resources == ResourceBudget.BUSY:
+            try:
+                resources = budget.reserve(rec.WorkflowID, rec.WorkflowVersion, getattr(rec, 'ExecutionProfileIndex', -1))
+            except InvalidProfileError as e:
+                # will not change by waiting: fail it and tell the owner why
+                log.warning(f'{weid} cannot run: {e}', extra={'weid': weid})
+                self.storeMessageLog(weid, f'The execution was not started: {e}')
+                try:
+                    self.backend.setStatus(weid, 'Failed')
+                    self.notify(weid)
+                except Exception:
+                    log.exception(f'{weid}: could not set it to Failed')
+                continue
+            if resources.status == ResourceBudget.BUSY:
                 # the model servers are working on other executions: wait without using up an attempt
                 log.debug(f'{weid} waits for free model server slots')
                 continue
-            if resources == ResourceBudget.UNAVAILABLE:
+            if resources.status == ResourceBudget.UNAVAILABLE:
                 log.info(f'{weid} cannot be scheduled due to unavailable resources')
                 try:
                     self.backend.setAttempts(weid, rec.Attempts + 1)
@@ -320,7 +358,7 @@ class Scheduler:
             self.monitor.enqueued(weid)
             self.executor.submit(self.runJob, job)
             taken += 1
-            log.info(f'{weid} taken (attempts so far: {rec.Attempts})')
+            log.info(f'{weid} taken (attempts so far: {rec.Attempts}; {resources})', extra={'weid': weid})
         return taken
 
     # --- one execution (job thread) -------------------------------------------------------------
@@ -357,12 +395,16 @@ class Scheduler:
                 self.backend.setStatus(weid, 'Running')
                 self.backend.setAttempts(weid, rec.Attempts + 1)
                 launched = True
+                job.launched = True
                 self.monitor.started(weid, rec.WorkflowID)
 
             result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path),
                                      timeout=self.jobTimeout(workflow))
-            self.terminateLeftoverModelJobs(weid, workflow)
-            log.warning(f'Workflow execution {weid} {result.status}' + (f' ({result.stopReason})' if result.stopReason else ''))
+            final = self.terminateLeftoverModelJobs(weid, workflow)
+            # the model servers the workflow chose, as stored by the execution script (for the statistics)
+            modelServers = dict(getattr(final, 'ModelServers', None) or {}) or job.modelServers
+            log.warning(f'Workflow execution {weid} {result.status}' + (f' ({result.stopReason})' if result.stopReason else '')
+                        + (f'; model servers: {_formatServers(modelServers)}' if modelServers else ''))
             if result.status == 'Pending' and result.stopReason is None:
                 # no free model-server slot when the workflow started: retry later, not at once
                 self.deferRetry(weid)
@@ -372,7 +414,7 @@ class Scheduler:
             self.backend.setStatus(weid, result.status, keepAttempts=(result.status == 'Pending'))
             if result.status != 'Pending':
                 self.notify(weid)
-            self.monitor.finished(weid, result.status)
+            self.monitor.finished(weid, result.status, modelServers=modelServers)
         except NotScheduledError:
             log.exception(f'Execution {weid} is not Scheduled any more, not running it.')
             self.monitor.dropped(weid)
@@ -474,29 +516,156 @@ class Scheduler:
         else:
             self.monitor.dropped(weid)
 
-    def terminateLeftoverModelJobs(self, weid: str, workflow: Any = None) -> None:
+    def compatibleServers(self, workflow: Any, profileIndex: int, exclude: set[str] = frozenset()) -> list[str]:
+        """
+        Return the registered names of all model servers compatible with the models of *workflow*.
+
+        Used for the models whose servers are not known (e.g. the script died before storing them,
+        or templates which the workflow allocates later). An unknown execution profile falls back
+        to the default one, which is a superset of the servers of any profile, as far as identities go.
+
+        :param workflow: workflow record
+        :param profileIndex: execution profile of the execution
+        :param exclude: models left out (their servers are known)
+        """
+        try:
+            reqs = modelplacement.modelRequirements(workflow, profileIndex)
+        except ValueError:
+            reqs = modelplacement.modelRequirements(workflow, -1)
+        names = set()
+        for model, req in reqs.items():
+            if model not in exclude:
+                names.update(c.nsName for c in self.findModelServers(req))
+        return sorted(names)
+
+    def terminateLeftoverModelJobs(self, weid: str, workflow: Any = None) -> Any:
         """
         Terminate model-server jobs still allocated for an execution whose workflow process has ended.
 
         Normally there are none: the execution script terminates its models. A script that was
         killed (or stopped while blocked in a call to a model) leaves them running, occupying slots
-        on the model servers (finding #17). Best effort: errors are logged.
+        on the model servers (finding #17). The jobs are looked for on the model servers the
+        execution used (``ModelServers`` of the record, stored by the execution script once its
+        models were allocated at initialization), and on every server compatible with the models
+        not stored there: all models if nothing was stored, else the templates (``Instantiate:
+        false``), whose copies the workflow allocated later, on servers not recorded anywhere.
+        Best effort: errors are logged.
 
         :param weid: execution ID
         :param workflow: workflow record of the execution (read if not given)
+        :return: the execution record as read here (None if it could not be read)
         """
+        rec = None
         try:
             rec = self.backend.getExecution(weid)
             loggerURI = getattr(rec, 'loggerURI', None)
             if not loggerURI:
-                return
+                return rec
+            stored = dict(getattr(rec, 'ModelServers', None) or {})
             if workflow is None:
                 workflow = self.backend.getWorkflow(rec.WorkflowID, rec.WorkflowVersion)
-            jobmanagers = [m.Jobmanager for m in workflow.Models if m.Jobmanager]
-            if jobmanagers and (terminated := self.terminateModelJobs(jobmanagers, loggerURI)):
+            # the servers used at initialization, plus every server the other models (templates,
+            # or all if nothing was stored) may have been allocated on
+            servers = sorted(set(stored.values()) | set(self.compatibleServers(workflow, getattr(rec, 'ExecutionProfileIndex', -1), exclude=set(stored))))
+            if servers and (terminated := self.terminateModelJobs(servers, loggerURI)):
                 log.warning(f'{weid}: terminated model-server jobs left by its workflow: {terminated}')
         except Exception:
             log.exception(f'{weid}: could not clean up its model-server jobs')
+        return rec
+
+    def checkedServerLoad(self, server: Any) -> Any:
+        """
+        Return the load of a model server (None if unreachable); remove it from the nameserver once it stayed unreachable too long.
+
+        A model server killed or crashed leaves its nameserver entry behind; the scheduler, which
+        asks the compatible servers every pass, would try it for ever (a warning per pass). Now an
+        unreachable server is reported once; if it is still unreachable after
+        ``stale_server_timeout`` seconds, its entry is removed (only if it still points to the same
+        server) and reported. A live server removed by mistake (e.g. a network problem between it
+        and the scheduler) registers again by itself (mupif ``watchRegistration``). A server which
+        answers again is reported too.
+
+        :param server: compatible model server (``nsName``, ``uri``; see mupif.modelplacement.Candidate)
+        :return: its load, None if it cannot be reached
+        """
+        key = (server.nsName, str(server.uri))
+        load = self.serverLoad(server)
+        now = time.monotonic()
+        if load is not None:
+            if self.unreachableSince.pop(key, None) is not None:
+                log.info(f'Model server {server.nsName} answers again')
+            return load
+        since = self.unreachableSince.setdefault(key, now)
+        if since == now:
+            log.warning(f'Model server {server.nsName} ({server.uri}) does not answer; skipped while unreachable'
+                        + (f', its nameserver entry is removed after {self.config.stale_server_timeout:.0f} s' if self.config.stale_server_timeout > 0 else ''))
+        elif 0 < self.config.stale_server_timeout <= now - since:
+            del self.unreachableSince[key]
+            try:
+                removed = self.removeModelServer(server.nsName, str(server.uri))
+            except Exception:
+                log.exception(f'Could not remove model server {server.nsName} from the nameserver')
+                removed = False
+            if removed:
+                log.warning(f'Removed model server {server.nsName} from the nameserver: unreachable for {now - since:.0f} s')
+        return None
+
+    def reserveInFlight(self, budget: ResourceBudget) -> None:
+        """
+        Count the slots of executions taken earlier whose workflows have not allocated their models yet.
+
+        The model servers report a slot as used only once the workflow has allocated its model,
+        which takes a few seconds after the start (staging, starting Python, importing the
+        workflow). A pass in between saw those slots as free and took more executions than the
+        servers could serve; the extra ones found no free slot, exited with code 2 and were
+        requeued (seen with two instances and a short poll interval). Such in-flight jobs are now
+        counted in the budget first, as if they were new executions. A job stops being in flight
+        when :meth:`refreshPlacements` finds its models allocated. Errors are ignored: the count is
+        only a better estimate.
+
+        :param budget: the budget of the current pass
+        """
+        with self.lock:
+            inFlight = [j for j in self.jobs.values() if not j.allocated]
+        for job in inFlight:
+            try:
+                budget.reserve(job.record.WorkflowID, job.record.WorkflowVersion, getattr(job.record, 'ExecutionProfileIndex', -1))
+            except Exception:
+                pass
+
+    def refreshPlacements(self) -> None:
+        """
+        Take the model servers of running executions from their records, for the statistics.
+
+        The workflow chooses a model server for each model when it allocates it, and the execution
+        script stores the choice in the execution record (``ModelServers``) right after. For every
+        running job whose models are not known to be allocated yet, the record is read (at most one
+        REST call per such job and pass, only until allocated), the servers are logged and given to
+        the statistics (:meth:`SchedulerMonitor.placed`). A job is allocated once its record has
+        ``ModelServers``, or ``workflowURI`` (set by the execution script after ``initialize()``
+        also with workflows of older mupif versions, which do not report their servers); until
+        then :meth:`reserveInFlight` counts its slots. Both fields are cleared by the REST API when
+        the execution becomes ``Running``, so values of an earlier attempt do not count. Best
+        effort: errors are logged at debug level, and the next pass tries again.
+        """
+        with self.lock:
+            jobs = [j for j in self.jobs.values() if j.launched and not j.allocated]
+        for job in jobs:
+            try:
+                rec = self.backend.getExecution(job.weid)
+            except Exception as e:
+                log.debug(f'{job.weid}: could not read its model servers: {e}')
+                continue
+            modelServers = dict(getattr(rec, 'ModelServers', None) or {})
+            if not modelServers:
+                if getattr(rec, 'workflowURI', None):
+                    # initialized, but its workflow does not report model servers (older mupif)
+                    job.allocated = True
+                continue
+            job.modelServers = modelServers
+            job.allocated = True
+            log.info(f'{job.weid}: models allocated on model servers {_formatServers(modelServers)}', extra={'weid': job.weid})
+            self.monitor.placed(job.weid, modelServers)
 
     # --- startup --------------------------------------------------------------------------------
 

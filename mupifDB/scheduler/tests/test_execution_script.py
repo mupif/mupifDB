@@ -34,6 +34,10 @@ class _FakeWorkflow:
 
     fail = None
     terminated = 0
+    #: metadata given to the last initialize()
+    initMetadata = None
+    #: what getModelServers() returns
+    modelServers: dict = {}
 
     def _maybeFail(self, stage):
         if self.fail and self.fail[0] == stage:
@@ -43,7 +47,11 @@ class _FakeWorkflow:
             raise self.fail[1]
 
     def initialize(self, metadata):
+        _FakeWorkflow.initMetadata = metadata
         self._maybeFail('initialize')
+
+    def getModelServers(self):
+        return dict(self.modelServers)
 
     def solve(self):
         self._maybeFail('solve')
@@ -70,9 +78,12 @@ def execScript(monkeypatch):
     monkeypatch.setattr(es.mp.pyroutil, 'getDaemon', lambda proxy: _FakeDaemon())
     rc = mupifDB.restApiControl
     monkeypatch.setattr(rc, 'setExecutionStatus', lambda weid, status, **kw: statuses.append(status))
-    monkeypatch.setattr(rc, 'getExecutionRecord', lambda weid: types.SimpleNamespace(WorkflowID='wf', WorkflowVersion=1, Task_ID=''))
+    record = types.SimpleNamespace(WorkflowID='wf', WorkflowVersion=1, Task_ID='', ExecutionProfileIndex=-1)
+    monkeypatch.setattr(rc, 'getExecutionRecord', lambda weid: record)
     monkeypatch.setattr(rc, 'getWorkflowRecord', lambda wid, ver: types.SimpleNamespace(modulename='fakewf', classname='FakeWorkflow', UseCase='uc'))
     monkeypatch.setattr(rc, 'setExecutionParameter', lambda *a, **kw: None)
+    stored = {}
+    monkeypatch.setattr(rc, 'setExecutionModelServers', lambda weid, servers: stored.update({weid: servers}))
     monkeypatch.setattr(mupifDB.workflowmanager, 'mapInputs', lambda wf, weid: None)
     monkeypatch.setattr(mupifDB.workflowmanager, 'mapOutputs', lambda wf, weid, t: None)
     monkeypatch.setitem(sys.modules, 'fakewf', types.SimpleNamespace(FakeWorkflow=_FakeWorkflow))
@@ -92,12 +103,28 @@ def execScript(monkeypatch):
             # main() installs its SIGTERM handler in this (pytest's) process
             signal.signal(signal.SIGTERM, previousSigterm)
         return exc.value.code, list(statuses)
+    run.record, run.stored = record, stored
     return run
 
 
 def test_exec_script_success(execScript):
     """A workflow that solves without error exits with 0 and is marked Finished."""
     assert execScript() == (0, ['Running', 'Finished'])
+
+
+def test_exec_script_profile_and_model_servers(execScript, monkeypatch, caplog):
+    """The execution's profile is passed to the workflow; the model servers it chose are logged and stored in the record."""
+    import logging
+    monkeypatch.setattr(_FakeWorkflow, 'modelServers', {'m': 'CVUT.demo01~node2'})
+    with caplog.at_level(logging.INFO):
+        assert execScript()[0] == 0
+    # default profile: nothing added to the metadata
+    assert 'ExecutionProfileIndex' not in _FakeWorkflow.initMetadata['Execution']
+    assert execScript.stored == {'E1': {'m': 'CVUT.demo01~node2'}}
+    assert 'Model servers used: m on CVUT.demo01~node2' in caplog.text
+    execScript.record.ExecutionProfileIndex = 1
+    assert execScript()[0] == 0
+    assert _FakeWorkflow.initMetadata['Execution']['ExecutionProfileIndex'] == 1
 
 
 def test_exec_script_workflow_error(execScript):

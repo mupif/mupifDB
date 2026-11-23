@@ -1,50 +1,132 @@
 """Tests of :class:`mupifDB.scheduler.resources.ResourceBudget`, without REST API or nameserver."""
 
-from mupifDB.scheduler.resources import ResourceBudget, modelServerFreeSlots, terminateExecutionModelJobs
+import random
+
+import pytest
+
+from mupifDB.scheduler.resources import InvalidProfileError, ResourceBudget, terminateExecutionModelJobs
+from mupifDB.scheduler.tests.fakes import FakeBackend, FakeModelServers
+
+OK, BUSY, UNAVAILABLE = ResourceBudget.OK, ResourceBudget.BUSY, ResourceBudget.UNAVAILABLE
 
 
-def _budget(jobmanagers, free):
-    """Budget over fake workflows (``{wid: [jobmanager, ...]}``) and jobmanagers (``{name: slots or None}``)."""
-    queries = []
-
-    def freeJobSlots(name):
-        queries.append(name)
-        return free[name]
-
-    def workflowJobmanagers(wid, version):
-        if wid not in jobmanagers:
-            raise KeyError(wid)
-        return jobmanagers[wid]
-    b = ResourceBudget(workflowJobmanagers, freeJobSlots)
-    b.queries = queries
-    return b
+def _budget(servers: FakeModelServers, backend: FakeBackend, failFind=False) -> ResourceBudget:
+    """Budget over the workflows of *backend* and the model servers *servers*."""
+    def find(req):
+        if failFind:
+            raise RuntimeError('nameserver unreachable')
+        return servers.find(req)
+    return ResourceBudget(backend.getWorkflow, find, servers.load, rng=random.Random(0))
 
 
 def test_slots_are_consumed_within_a_pass():
-    """Each reservation takes one slot per model; free slots are read once per jobmanager."""
-    b = _budget({'wf': ['jm1', 'jm2']}, {'jm1': 2, 'jm2': 5})
-    assert [b.reserve('wf', 1) for _ in range(3)] == [ResourceBudget.OK, ResourceBudget.OK, ResourceBudget.BUSY]
-    assert b.free == {'jm1': 0, 'jm2': 3}
-    assert sorted(b.queries) == ['jm1', 'jm2']
+    """Each reservation takes one slot per model; loads are read once per server and pass."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('jm1', free=2)
+    servers.add('jm2', free=5)
+    backend.addWorkflow('wf', 1, jobmanagers=('jm1', 'jm2'))
+    b = _budget(servers, backend)
+    assert [b.reserve('wf', 1).status for _ in range(3)] == [OK, OK, BUSY]
+    assert {n: l.free for n, l in b.loads.items()} == {'jm1': 0, 'jm2': 3}
+    assert servers.queries == {'jm1': 1, 'jm2': 1}
+
+
+def test_instances_add_up_and_spread():
+    """The instances of a model server share the load: the less loaded one is counted first."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('CVUT.demo01', free=3)
+    servers.add('CVUT.demo01~node2', base='CVUT.demo01', free=2)
+    backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
+    b = _budget(servers, backend)
+    res = [b.reserve('wf', 1) for _ in range(6)]
+    # 5 slots in total (one server alone would admit 3 or 2)
+    assert [r.status for r in res] == [OK] * 5 + [BUSY]
+    # used share: 97/100 vs 98/100 -> the first one, then alternating while equal
+    assert [r.counted['m0'] for r in res[:3]] == ['CVUT.demo01', 'CVUT.demo01~node2', 'CVUT.demo01']
+    assert res[0].compatible == {'m0': 2}
+    assert str(res[0]) == 'profile default; m0: 2 compatible model server(s)'
+
+
+def test_profiles_share_server_slots():
+    """Executions with different profiles whose compatible servers overlap do not get the same slot twice."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('CVUT.demo01', tags=('Runtime_seconds',), free=1)
+    profiles = [{'Name': 'fast', 'Models': [{'Name': 'm0', 'RequiredModelMetadata': ['Runtime_seconds']}]}]
+    backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',), profiles=profiles)
+    b = _budget(servers, backend)
+    assert b.reserve('wf', 1, 0).status == OK
+    assert b.reserve('wf', 1, -1).status == BUSY
+
+
+def test_profile_requirements():
+    """A profile limits the compatible servers (required tags) and prefers some (optional tags)."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('CVUT.demo01', tags=('Runtime_minutes',))
+    servers.add('CVUT.demo01~fast', base='CVUT.demo01', tags=('Runtime_seconds', 'Accuracy_High'), free=1)
+    profiles = [{'Name': 'fast only', 'Models': [{'Name': 'm0', 'RequiredModelMetadata': ['Runtime_seconds']}]},
+                {'Name': 'prefer accurate', 'Models': [{'Name': 'm0', 'OptionalModelMetadata': ['Accuracy_High']}]}]
+    backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',), profiles=profiles)
+    b = _budget(servers, backend)
+    # the preferred server although more loaded (1 of 100 free)
+    r = b.reserve('wf', 1, 1)
+    assert r.counted == {'m0': 'CVUT.demo01~fast'} and r.profile == '#1 "prefer accurate"'
+    # only the fast server qualifies, and its slot is taken now
+    r = b.reserve('wf', 1, 0)
+    assert r.status == BUSY and r.compatible == {'m0': 1}
+
+
+def test_unreachable_servers():
+    """Unreachable instances are skipped while another one is reachable; none reachable is UNAVAILABLE."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('CVUT.demo01', free=None)
+    servers.add('CVUT.demo01~node2', base='CVUT.demo01', free=1)
+    backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
+    b = _budget(servers, backend)
+    assert b.reserve('wf', 1).counted == {'m0': 'CVUT.demo01~node2'}
+    servers.free['CVUT.demo01~node2'] = None
+    assert _budget(servers, backend).reserve('wf', 1).status == UNAVAILABLE
 
 
 def test_unavailable_and_local():
-    """An unreachable jobmanager or an unreadable workflow is UNAVAILABLE; a workflow without remote models always fits."""
-    b = _budget({'wf': ['jm1'], 'local': []}, {'jm1': None})
-    assert b.reserve('wf', 1) == ResourceBudget.UNAVAILABLE
-    assert b.reserve('missing', 1) == ResourceBudget.UNAVAILABLE
-    assert b.reserve('local', 1) == ResourceBudget.OK
+    """No compatible server, an unreadable workflow or a failed lookup is UNAVAILABLE; a workflow without remote models always fits."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    backend.addWorkflow('wf', 1, jobmanagers=('jm1',))
+    backend.addWorkflow('local', 1, jobmanagers=())
+    b = _budget(servers, backend)
+    assert b.reserve('wf', 1).status == UNAVAILABLE
+    assert b.reserve('missing', 1).status == UNAVAILABLE
+    assert b.reserve('local', 1).status == OK
+    servers.add('jm1')
+    assert _budget(servers, backend, failFind=True).reserve('wf', 1).status == UNAVAILABLE
 
 
-def test_model_server_free_slots_unreachable(monkeypatch):
-    """modelServerFreeSlots() reports None instead of raising when the jobmanager cannot be reached."""
-    import mupif as mp
-    import Pyro5.errors
+def test_invalid_profile():
+    """An execution profile the workflow does not have is an error of the execution, not of the resources."""
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('jm1')
+    backend.addWorkflow('wf', 1, jobmanagers=('jm1',))
+    with pytest.raises(InvalidProfileError):
+        _budget(servers, backend).reserve('wf', 1, 0)
 
-    def connectModelServer(ns, name):
-        raise Pyro5.errors.NamingError(f'unknown name: {name}')
-    monkeypatch.setattr(mp.pyroutil, 'connectModelServer', connectModelServer)
-    assert modelServerFreeSlots(object(), 'CVUT.missing') is None
+
+def test_templates_checked_not_counted():
+    """
+    A model with Instantiate false (a template the workflow allocates later, maybe several times) costs
+    no slot at admission, but a compatible server must be registered and reachable.
+    """
+    servers, backend = FakeModelServers(), FakeBackend()
+    servers.add('pre', free=2)
+    servers.add('post', free=0)
+    backend.addWorkflow('wf', 1, jobmanagers=('pre', 'post'), templates=('m1',))
+    b = _budget(servers, backend)
+    r = b.reserve('wf', 1)
+    # 'post' is full, but m1 is only allocated later by the workflow: admitted, nothing counted there
+    assert r.status == OK and r.counted == {'m0': 'pre'} and r.templates == ['m1']
+    assert str(r) == 'profile default; m0: 1 compatible model server(s), m1: 1 compatible model server(s) (template, no slot counted)'
+    assert {n: l.free for n, l in b.loads.items()} == {'pre': 1, 'post': 0}
+    # no server for the template: the execution could not complete
+    servers.free['post'] = None
+    assert _budget(servers, backend).reserve('wf', 1).status == UNAVAILABLE
 
 
 def test_terminate_execution_model_jobs(monkeypatch):

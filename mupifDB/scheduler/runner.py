@@ -82,6 +82,13 @@ class Job:
     stopReason: str | None = None
     #: set when the job has to be stopped; wakes the waiting job thread
     stopRequested: threading.Event = field(default_factory=threading.Event)
+    #: the workflow subprocess was started (set by the job thread)
+    launched: bool = False
+    #: model name -> model server the workflow allocated it on, once known (see Scheduler.refreshPlacements)
+    modelServers: dict[str, str] | None = None
+    #: the workflow has allocated its models (the model servers count their slots from then on);
+    #: until then the scheduler counts them itself (see Scheduler.reserveInFlight)
+    allocated: bool = False
 
     def stop(self, reason: str) -> None:
         """

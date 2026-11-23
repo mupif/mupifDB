@@ -19,7 +19,7 @@ from mupifDB.scheduler.core import Scheduler
 from mupifDB.scheduler.monitor import SchedulerMonitor
 from mupifDB.scheduler.runner import JobResult
 from mupifDB.scheduler.staging import StagingError
-from mupifDB.scheduler.tests.fakes import FakeBackend
+from mupifDB.scheduler.tests.fakes import FakeBackend, FakeModelServers
 
 
 class FakeRunner:
@@ -72,7 +72,8 @@ def env(tmp_path, monkeypatch):
     Build a scheduler over an in-memory database.
 
     The namespace returned has ``backend`` (FakeBackend with workflow ``wf`` on jobmanager
-    ``CVUT.demo01``), ``runner``, ``freeSlots`` (jobmanager -> slots, 100 by default), ``monitor``,
+    ``CVUT.demo01``), ``runner``, ``servers`` (FakeModelServers with ``CVUT.demo01`` registered),
+    ``freeSlots`` (``servers.free``: server -> slots, 100 by default, None: unreachable), ``monitor``,
     ``cleanups`` (calls to terminate model-server jobs) and ``scheduler`` (``max_jobs=3``), plus
     ``drain()`` waiting for all job threads.
     """
@@ -80,12 +81,16 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(restApiControl, 'setStatScheduler', lambda **kw: None)
     log = tmp_path / 'workflow.log'
     log.write_bytes(b'workflow output')
-    e = types.SimpleNamespace(backend=FakeBackend(), runner=FakeRunner(log), freeSlots={})
+    e = types.SimpleNamespace(backend=FakeBackend(), runner=FakeRunner(log), servers=FakeModelServers())
+    e.servers.add('CVUT.demo01')
+    e.freeSlots = e.servers.free
     e.backend.addWorkflow('wf', 1, jobmanagers=('CVUT.demo01',))
     config = SchedulerConfig(max_jobs=3, poll_interval=0.05, work_dir=str(tmp_path), max_attempts=12)
     e.monitor = SchedulerMonitor(None, capacity=config.max_jobs)
     e.cleanups = []
-    e.scheduler = Scheduler(config, e.backend, e.runner, freeJobSlots=lambda jm: e.freeSlots.get(jm, 100), monitor=e.monitor,
+    e.removed = []
+    e.scheduler = Scheduler(config, e.backend, e.runner, findModelServers=e.servers.find, serverLoad=e.servers.load, monitor=e.monitor,
+                            removeModelServer=lambda name, uri: e.removed.append((name, uri)) or True,
                             terminateModelJobs=lambda jobmanagers, uri: e.cleanups.append((jobmanagers, uri)) or ['1@x'])
 
     def drain():
@@ -454,7 +459,10 @@ def test_log_records_carry_the_execution(env, caplog):
     tagged = [r for r in caplog.records if r.name == 'scheduler' and getattr(r, 'weid', None) == 'E0']
     assert tagged and any('Finished' in r.getMessage() for r in tagged)
     assert names == ['job:E0']
-    assert all(getattr(r, 'weid', None) is None for r in caplog.records if 'taken' in r.getMessage())
+    # the main loop tags its line about the execution explicitly (with its profile and model servers) ...
+    assert [r.weid for r in caplog.records if 'taken' in r.getMessage()] == ['E0']
+    # ... but the job thread's execution does not leak into the main loop's context
+    assert core.currentExecution.get() is None
 
 
 def test_notifications_do_not_hold_job_slots(env):
@@ -523,3 +531,213 @@ def test_queue_sampling_failure_is_not_fatal(env, caplog):
     env.scheduler.sampleQueue()
     assert env.monitor.stat.tasks.dbRunning is None
     assert 'Could not count the executions' in caplog.text
+
+
+# --- several model servers, execution profiles -----------------------------------------------------
+
+def _waitLaunched(env, weid, timeout=5):
+    """Wait until the job thread of *weid* has launched its (fake) workflow."""
+    t0 = time.time()
+    while weid not in env.runner.launched:
+        assert time.time() - t0 < timeout, f'{weid} not launched'
+        time.sleep(0.01)
+
+
+def test_instances_add_capacity(env):
+    """Executions are admitted up to the free slots of all instances of the model server together."""
+    env.freeSlots['CVUT.demo01'] = 1
+    env.servers.add('CVUT.demo01~node2', base='CVUT.demo01', free=1)
+    for i in range(3):
+        env.backend.addExecution(f'E{i}')
+    assert env.scheduler.schedulePass() == 2
+    env.drain()
+    assert env.backend.status('E2') == 'Pending'
+
+
+def test_unknown_profile_fails(env):
+    """An execution asking for an execution profile its workflow does not have fails at once, with a log telling why."""
+    env.backend.addExecution('E0', profile=2)
+    assert env.scheduler.schedulePass() == 0
+    env.drain()
+    assert env.backend.statuses('E0') == ['Failed']
+    assert b'Execution profile #2' in env.backend.logs['E0']
+    assert env.backend.notified == ['E0']
+
+
+def test_profile_selects_servers(env, caplog):
+    """The execution's profile decides the compatible servers; the scheduler log names the profile."""
+    import logging
+    env.backend.addWorkflow('wfp', 1, jobmanagers=('CVUT.demo01',),
+                            profiles=[{'Name': 'fast', 'Models': [{'Name': 'm0', 'RequiredModelMetadata': ['Runtime_seconds']}]}])
+    env.backend.addExecution('E0', wid='wfp', profile=0)
+    env.backend.addExecution('E1', wid='wfp')
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        # no server is tagged Runtime_seconds: E0 cannot be placed (costs an attempt), E1 (default profile) can
+        assert env.scheduler.schedulePass() == 1
+    assert env.backend.executions['E0'].Attempts == 1
+    assert 'E1 taken (attempts so far: 0; profile default; m0: 1 compatible model server(s))' in caplog.text
+    env.servers.add('CVUT.demo01~fast', base='CVUT.demo01', tags=('Runtime_seconds',))
+    env.scheduler.backoff.clear()
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        assert env.scheduler.schedulePass() == 1
+    env.drain()
+    assert 'E0 taken (attempts so far: 1; profile #0 "fast"; m0: 1 compatible model server(s))' in caplog.text
+
+
+def test_model_servers_in_statistics(env, caplog):
+    """
+    The model servers the workflow chose (stored in the record by the execution script) appear in
+    the log, with the execution in the statistics, and in the running executions per model server.
+    """
+    import logging
+    env.servers.add('CVUT.demo01~node2', base='CVUT.demo01')
+    env.backend.addExecution('E0')
+    env.backend.addExecution('E1')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    _waitLaunched(env, 'E1')
+    # as the execution script does once the models are allocated
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01~node2'})
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        env.scheduler.refreshPlacements()
+        env.scheduler.refreshPlacements()   # known already: not counted twice
+    assert 'E0: models allocated on model servers m0→CVUT.demo01~node2' in caplog.text
+    st = env.monitor.getStatistics()
+    assert st['modelServerJobs'] == {'CVUT.demo01~node2': 1}
+    lastJobs = {j[0]: j for j in st['lastJobs']}
+    assert lastJobs['E0'][5] == {'m0': 'CVUT.demo01~node2'} and lastJobs['E1'][5] == {}
+    # E1 stores its servers just before it ends: they are shown with it, nothing stays counted
+    env.backend.setModelServers('E1', {'m0': 'CVUT.demo01'})
+    env.drain()
+    st = env.monitor.getStatistics()
+    assert st['modelServerJobs'] == {}
+    assert {j[0]: j[5] for j in st['lastJobs']} == {'E0': {'m0': 'CVUT.demo01~node2'}, 'E1': {'m0': 'CVUT.demo01'}}
+
+
+def test_leftover_jobs_on_servers_used(env):
+    """Leftover model jobs are looked for on the servers the execution used, if known, else on every compatible one."""
+    env.servers.add('CVUT.demo01~node2', base='CVUT.demo01')
+    env.backend.addExecution('E0', loggerURI='PYRO:log-E0')
+    env.backend.addExecution('E1', loggerURI='PYRO:log-E1')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    # as the execution script does once the models are allocated (E1's script died before)
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01~node2'})
+    env.drain()
+    assert sorted(env.cleanups) == [(['CVUT.demo01', 'CVUT.demo01~node2'], 'PYRO:log-E1'), (['CVUT.demo01~node2'], 'PYRO:log-E0')]
+
+
+def test_leftover_jobs_of_templates(env):
+    """
+    Copies of a template (Instantiate false) are allocated by the workflow after the model servers
+    were stored: leftover jobs are also looked for on every server compatible with the template.
+    """
+    env.servers.add('pre')
+    env.servers.add('post')
+    env.servers.add('post~2', base='post')
+    env.backend.addWorkflow('wft', 1, jobmanagers=('pre', 'post'), templates=('m1',))
+    env.backend.addExecution('E0', wid='wft', loggerURI='PYRO:log-E0')
+    env.runner.gate = threading.Event()
+    assert env.scheduler.schedulePass() == 1
+    _waitLaunched(env, 'E0')
+    # the script stores the servers of the models allocated at initialization: m0 only
+    env.backend.setModelServers('E0', {'m0': 'pre'})
+    env.drain()
+    assert env.cleanups == [(['post', 'post~2', 'pre'], 'PYRO:log-E0')]
+
+
+def test_in_flight_executions_hold_their_slots(env):
+    """
+    Executions started but whose workflows have not allocated their models yet keep their slots in the next pass.
+
+    The model servers count a slot only once the model is allocated; the scheduler took more
+    executions in between, which then found no free slot and were requeued (exit code 2).
+    """
+    env.freeSlots['CVUT.demo01'] = 2
+    for i in range(4):
+        env.backend.addExecution(f'E{i}')
+    env.runner.gate = threading.Event()
+    assert env.scheduler.schedulePass() == 2
+    _waitLaunched(env, 'E0')
+    _waitLaunched(env, 'E1')
+    # the model server still reports 2 free slots: the workflows have not allocated their models
+    assert env.scheduler.schedulePass() == 0
+    # E0 allocated its model (the server counts it now: 1 free); E1 is still in flight
+    env.backend.setModelServers('E0', {'m0': 'CVUT.demo01'})
+    env.freeSlots['CVUT.demo01'] = 1
+    env.scheduler.refreshPlacements()
+    assert env.scheduler.schedulePass() == 0
+    # E1's workflow is initialized but does not report model servers (older mupif): no longer in flight
+    env.backend.executions['E1'].workflowURI = 'PYRO:wf-E1'
+    env.freeSlots['CVUT.demo01'] = 0
+    env.scheduler.refreshPlacements()
+    assert [j.allocated for j in env.scheduler.jobs.values()] == [True, True]
+    env.freeSlots['CVUT.demo01'] = 1
+    assert env.scheduler.schedulePass() == 1
+
+
+def test_restarted_execution_listed_once(env):
+    """An execution returned to the queue and started again appears once among the last executions, with its final status."""
+    env.backend.addExecution('E0')
+    env.runner.outcomes['E0'] = 'Pending'
+    env.scheduler.schedulePass()
+    while env.scheduler.jobs:
+        time.sleep(0.01)
+    env.runner.outcomes['E0'] = 'Finished'
+    env.scheduler.backoff.clear()
+    env.scheduler.schedulePass()
+    env.drain()
+    assert [(j[0], j[2]) for j in env.monitor.getStatistics()['lastJobs']] == [('E0', 'Finished')]
+
+
+def test_unreachable_server_removed_after_timeout(env, clock, caplog):
+    """
+    A model server unreachable for stale_server_timeout is removed from the nameserver, reported
+    once while waiting; one answering again is forgotten.
+
+    A crashed instance used to stay in the nameserver for ever, with a warning every pass.
+    """
+    import logging
+    env.scheduler.config.stale_server_timeout = 300
+    env.servers.add('CVUT.demo01~gone', base='CVUT.demo01', free=None)
+    env.servers.add('CVUT.demo01~flaky', base='CVUT.demo01', free=None)
+    found = {c.nsName: c for c in env.servers.find(core.modelplacement.ModelRequirement(model='m', identity=frozenset({'CVUT.demo01'})))}
+    gone, flaky = found['CVUT.demo01~gone'], found['CVUT.demo01~flaky']
+    with caplog.at_level(logging.INFO, logger='scheduler'):
+        for t in (0, 100, 200):
+            clock[0] = 1000 + t
+            assert env.scheduler.checkedServerLoad(gone) is None
+            assert env.scheduler.checkedServerLoad(flaky) is None
+        # reported once, not every pass
+        assert caplog.text.count('Model server CVUT.demo01~gone') == 1
+        env.servers.free['CVUT.demo01~flaky'] = 2
+        assert env.scheduler.checkedServerLoad(flaky).free == 2
+        assert 'Model server CVUT.demo01~flaky answers again' in caplog.text
+        clock[0] = 1000 + 300
+        env.scheduler.checkedServerLoad(gone)
+        env.servers.free['CVUT.demo01~flaky'] = None
+        env.scheduler.checkedServerLoad(flaky)
+    # removed after 300 s unreachable; the flaky one's time starts again when it failed again
+    assert env.removed == [('CVUT.demo01~gone', 'PYRO:CVUT.demo01~gone@host:1')]
+    assert 'Removed model server CVUT.demo01~gone from the nameserver: unreachable for 300 s' in caplog.text
+    # stale_server_timeout 0: never removed
+    env.scheduler.config.stale_server_timeout = 0
+    clock[0] = 1000 + 10000
+    env.scheduler.checkedServerLoad(flaky)
+    assert len(env.removed) == 1
+
+
+def test_passes_use_the_checked_load(env, clock):
+    """The budget of a pass asks for the loads through checkedServerLoad, so a dead server in the nameserver is eventually removed."""
+    env.scheduler.config.stale_server_timeout = 60
+    env.servers.add('CVUT.demo01~gone', base='CVUT.demo01', free=None)
+    env.backend.addExecution('E0')
+    env.scheduler.schedulePass()
+    clock[0] += 61
+    env.backend.addExecution('E1')
+    env.scheduler.schedulePass()
+    env.drain()
+    assert [n for n, _ in env.removed] == ['CVUT.demo01~gone']
+    assert env.backend.status('E0') == env.backend.status('E1') == 'Finished'

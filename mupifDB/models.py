@@ -165,13 +165,39 @@ class WorkflowExecutionCreate_Model(StrictBase):
     version: int
     ip: Optional[str]=''
     no_edm: bool=False
+    ExecutionProfileIndex: int=Field(-1, description='Execution profile of the workflow to run the execution with (index into its ExecutionProfiles); negative: the default profile (any compatible model server, the least loaded).')
 
 
 class Workflow_Model(MongoObj_Model):
     class Model_Model(StrictBase):
+        '''
+        A model of the workflow (from its metadata ``Models``). A remote model runs on a model server
+        which carries the tag ``Jobmanager`` (any instance of that model server) or, if given,
+        ``ModelID:<ModelID>`` (any model server of that model); see mupif.modelplacement.
+        '''
         Name: str
-        Jobmanager: str
+        Jobmanager: str=''
+        ModelID: Optional[str]=None
         Instantiate: Optional[bool]=None
+    class ExecutionProfile_Model(pydantic.BaseModel):
+        '''
+        An execution profile of the workflow (from its metadata ``ExecutionProfiles``): requirements
+        on the model servers its models run on. Selected per execution by ``ExecutionProfileIndex``.
+        Unknown keys are kept, so that newer mupif metadata is stored completely.
+        '''
+        model_config=pydantic.ConfigDict(extra='allow')
+        class ModelConfiguration_Model(pydantic.BaseModel):
+            model_config=pydantic.ConfigDict(extra='allow')
+            #: name of the model in the workflow
+            Name: str
+            #: nameserver tags a model server must all carry
+            RequiredModelMetadata: List[str]=[]
+            #: nameserver tags preferring a model server
+            OptionalModelMetadata: List[str]=[]
+        Name: str
+        Cost: str=''
+        Description: str=''
+        Models: List[ModelConfiguration_Model]=[]
     class IOCard_Model(StrictBase):
         class Input_Model(InputOutputBase_Model):
             Compulsory: bool = Field(...,validation_alias='Required')
@@ -191,6 +217,7 @@ class Workflow_Model(MongoObj_Model):
     EDMMapping: List[EDMMapping_Model]=[]
     Version: int=1
     Timeout: int=Field(0, ge=0, description='Maximum run time of one execution in seconds, from the workflow metadata ("Timeout"); 0: no limit. The scheduler stops executions exceeding it.')
+    ExecutionProfiles: List[ExecutionProfile_Model]=Field([], description='Execution profiles from the workflow metadata; an execution selects one by ExecutionProfileIndex.')
 
     def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID','WorkflowVersion'],values=[self.wid,self.Version])]
 
@@ -211,6 +238,10 @@ class WorkflowExecution_Model(MongoObj_Model):
     label: str=''
     Attempts: int=0
     EDMMapping: List[EDMMapping_Model]=[]
+    #: execution profile of the workflow to run with (index into Workflow_Model.ExecutionProfiles); negative: the default profile
+    ExecutionProfileIndex: int=-1
+    #: model name -> model server (registered name) the model was allocated on; set by the execution script once its models are allocated
+    ModelServers: Dict[str,str]={}
     # these are only relevant while the execution being processed
     workflowURI: str|None=None
     loggerURI: str|None=None

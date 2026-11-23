@@ -9,7 +9,7 @@ import datetime
 import logging
 import os
 import time
-from typing import ClassVar, List, Literal, Optional
+from typing import ClassVar, Dict, List, Literal, Optional
 
 import mupif as mp
 import pydantic
@@ -70,8 +70,15 @@ class SchedulerStat(mp.BareData):
         status: Literal['Running','Finished','Failed','Pending']  # Pending: returned to the queue (no resources)
         started: datetime.datetime
         finished: Optional[datetime.datetime]
+        #: model name -> model server (registered name) the workflow allocated the model on; empty
+        #: until known (the execution script stores it once the models are allocated). Last field:
+        #: getStatistics() sends the fields as a list, and older readers take the first five only
+        modelServers: Dict[str,str]={}
     #: the last executions started, oldest first (see :meth:`lastJobNew`)
     lastJobs: List[JobInfo]=[]
+    #: model server (registered name) -> executions of this scheduler with a model running on it
+    #: now (the load the scheduler puts on each model server); empty at startup
+    modelServerJobs: Dict[str,int]={}
 
     class Hist(mp.BareData):
         """
@@ -218,8 +225,16 @@ class SchedulerStat(mp.BareData):
         :param job: the execution
         :param max: number of executions kept
         """
-        self.lastJobs.append(job)
+        # an execution started again (it was returned to the queue: no free model-server slot,
+        # shutdown) replaces its earlier entry; two entries of one execution made lastJobDone
+        # ignore its end ("Multiple lastJobs")
+        self.lastJobs=[j for j in self.lastJobs if j.we_id!=job.we_id]+[job]
         self.lastJobs=self.lastJobs[-max:]
+
+    def lastJobPlaced(self, we_id, modelServers: Dict[str,str]) -> None:
+        """Record the model servers of a recorded execution; ignored if it is no longer among the last ones."""
+        for j in self.lastJobs:
+            if j.we_id==we_id: j.modelServers=dict(modelServers)
 
     def lastJobDone(self, we_id, status: Literal['Finished','Failed','Pending'], finished: datetime.datetime):
         """
