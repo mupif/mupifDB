@@ -675,13 +675,26 @@ class Scheduler:
         when :meth:`refreshPlacements` finds its models allocated. Errors are ignored: the count is
         only a better estimate.
 
+        With several schedulers, the executions other schedulers took and whose workflows have not
+        allocated their models yet hold slots too: ``Scheduled`` ones, and ``Running`` ones without
+        ``workflowURI`` (set by the execution script after the allocation); they are read from the
+        database (two queries per pass) and counted as well. Without it, two schedulers seeing the
+        same free slot would both take an execution, and one would be requeued.
+
         :param budget: the budget of the current pass
         """
         with self.lock:
-            inFlight = [j for j in self.jobs.values() if not j.allocated]
-        for job in inFlight:
+            inFlight = [j.record for j in self.jobs.values() if not j.allocated]
+        try:
+            for status in ('Scheduled', 'Running'):
+                for rec in self.backend.executionsWithStatus(status, self.config.fetch_limit):
+                    if getattr(rec, 'SchedulerID', None) not in (None, self.config.scheduler_id) and (status == 'Scheduled' or not getattr(rec, 'workflowURI', None)):
+                        inFlight.append(rec)
+        except Exception:
+            log.debug('Could not read the executions other schedulers have in flight', exc_info=True)
+        for rec in inFlight:
             try:
-                budget.reserve(job.record.WorkflowID, job.record.WorkflowVersion, getattr(job.record, 'ExecutionProfileIndex', -1))
+                budget.reserve(rec.WorkflowID, rec.WorkflowVersion, getattr(rec, 'ExecutionProfileIndex', -1))
             except Exception:
                 pass
 

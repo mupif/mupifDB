@@ -1021,3 +1021,21 @@ def test_leftover_processes_of_this_scheduler_only(monkeypatch):
 def test_default_identity_is_the_host_name():
     import socket
     assert SchedulerConfig().scheduler_id == socket.gethostname()
+
+
+def test_other_schedulers_in_flight_executions_hold_slots(env, pair):
+    """With one free model-server slot, two schedulers take one execution in total (the other's in-flight one counts)."""
+    env.freeSlots['CVUT.demo01'] = 1
+    env.backend.addExecution('E0')
+    env.backend.addExecution('E1')
+    env.runner.gate = threading.Event()
+    assert env.scheduler.schedulePass() == 1
+    _waitLaunched(env, 'E0')
+    # the model server still reports the slot free: E0's workflow has not allocated its model
+    assert pair.schedulePass() == 0
+    # allocated now: the server counts it, and E0 no longer counts as in flight
+    env.backend.executions['E0'].workflowURI = 'PYRO:wf-E0'
+    env.freeSlots['CVUT.demo01'] = 0
+    assert pair.schedulePass() == 0
+    env.freeSlots['CVUT.demo01'] = 1
+    assert pair.schedulePass() == 1
