@@ -225,7 +225,10 @@ class SchedulerStat(mp.BareData):
         :param job: the execution
         :param max: number of executions kept
         """
-        self.lastJobs.append(job)
+        # an execution started again (it was returned to the queue: no free model-server slot,
+        # shutdown) replaces its earlier entry; two entries of one execution made lastJobDone
+        # ignore its end ("Multiple lastJobs")
+        self.lastJobs=[j for j in self.lastJobs if j.we_id!=job.we_id]+[job]
         self.lastJobs=self.lastJobs[-max:]
 
     def lastJobPlaced(self, we_id, modelServers: Dict[str,str]) -> None:

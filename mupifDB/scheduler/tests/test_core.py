@@ -622,3 +622,17 @@ def test_leftover_jobs_on_servers_used(env):
     env.scheduler.schedulePass()
     env.drain()
     assert sorted(env.cleanups) == [(['CVUT.demo01', 'CVUT.demo01~node2'], 'PYRO:log-E1'), (['CVUT.demo01~node2'], 'PYRO:log-E0')]
+
+
+def test_restarted_execution_listed_once(env):
+    """An execution returned to the queue and started again appears once among the last executions, with its final status."""
+    env.backend.addExecution('E0')
+    env.runner.outcomes['E0'] = 'Pending'
+    env.scheduler.schedulePass()
+    while env.scheduler.jobs:
+        time.sleep(0.01)
+    env.runner.outcomes['E0'] = 'Finished'
+    env.scheduler.backoff.clear()
+    env.scheduler.schedulePass()
+    env.drain()
+    assert [(j[0], j[2]) for j in env.monitor.getStatistics()['lastJobs']] == [('E0', 'Finished')]
