@@ -75,7 +75,10 @@ def test_lease_requests(fakeApi):
     fakeApi.body = EXEC
     rec = client_mupif.claimExecution('E1', 's1', 60)
     assert rec.SchedulerID == 's1' and rec.LeaseEpoch == 1
-    assert fakeApi.sent[-1][:2] == ('patch', client_mupif.RESTserver + 'api/executions/E1/claim')
+    # requests go to client_util.RESTserver (client_mupif's copy is taken at import; other test
+    # modules point the client to their own servers)
+    from mupifDB.api import client_util
+    assert fakeApi.sent[-1][:2] == ('patch', client_util.RESTserver + 'api/executions/E1/claim')
     assert fakeApi.sent[-1][3] == {'scheduler_id': 's1', 'lease_seconds': 60}
     client_mupif.transitionExecution('E1', 's1', 1, 'Pending', incAttempts=-1, backoff=(10, 600, 0.2))
     assert fakeApi.sent[-1][3] == {'scheduler_id': 's1', 'epoch': 1, 'to': 'Pending', 'incAttempts': -1, 'resetAttempts': False,
