@@ -64,5 +64,5 @@ def test_requests_retried_in_the_execution_script(monkeypatch):
     with pytest.raises(requests.ConnectionError):
         client_util.rGetRaw('api/x')
     attempts.clear()
-    monkeypatch.setenv('MUPIFDB_RETRY_SECONDS', '600')
+    monkeypatch.setenv('MUPIFDB_RETRY_SECONDS', 'inf')        # as the scheduler sets it
     assert client_util.rGetRaw('api/x').status_code == 200 and len(attempts) == 3

@@ -103,8 +103,10 @@ def _retrySeconds() -> float:
     """
     How long requests failing with a connection error (REST API unreachable) are retried, in seconds.
 
-    ``MUPIFDB_RETRY_SECONDS``, set by the scheduler for the workflow execution script (to its lease
-    duration): a short outage of the REST API at the end of a run then does not lose its results.
+    ``MUPIFDB_RETRY_SECONDS``, set by the scheduler for the workflow execution script to ``inf``
+    (retried until the REST API answers): an outage of the REST API, however long, then does not
+    lose the results of a run. The scheduler bounds the wait -- it stops the workflow when its lease
+    was taken over or its run time is exceeded, and the script ends with the scheduler.
     0 (not set): no retries (the scheduler has its own).
     """
     try:

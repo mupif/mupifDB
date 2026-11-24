@@ -11,7 +11,7 @@ See "Several schedulers" in `doc/source/scheduler.md`. Upgrade: stop the old sch
 - **Retry delays are stored with the execution** (`NotBefore`/`Deferrals`): all schedulers respect them, restarts keep them. A run finding no free model-server slot no longer uses up an attempt. Returning an execution to `Created` and failing it for an unknown profile happen once (claimed first), with one notification.
 - Admission counts the in-flight executions of all schedulers.
 - Each attempt creates its own EDM output objects; those of an earlier attempt are marked orphaned.
-- The execution script retries REST requests during a REST API outage (up to `lease_seconds`).
+- The execution script retries REST requests during a REST API outage, until the API answers (the scheduler stops it if its lease was taken over or its run time is exceeded); the scheduler retries storing the outcome of a run the same way.
 - New REST endpoints (scheduler accounts: admin or `MUPIFDB_SCHEDULER_ACCOUNTS`): `executions/{uid}/claim`, `transition`, `defer`, `executions/leases/takeover`, `takeover-own`, `schedulers/{sid}/acquire`, `heartbeat`, `release`, `GET schedulers`; `GET executions?ready=true`. `set_param` refuses the lease fields, `Status=Scheduled` and status changes of a leased execution; `schedule` refuses `Scheduled`/`Running` executions.
 - The scheduler monitor registers as `mupif.scheduler.<scheduler_id>`; `/status` and `/scheduler_statistics` add up the live schedulers (registry `Schedulers`) instead of reading a pidfile and the single `Stat` document.
 - New record fields: `SchedulerID`, `LeaseEpoch`, `LeaseExpires`, `LeaseInstance`, `NotBefore`, `Deferrals`; new collection `Schedulers`.

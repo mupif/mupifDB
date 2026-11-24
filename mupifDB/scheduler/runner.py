@@ -183,8 +183,11 @@ class JobRunner:
         # lets the execution script end itself when the scheduler dies (see its dieWithScheduler)
         env['MUPIFDB_SCHEDULER_PID'] = str(os.getpid())
         env['MUPIFDB_SCHEDULER_ID'] = self.config.scheduler_id
-        # the script retries requests while the REST API is unreachable, up to the lease duration
-        env['MUPIFDB_RETRY_SECONDS'] = str(self.config.lease_seconds)
+        # the script retries requests while the REST API is unreachable, without a limit of its own:
+        # the scheduler stops it if its lease was taken over (writes would be refused anyway) or its
+        # run time is exceeded, and it ends with the scheduler. (Limited to the lease duration, the
+        # scripts of a REST API outage longer than that failed although nobody took them over.)
+        env['MUPIFDB_RETRY_SECONDS'] = 'inf'
         if job is not None and job.lease is not None:
             env['MUPIFDB_LEASE'] = job.lease.header()
         else:

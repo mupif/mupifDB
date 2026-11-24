@@ -55,6 +55,10 @@ from typing import Optional
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/..')
 from mupifDB import restApiControl  # noqa: E402
 
+# keep polling through an outage of the REST API (scenarios stopping it): requests are retried
+# until it answers, as in the execution script
+os.environ.setdefault('MUPIFDB_RETRY_SECONDS', 'inf')
+
 #: Statuses after which the scheduler will not touch an execution again on its own.
 #: ``Created`` is final only once the execution has been active: a fresh execution starts as
 #: ``Created`` too, and returns there when the scheduler gives up after too many attempts.
