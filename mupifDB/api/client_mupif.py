@@ -283,10 +283,10 @@ def takeOverOwnExecutions(schedulerId: str, instance: str, leaseSeconds: float) 
     return [models.WorkflowExecution_Model.model_validate(r) for r in rPost(f"{API_PREFIX}executions/leases/takeover-own", json={'scheduler_id': schedulerId, 'instance': instance, 'lease_seconds': leaseSeconds}, headers=getRequestHeaders())]
 
 
-def acquireSchedulerIdentity(schedulerId: str, instance: str, host: str, pid: int, heartbeatSeconds: float) -> bool:
-    """Take the scheduler identity; False if another live process holds it."""
+def acquireSchedulerIdentity(schedulerId: str, instance: str, host: str, pid: int, heartbeatSeconds: float, replace: str | None = None) -> bool:
+    """Take the scheduler identity; False if another live process holds it (*replace*: an instance found dead, taken over too)."""
     try:
-        return bool(rPost(f"{API_PREFIX}schedulers/{schedulerId}/acquire", json={'instance': instance, 'host': host, 'pid': pid, 'heartbeat_seconds': heartbeatSeconds}, headers=getRequestHeaders()))
+        return bool(rPost(f"{API_PREFIX}schedulers/{schedulerId}/acquire", json={'instance': instance, 'host': host, 'pid': pid, 'heartbeat_seconds': heartbeatSeconds, 'replace': replace}, headers=getRequestHeaders()))
     except ConflictResponse:
         return False
 

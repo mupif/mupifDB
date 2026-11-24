@@ -155,6 +155,8 @@ class FakeBackend:
         self.schedulerId = schedulerId
         self.leaseSeconds = leaseSeconds
         self.instance = f'{schedulerId}-{uuid.uuid4().hex[:8]}'
+        #: host and process the identity is registered with
+        self.host, self.pid = 'testhost', 1
 
     def __getattr__(self, name):
         # only called for attributes not found on the backend: the store's (setup and inspection)
@@ -318,15 +320,22 @@ class FakeBackend:
                     taken.append((self.store.copy(rec), self._lease(rec)))
             return taken
 
-    def acquireIdentity(self) -> bool:
+    def acquireIdentity(self, replace: Optional[str] = None) -> bool:
         """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.acquireIdentity`."""
         with self.lock:
             self.store.maybeFail('acquireIdentity')
             reg, now = self.schedulers.get(self.schedulerId), self._now()
-            if reg is not None and reg['Instance'] != self.instance and reg['HeartbeatExpires'] > now:
+            if reg is not None and reg['Instance'] not in (self.instance, replace) and reg['HeartbeatExpires'] > now:
                 return False
-            self.schedulers[self.schedulerId] = {'Instance': self.instance, 'HeartbeatExpires': now + self.leaseSeconds, 'Stats': {}, 'Draining': False}
+            self.schedulers[self.schedulerId] = {'Instance': self.instance, 'Host': self.host, 'Pid': self.pid,
+                                                 'HeartbeatExpires': now + self.leaseSeconds, 'Stats': {}, 'Draining': False}
             return True
+
+    def identityHolder(self) -> Optional[dict]:
+        """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.identityHolder`."""
+        with self.lock:
+            reg = self.schedulers.get(self.schedulerId)
+            return None if reg is None else {k: reg.get(k) for k in ('Instance', 'Host', 'Pid')}
 
     def heartbeat(self, leases: list[Lease], stats: Optional[dict] = None, draining: Optional[bool] = None) -> tuple[bool, set[str]]:
         """See :meth:`mupifDB.scheduler.backend.ExecutionBackend.heartbeat`."""

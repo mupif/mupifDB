@@ -338,13 +338,16 @@ def ensureIndexes(coll, schedulers) -> None:
 
 # --- schedulers (identity, heartbeat) --------------------------------------------------------------
 
-def acquireIdentity(schedulers, schedulerId: str, instance: str, host: str, pid: int, heartbeatSeconds: float) -> bool:
+def acquireIdentity(schedulers, schedulerId: str, instance: str, host: str, pid: int, heartbeatSeconds: float, replace: Optional[str] = None) -> bool:
     """
     Take the scheduler identity *schedulerId* for process *instance*, unless another live process holds it.
 
     A scheduler started twice with the same ID (e.g. configured on two hosts) would take over the
     other's executions; the second one must refuse to start.
 
+    :param replace: take the identity also if it is held by this instance (whose heartbeat has not
+                    expired): the caller found that process dead (same host, its process gone; a
+                    crash or kill -9 does not release the identity), see :func:`identityHolder`
     :return: whether the identity is held by *instance* now
     """
     fields = {'Instance': _lit(instance), 'Host': _lit(host), 'Pid': int(pid), 'StartedAt': '$$NOW',
@@ -356,10 +359,14 @@ def acquireIdentity(schedulers, schedulerId: str, instance: str, host: str, pid:
     except pymongo.errors.DuplicateKeyError:
         pass
     # take it if free (heartbeat expired) or already ours
-    rec = majority(schedulers).find_one_and_update(
-        {'_id': schedulerId, '$or': [{'Instance': instance}, {'$expr': _expired('HeartbeatExpires')}]},
-        [{'$set': fields}], return_document=ReturnDocument.AFTER)
+    holders = [{'Instance': instance}, {'$expr': _expired('HeartbeatExpires')}] + ([{'Instance': replace}] if replace else [])
+    rec = majority(schedulers).find_one_and_update({'_id': schedulerId, '$or': holders}, [{'$set': fields}], return_document=ReturnDocument.AFTER)
     return rec is not None and rec.get('Instance') == instance
+
+
+def identityHolder(schedulers, schedulerId: str) -> Optional[dict]:
+    """Return the registry entry of a scheduler identity (``Instance``, ``Host``, ``Pid``, ``HeartbeatExpires``), or None."""
+    return schedulers.find_one({'_id': schedulerId})
 
 
 def heartbeat(schedulers, schedulerId: str, instance: str, heartbeatSeconds: float, stats: Optional[dict] = None,

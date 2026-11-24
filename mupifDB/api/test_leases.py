@@ -206,6 +206,12 @@ def test_identity(db):
     assert leases.acquireIdentity(sch, 's1', 'i2', 'h2', 2, 60)
     # the old process learns it lost the identity
     assert not leases.heartbeat(sch, 's1', 'i1', 60)
+    # a process found dead (crash: identity not released, heartbeat valid) is replaced at once
+    assert not leases.acquireIdentity(sch, 's1', 'i3', 'h2', 3, 60)
+    assert leases.acquireIdentity(sch, 's1', 'i3', 'h2', 3, 60, replace='i2')
+    assert leases.identityHolder(sch, 's1')['Instance'] == 'i3'
+    # replace names one instance: no other holder is replaced
+    assert not leases.acquireIdentity(sch, 's1', 'i4', 'h2', 4, 60, replace='i2')
 
 
 # --- fencing ---------------------------------------------------------------------------------------

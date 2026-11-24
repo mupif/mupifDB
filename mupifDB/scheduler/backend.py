@@ -151,8 +151,11 @@ class ExecutionBackend(Protocol):
     def takeOverOwn(self) -> list[tuple[Any, Lease]]:
         """Take over the executions of an earlier process of this scheduler (same ID), at its start."""
 
-    def acquireIdentity(self) -> bool:
-        """Take the scheduler identity for this process; False if another live process holds it."""
+    def acquireIdentity(self, replace: Optional[str] = None) -> bool:
+        """Take the scheduler identity for this process; False if another live process holds it (*replace*: an instance found dead)."""
+
+    def identityHolder(self) -> Optional[dict]:
+        """Return who holds the scheduler identity: ``{'Instance', 'Host', 'Pid'}``, or None."""
 
     def heartbeat(self, leases: list[Lease], stats: Optional[dict] = None, draining: Optional[bool] = None) -> tuple[bool, set[str]]:
         """
@@ -236,10 +239,18 @@ class RestBackend:
         from mupifDB import restApiControl
         return [(r, self._lease(r)) for r in restApiControl.takeOverOwnExecutions(self.schedulerId, self.instance, self.leaseSeconds)]
 
-    def acquireIdentity(self) -> bool:
+    def acquireIdentity(self, replace: Optional[str] = None) -> bool:
         """See :meth:`ExecutionBackend.acquireIdentity`."""
         from mupifDB import restApiControl
-        return restApiControl.acquireSchedulerIdentity(self.schedulerId, self.instance, socket.gethostname(), os.getpid(), self.leaseSeconds)
+        return restApiControl.acquireSchedulerIdentity(self.schedulerId, self.instance, socket.gethostname(), os.getpid(), self.leaseSeconds, replace=replace)
+
+    def identityHolder(self) -> Optional[dict]:
+        """See :meth:`ExecutionBackend.identityHolder`."""
+        from mupifDB import restApiControl
+        for s in restApiControl.getSchedulers():
+            if s.id == self.schedulerId:
+                return {'Instance': s.Instance, 'Host': s.Host, 'Pid': s.Pid}
+        return None
 
     def heartbeat(self, leases: list[Lease], stats: Optional[dict] = None, draining: Optional[bool] = None) -> tuple[bool, set[str]]:
         """See :meth:`ExecutionBackend.heartbeat`."""

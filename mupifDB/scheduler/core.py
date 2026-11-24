@@ -52,6 +52,7 @@ import concurrent.futures
 import contextvars
 import logging
 import random
+import socket
 import threading
 import time
 from typing import Any, Callable
@@ -187,7 +188,7 @@ class Scheduler:
 
         :raises RuntimeError: if another live process holds the scheduler identity (``scheduler_id``)
         """
-        if not self.backend.acquireIdentity():
+        if not self.acquireIdentity():
             raise RuntimeError(f'Scheduler identity {self.config.scheduler_id} is held by another running scheduler process; '
                                'give each scheduler its own scheduler_id')
         log.info(f'Scheduler identity {self.config.scheduler_id} taken')
@@ -733,6 +734,29 @@ class Scheduler:
             self.monitor.placed(job.weid, modelServers)
 
     # --- startup --------------------------------------------------------------------------------
+
+    def acquireIdentity(self) -> bool:
+        """
+        Take the scheduler identity, also from a dead earlier process of this scheduler on this host.
+
+        A process killed (or crashed) does not release the identity; its heartbeat stays valid for up
+        to ``lease_seconds``, during which a restart would be refused. If the holder is registered
+        from this host and its process no longer exists, it is this scheduler's dead predecessor and
+        the identity is taken over at once (atomically, from that very instance only). A holder on
+        another host, or whose process lives, keeps it: the start is refused.
+
+        :return: whether this process holds the identity
+        """
+        if self.backend.acquireIdentity():
+            return True
+        holder = self.backend.identityHolder()
+        if not holder or holder.get('Host') != socket.gethostname() or not holder.get('Instance'):
+            return False
+        import psutil
+        if psutil.pid_exists(int(holder.get('Pid') or 0)):
+            return False
+        log.warning(f'Scheduler identity {self.config.scheduler_id} is held by process {holder["Pid"]} on this host, which is gone; taking it over')
+        return self.backend.acquireIdentity(replace=holder['Instance'])
 
     def recoverOwn(self) -> int:
         """

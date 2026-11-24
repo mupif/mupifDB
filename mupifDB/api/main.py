@@ -2034,13 +2034,15 @@ class M_Acquire(BaseModel):
     host: str = ''
     pid: int = 0
     heartbeat_seconds: float = Field(gt=0)
+    #: take the identity also from this instance (found dead by the caller: same host, process gone)
+    replace: Optional[str] = None
 
 
 @api_router.post("/schedulers/{sid}/acquire", tags=["Leases"])
 def acquire_scheduler_identity(sid: str, data: M_Acquire, current_user: User_Model = Depends(get_current_authenticated_user)) -> bool:
     """Take the scheduler identity *sid* for a process; 409 if another live process holds it."""
     ensure_scheduler_account(current_user)
-    if not leases.acquireIdentity(db.Schedulers, sid, data.instance, data.host, data.pid, data.heartbeat_seconds):
+    if not leases.acquireIdentity(db.Schedulers, sid, data.instance, data.host, data.pid, data.heartbeat_seconds, replace=data.replace):
         raise ConflictError(f'Scheduler identity {sid} is held by another running scheduler process.')
     return True
 

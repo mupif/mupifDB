@@ -1040,3 +1040,33 @@ def test_other_schedulers_in_flight_executions_hold_slots(env, pair):
     assert pair.schedulePass() == 0
     env.freeSlots['CVUT.demo01'] = 1
     assert pair.schedulePass() == 1
+
+
+def test_restart_after_kill_takes_identity_at_once(env, monkeypatch):
+    """
+    A scheduler restarted after its predecessor was killed (identity not released, heartbeat still
+    valid) takes the identity at once if the predecessor ran on this host and its process is gone;
+    a live holder, or one on another host, keeps it.
+    """
+    import psutil
+    import socket
+    dead = FakeBackend(env.backend.store, 's1')
+    dead.host, dead.pid = socket.gethostname(), 999999
+    assert dead.acquireIdentity()
+    monkeypatch.setattr(psutil, 'pid_exists', lambda pid: False)
+    assert env.scheduler.acquireIdentity()
+    assert env.backend.schedulers['s1']['Instance'] == env.backend.instance
+    # holder alive on this host: refused
+    live = FakeBackend(env.backend.store, 's1')
+    env.backend.kill('s1')
+    live.host, live.pid = socket.gethostname(), 4242
+    assert live.acquireIdentity()
+    monkeypatch.setattr(psutil, 'pid_exists', lambda pid: pid == 4242)
+    assert not env.scheduler.acquireIdentity()
+    # holder on another host (its process cannot be checked): refused
+    env.backend.kill('s1')
+    other = FakeBackend(env.backend.store, 's1')
+    other.host, other.pid = 'elsewhere', 999999
+    assert other.acquireIdentity()
+    monkeypatch.setattr(psutil, 'pid_exists', lambda pid: False)
+    assert not env.scheduler.acquireIdentity()
