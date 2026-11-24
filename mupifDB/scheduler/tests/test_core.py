@@ -933,6 +933,37 @@ def test_keeper_no_takeover_after_full_outage(env, pair):
     assert env.backend.status('E0') == 'Finished'
 
 
+def test_keeper_takes_back_own_orphans(env, pair, caplog):
+    """
+    An execution of this scheduler which no job holds any more (its job gave up storing the
+    outcome) is taken back and requeued once its lease expired, though the scheduler lives; the
+    executions it runs keep their leases, those of another live scheduler are left to that one.
+
+    Found on the local platform: such executions stayed Running until the scheduler restarted,
+    as nobody may take over the executions of a live scheduler.
+    """
+    startKeeping(env, env.scheduler, pair)
+    env.backend.addExecution('E0')
+    env.backend.addExecution('E1')
+    env.runner.gate = threading.Event()
+    env.scheduler.schedulePass()
+    _waitLaunched(env, 'E0')
+    _waitLaunched(env, 'E1')
+    env.backend.addExecution('E2')
+    pair.backend.claim('E2')                            # s2 holds E2 without renewing it
+    # E1's job is gone: its lease is not renewed any more
+    with env.scheduler.lock:
+        del env.scheduler.jobs['E1']
+    tick(env, 660, env.scheduler, pair)
+    recs = env.backend.executions
+    assert (recs['E0'].Status, recs['E0'].LeaseEpoch) == ('Running', 1)
+    assert (recs['E1'].Status, recs['E1'].LeaseEpoch, recs['E1'].SchedulerID) == ('Pending', 2, 's1')
+    # E2 is s2's orphan: s2 (alive) requeues it itself, s1 leaves it alone
+    assert (recs['E2'].Status, recs['E2'].LeaseEpoch, recs['E2'].SchedulerID, recs['E2'].LeaseTakenFrom) == ('Pending', 2, 's2', 's2')
+    assert 'E1 was left Running by this scheduler' in caplog.text
+    env.drain()
+
+
 def test_keeper_gap_interrupts_contact(env, pair):
     """A renewal gap longer than a lease (e.g. a suspended process) restarts the contact period."""
     startKeeping(env, pair)

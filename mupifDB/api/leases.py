@@ -205,12 +205,21 @@ def renew(coll, schedulerId: str, leases: Iterable[tuple[str, int]], leaseSecond
 
 def takeOver(coll, schedulers, schedulerId: str, leaseSeconds: float, limit: int) -> list[dict]:
     """
-    Take over executions whose lease expired, held by schedulers which are not alive.
+    Take over executions whose lease expired, held by schedulers which are not alive (or by the caller itself).
 
     An execution qualifies if it is ``Scheduled``/``Running``, its lease expired (or it has none:
     records from before leases), and its holder has no live heartbeat (or no registry entry): a
     live scheduler which could not renew in time keeps its executions. Each one is taken in its own
     atomic update (new epoch), so two schedulers never take the same execution.
+
+    The caller's own expired leases qualify too, although it is alive: a scheduler renews the lease
+    of every execution it still runs, so one of its leases expires only when no job holds it any
+    more -- the job ended without storing its outcome (e.g. the REST API was unreachable at that
+    moment) or the scheduler gave up on it. Without this such an execution would stay
+    ``Scheduled``/``Running`` until the scheduler restarts, as nobody else may take the executions
+    of a live scheduler. (The scheduler calls this only after reaching the database without
+    interruption for a whole lease period, so it has renewed every lease it still holds; see
+    :class:`mupifDB.scheduler.leases.LeaseKeeper`.)
 
     The caller must clean up after the previous holder (its model-server jobs, using the record's
     ``loggerURI``) and return the execution to the queue (:func:`transition` to ``Pending``).
@@ -222,7 +231,7 @@ def takeOver(coll, schedulers, schedulerId: str, leaseSeconds: float, limit: int
     taken = []
     while len(taken) < limit:
         rec = majority(coll).find_one_and_update(
-            {'Status': {'$in': list(LEASED)}, 'SchedulerID': {'$nin': sorted(live)}, '$expr': _expired('LeaseExpires')},
+            {'Status': {'$in': list(LEASED)}, 'SchedulerID': {'$nin': sorted(live - {schedulerId})}, '$expr': _expired('LeaseExpires')},
             [{'$set': {
                 # the previous holder, for the record (expressions of one $set stage read the old document)
                 'LeaseTakenFrom': {'$ifNull': ['$SchedulerID', None]},

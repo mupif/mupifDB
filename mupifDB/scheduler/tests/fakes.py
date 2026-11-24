@@ -302,7 +302,7 @@ class FakeBackend:
             for rec in sorted(self.executions.values(), key=lambda r: r.submitted):
                 if len(taken) >= limit:
                     break
-                if rec.Status in LEASED and rec.SchedulerID not in live and (rec.LeaseExpires is None or rec.LeaseExpires <= now):
+                if rec.Status in LEASED and (rec.SchedulerID not in live or rec.SchedulerID == self.schedulerId) and (rec.LeaseExpires is None or rec.LeaseExpires <= now):
                     rec.LeaseTakenFrom = rec.SchedulerID
                     rec.SchedulerID, rec.LeaseEpoch, rec.LeaseExpires = self.schedulerId, rec.LeaseEpoch + 1, now + self.leaseSeconds
                     taken.append((self.store.copy(rec), self._lease(rec)))

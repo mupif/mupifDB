@@ -12,7 +12,8 @@ scheduler's heartbeat. It also
   nothing more is written for them;
 * stops the scheduler if its identity was taken by another process (it was considered dead);
 * takes over, every ``takeover_interval`` seconds, executions whose lease expired and whose
-  scheduler is not alive (:meth:`Scheduler.recoverExpired`) -- but only after this scheduler has
+  scheduler is not alive, and its own ones whose lease expired because no job holds them any more
+  (:meth:`Scheduler.recoverExpired`) -- but only after this scheduler has
   reached the database without interruption for a whole lease period. After a full outage of the
   REST API or the database every lease has expired; the owners renew within one renewal interval
   once it is back, while nobody may take over before a lease period passed, so an outage never

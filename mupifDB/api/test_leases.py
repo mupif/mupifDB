@@ -169,6 +169,27 @@ def test_live_holder_keeps_expired_leases(db):
     assert len(leases.takeOver(coll, sch, 's2', 60, 10)) == 1
 
 
+def test_live_holder_takes_its_own_orphans(db):
+    """
+    A live scheduler takes over its own expired leases (no job of it holds them any more).
+
+    Found on the local platform: during a REST API outage longer than the lease, the workflows
+    ended and their scheduler could not store the outcome; nobody else may take the executions of
+    a live scheduler, so they stayed Running until it restarted.
+    """
+    coll, sch = db.WorkflowExecutions, db.Schedulers
+    assert leases.acquireIdentity(sch, 's1', 'i1', 'h', 1, 60)
+    assert leases.acquireIdentity(sch, 's2', 'i2', 'h', 1, 60)
+    a, b = add(db), add(db)
+    leases.claim(coll, a, 's1', 60)
+    leases.claim(coll, b, 's2', 60)
+    expire(db, a)
+    expire(db, b)
+    taken = leases.takeOver(coll, sch, 's1', 60, 10)
+    # its own one only: s2 lives, so s2's expired lease is s2's business
+    assert [str(t['_id']) for t in taken] == [a] and taken[0]['LeaseEpoch'] == 2 and taken[0]['LeaseTakenFrom'] == 's1'
+
+
 def test_legacy_records_are_taken_over(db):
     """Scheduled/Running records from before leases (no lease fields) are taken over by the first pass."""
     coll, sch = db.WorkflowExecutions, db.Schedulers

@@ -167,6 +167,18 @@ def test_heartbeat_takeover(world):
         s1.transition(lease, 'Failed')
 
 
+def test_takeover_of_own_orphans(world):
+    """A live scheduler takes over its own expired leases, not those of another live scheduler."""
+    s1, s2 = world.backend('s1'), world.backend('s2')
+    assert s1.acquireIdentity() and s2.acquireIdentity()
+    mine, theirs = world.add(), world.add()
+    s1.claim(mine)
+    s2.claim(theirs)
+    world.expire(mine)
+    world.expire(theirs)
+    assert [l for _, l in s1.takeOver(10)] == [Lease(mine, 's1', 2)]
+
+
 def test_identity_and_own_takeover(world):
     old, new, dup = world.backend('s1'), world.backend('s1'), world.backend('s1')
     new.instance, dup.instance = 's1-new', 's1-dup'

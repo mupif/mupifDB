@@ -803,13 +803,15 @@ class Scheduler:
 
     def recoverExpired(self, limit: int = 50) -> int:
         """
-        Take over executions whose lease expired, held by schedulers which are not alive, and requeue them.
+        Take over executions whose lease expired, held by schedulers which are not alive (or by this one), and requeue them.
 
         A scheduler which crashed or was killed (its workflows die with it) leaves its executions
         ``Scheduled``/``Running``; once their leases expired and its heartbeat ended, any scheduler
         takes them over (atomically, :meth:`ExecutionBackend.takeOver`), terminates the model-server
         jobs their workflows left behind and returns them to ``Pending`` (attempt count kept).
-        Records from before leases count as expired. Errors are logged.
+        Records from before leases count as expired. This scheduler's own executions whose lease
+        expired are taken back the same way: no job of it holds them any more (it renews the lease
+        of every job), e.g. a job gave up storing its outcome. Errors are logged.
 
         :param limit: maximum number of executions taken over at once
         :return: number of executions taken over
@@ -820,8 +822,12 @@ class Scheduler:
             log.exception('Could not take over executions with expired leases')
             return 0
         for rec, lease in taken:
-            previous = getattr(rec, 'LeaseTakenFrom', None) or 'a scheduler from before leases'
-            log.warning(f'{rec.dbID} was left {rec.Status} by {previous}, which is gone; taken over (epoch {lease.epoch}) and returned to Pending',
+            previous = getattr(rec, 'LeaseTakenFrom', None)
+            if previous == self.config.scheduler_id:
+                why = 'by this scheduler, whose job for it ended without storing its outcome'
+            else:
+                why = f'by {previous or "a scheduler from before leases"}, which is gone'
+            log.warning(f'{rec.dbID} was left {rec.Status} {why}; taken over (epoch {lease.epoch}) and returned to Pending',
                         extra={'weid': rec.dbID})
             if rec.Status == 'Running':
                 self.terminateLeftoverModelJobs(rec.dbID, lease=lease)
