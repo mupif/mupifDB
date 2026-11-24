@@ -84,6 +84,10 @@ class Job:
     stopRequested: threading.Event = field(default_factory=threading.Event)
     #: the workflow subprocess was started (set by the job thread)
     launched: bool = False
+    #: lease the execution is held under (see mupifDB.api.leases); writes for it name it
+    lease: Any = None
+    #: the final status was stored (the lease released): the lease keeper does not renew it any more
+    outcomeStored: bool = False
     #: model name -> model server the workflow allocated it on, once known (see Scheduler.refreshPlacements)
     modelServers: dict[str, str] | None = None
     #: the workflow has allocated its models (the model servers count their slots from then on);
@@ -160,13 +164,17 @@ class JobRunner:
         self.executionScript = Path(executionScript)
         self.python = python
 
-    def environment(self) -> dict[str, str]:
+    def environment(self, job: Job | None = None) -> dict[str, str]:
         """
         Build the environment of the workflow subprocess.
 
+        :param job: the job; its lease is passed to the execution script, whose writes for the
+                    execution are then made under it (``MUPIFDB_LEASE``; refused by the REST API
+                    once another scheduler took the execution over)
         :return: the scheduler's environment, with mupifDB on ``PYTHONPATH``, the nameserver in
-                 ``MUPIF_NS``, the REST API account in ``API_CREDENTIALS_FILE`` and the scheduler's
-                 process ID in ``MUPIFDB_SCHEDULER_PID``
+                 ``MUPIF_NS``, the REST API account in ``API_CREDENTIALS_FILE``, the scheduler's
+                 process ID in ``MUPIFDB_SCHEDULER_PID``, its identity in ``MUPIFDB_SCHEDULER_ID``
+                 and the lease in ``MUPIFDB_LEASE``
         """
         env = os.environ.copy()
         env['PYTHONPATH'] = os.pathsep.join(filter(None, [env.get('PYTHONPATH'), str(_MUPIFDB_SRC_DIR)]))
@@ -174,6 +182,16 @@ class JobRunner:
         env['API_CREDENTIALS_FILE'] = os.environ.get('API_CREDENTIALS_FILE', 'None')
         # lets the execution script end itself when the scheduler dies (see its dieWithScheduler)
         env['MUPIFDB_SCHEDULER_PID'] = str(os.getpid())
+        env['MUPIFDB_SCHEDULER_ID'] = self.config.scheduler_id
+        # the script retries requests while the REST API is unreachable, without a limit of its own:
+        # the scheduler stops it if its lease was taken over (writes would be refused anyway) or its
+        # run time is exceeded, and it ends with the scheduler. (Limited to the lease duration, the
+        # scripts of a REST API outage longer than that failed although nobody took them over.)
+        env['MUPIFDB_RETRY_SECONDS'] = 'inf'
+        if job is not None and job.lease is not None:
+            env['MUPIFDB_LEASE'] = job.lease.header()
+        else:
+            env.pop('MUPIFDB_LEASE', None)
         return env
 
     def run(self, job: Job, workflowRecord: Any, onLaunch: Callable[[], None], storeLog: Callable[[Path], None], timeout: float = 0) -> JobResult:
@@ -213,7 +231,7 @@ class JobRunner:
                     {ll} command is {cmd} {ll}'''))
                 out.flush()
                 log.info(f'Executing {job.weid} in {workDir}')
-                job.process = subprocess.Popen(cmd, cwd=workDir, stdout=out, stderr=subprocess.STDOUT, env=self.environment(), start_new_session=True)
+                job.process = subprocess.Popen(cmd, cwd=workDir, stdout=out, stderr=subprocess.STDOUT, env=self.environment(job), start_new_session=True)
                 exitCode = self._wait(job, timeout)
                 t1 = datetime.datetime.now()
                 dt = t1 - t0

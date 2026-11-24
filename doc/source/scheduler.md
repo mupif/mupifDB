@@ -2,7 +2,7 @@
 
 The scheduler runs workflow executions submitted to the database. It is a background service of the central node (started by supervisor in the deployment container as `mupifDB/workflowscheduler.py`, or with `python -m mupifDB.scheduler`); users never talk to it directly. They create an execution, set its inputs and schedule it through the web interface or the REST API; the scheduler picks it up, runs the workflow and stores the result.
 
-There is one scheduler per deployment. It is a single process: executions are run by job threads, each starting the workflow as a subprocess.
+Several schedulers may run at once, normally on several hosts, for redundancy and capacity (see [Several schedulers](#several-schedulers)); each execution is run by exactly one of them. A scheduler is a single process: executions are run by job threads, each starting the workflow as a subprocess.
 
 ## Life of an execution
 
@@ -16,15 +16,17 @@ There is one scheduler per deployment. It is a single process: executions are ru
 
 Transitions made by the scheduler:
 
-- `Pending → Scheduled`: the execution is taken (only if the status change succeeded).
+- `Pending → Scheduled`: the execution is claimed under a lease (fails if another scheduler claimed it first).
 - `Scheduled → Running`: its workflow process starts; the attempt count is increased.
 - `Running → Finished | Failed`: according to the exit code of the workflow process (see below), after its log was stored.
-- `Running → Pending`: the workflow found no free model-server slot when it started, or the scheduler is shutting down; the execution runs again later (attempt count kept).
+- `Running → Pending`: the workflow found no free model-server slot when it started (the attempt is not counted; retried after a delay), or the scheduler is shutting down; the execution runs again later.
 - `Scheduled → Failed`: compulsory inputs are not set, or the workflow package cannot be used (wrong module name, unsupported file type, unsafe archive). The execution is not started; for missing inputs a short log says why.
 - `Scheduled → Pending`: a transient error before the workflow started (e.g. REST API unreachable).
 - `Pending → Created`: the model servers the execution needs stayed unreachable for 12 attempts; the owner is notified by e-mail (if notifications are configured).
 - `Pending → Failed`: the execution asks for an execution profile its workflow does not have; a short log says why.
-- at startup, `Scheduled`/`Running → Pending`: executions interrupted by a previous scheduler run (crash, kill) are run again; model-server jobs left by their workflows are terminated first.
+- `Scheduled`/`Running → Pending` after a takeover: the execution's scheduler died (crash, kill, host lost); once its lease expired, another scheduler (or the same one, restarted) takes the execution over, terminates the model-server jobs left by its workflow and requeues it (attempt count kept).
+
+`Pending → Created` and `Pending → Failed` claim the execution first, so that only one scheduler does it and the owner gets one notification.
 
 The owner of an execution is notified by e-mail of its final status (if notifications are configured: `webUrl` setting and SMTP credentials in `/var/lib/mupif/persistent/mupif-smtp-credentials.json`).
 
@@ -84,12 +86,35 @@ Requires mupif with `mupif.modelplacement` (branch `feature/execution-profiles`)
 ## Stopping, restarting and maintenance
 
 - **SIGTERM / SIGINT** (e.g. `supervisorctl stop`): the scheduler takes no new executions, waits up to `drain_timeout` (default 0 s) for running workflows, then stops them (SIGTERM, SIGKILL after `kill_grace` = 5 s). Their executions return to `Pending` with their attempt count and run again after the restart. The shutdown takes `drain_timeout + kill_grace` plus a few seconds; keep this below the stop timeout of the service manager (supervisor `stopwaitsecs`, default 10 s), or increase `stopwaitsecs` together with `drain_timeout`.
-- **SIGKILL** or a crash: the workflow processes end with the scheduler (they ask the kernel for a signal when it dies). After the restart their executions are found `Running`, their model-server jobs are terminated and they run again.
+- **SIGKILL** or a crash: the workflow processes end with the scheduler (they ask the kernel for a signal when it dies). The restarted scheduler (same `scheduler_id`) takes its executions back at once, terminates their model-server jobs and runs them again; if it does not come back, another scheduler takes them over once their leases expired (`lease_seconds`).
+- A clean stop releases the scheduler's identity, so it can be restarted at once (also on another host with the same `scheduler_id`).
 - **Drain mode**, for maintenance without interrupting workflows: `kill -USR1 <scheduler PID>` (toggle), or `setDrain(True)` on the scheduler's Pyro object from the scheduler's host. While draining no new executions are taken; running ones finish. `getStatistics()` reports `draining`. Stop the scheduler once `runningTasks` is 0.
+
+## Several schedulers
+
+Several schedulers may run at once against the same REST API, database and nameserver, normally one per host. They share the queue of pending executions; each execution is run by exactly one of them:
+
+- **Leases.** A scheduler takes an execution by *claiming* it: one atomic database update which sets it `Scheduled` and records the scheduler (`SchedulerID`), a lease number (`LeaseEpoch`, increased by every claim and takeover) and the lease's expiry (`LeaseExpires`, database time). Of several schedulers claiming the same execution, one succeeds. The scheduler renews the leases of its executions every `renew_interval` (60 s), together with its heartbeat, in a thread of its own.
+- **Fencing.** Every write made for a leased execution names the lease (request header `X-MupifDB-Lease: <execution>:<scheduler>:<epoch>`): the scheduler's status changes and log, and the workflow's parameters, outputs and EDM writes (the execution script gets its lease in `MUPIFDB_LEASE`). The REST API refuses writes naming a lease which is not current (409). A scheduler, or a workflow, whose execution was taken over cannot overwrite the work of the new holder; when it notices (its renewal no longer lists the execution), it stops the workflow without writing anything.
+- **Takeover.** When a scheduler dies, its leases are no longer renewed. Once a lease has expired *and* the scheduler's heartbeat has expired, another scheduler takes the execution over (new epoch), terminates the model-server jobs its workflow left behind and requeues it. A scheduler takes over only after it has itself reached the database without interruption for a whole lease period: after an outage of the REST API or the database every lease has expired, but the owners renew within one `renew_interval` once it is back, so an outage never makes the deployment run its executions again. Schedulers never stop their workflows because they lost contact: workflows keep running through an outage (the execution script retries its requests until the API answers, and the scheduler retries storing the outcome), and their results are stored once it is back. A scheduler also takes back its own executions whose lease expired although it is alive -- none of its jobs holds them any more (e.g. a job gave up storing its outcome while the scheduler shut down) -- so that they do not stay `Running` until it restarts.
+- **Identity.** Each scheduler has a `scheduler_id` (default: the host name), registered in the database (collection `Schedulers`) with its heartbeat and statistics. A scheduler refuses to start if another live process holds its ID. A scheduler restarted with the same ID takes its interrupted executions back at once.
+- **Retry delays** (`NotBefore`, growing with consecutive delays) are stored with the execution, so all schedulers respect them and restarts keep them. When the resources of an execution are unavailable, one attempt is counted per delay, whichever schedulers see it.
+- **Admission.** Each scheduler counts, before taking an execution, the model-server slots of the executions all schedulers started but whose models are not allocated yet; several schedulers admitting at the same moment may still overshoot a model server, which ends in a requeue that costs no attempt.
+- **EDM outputs.** Each attempt of an execution creates its own EDM output objects (stamped with the execution and the lease epoch); objects of an earlier attempt are marked orphaned (`meta.orphaned`), not deleted.
+
+**Settings:** `lease_seconds` (600): how long a lease and a heartbeat stay valid without renewal: the delay before another scheduler takes over the executions of a scheduler which died; `renew_interval` (60, at most half the lease), `takeover_interval` (60), `takeover_limit` (50).
+
+**REST API:** the lease operations are allowed to admin accounts and to the accounts listed in `MUPIFDB_SCHEDULER_ACCOUNTS` (comma-separated e-mails; the accounts of the schedulers' `API_CREDENTIALS_FILE`).
+
+**Upgrading** from a version without leases: stop the old scheduler, deploy the REST API, the web interface and the schedulers' code together, then start the schedulers. Old and new schedulers must not run together; the new REST API refuses the old scheduler's way of taking executions (`Status=Scheduled`), so an old scheduler takes nothing. Executions left `Scheduled`/`Running` by the old scheduler are taken over one lease period after the first new scheduler started.
+
+**Two schedulers on one host** need different `scheduler_id`, `pidfile`, `stat_file`, `work_dir` (and `cache_dir`), see the Makefile target `scheduler2`.
+
+**Remaining risks:** during a network partition which cuts one scheduler off the database (but not its workflows' model servers), its executions may compute twice for a while (only the new holder's results are stored); EDM output written before a takeover into objects given by the user (not created by the run) may stay mixed if the new attempt fails; an execution which makes its scheduler crash is limited only by `max_attempts`.
 
 ## Statistics
 
-The scheduler registers its monitor in the Pyro nameserver as `mupif.scheduler` (metadata `type:scheduler`); `getStatistics()` returns the counters shown by the monitoring pages:
+Each scheduler registers its monitor in the Pyro nameserver as `mupif.scheduler.<scheduler_id>` (metadata `type:scheduler`, by which the monitoring pages find all schedulers); `getStatistics()` returns the counters shown by the monitoring pages (and `schedulerId`). The REST API (`/status`, `/scheduler_statistics`) adds up the counters of the live schedulers, sent with their heartbeat:
 
 - `scheduledTasks` – executions taken and not started yet; `runningTasks` – running workflow processes;
 - `processedTasks` = `finishedTasks` + `failedTasks` – executions that reached a final status (an execution returned to `Pending` is not counted);
@@ -119,7 +144,11 @@ All settings can be set by environment variables; `python -m mupifDB.scheduler -
 | `MUPIF_NS` | – | Pyro nameserver (`host:port`) |
 | `MUPIFDB_REST_SERVER` | `http://127.0.0.1:8005` | REST API |
 | `API_CREDENTIALS_FILE` | – | JSON file with `username`/`password` of the account the scheduler uses for the REST API; the client logs in again automatically when the API rejects its token |
-| `MUPIFDB_SCHEDULER_SCHEDULER_ID` | host name and process ID | Identifier of this scheduler process. |
+| `MUPIFDB_SCHEDULER_SCHEDULER_ID` | host name | Identity of this scheduler; each running scheduler needs its own. |
+| `MUPIFDB_SCHEDULER_LEASE_SECONDS` | 600 | Validity of leases and of the heartbeat without renewal: delay before the executions of a dead scheduler are taken over. |
+| `MUPIFDB_SCHEDULER_RENEW_INTERVAL` | 60 | Seconds between two renewals of the heartbeat and the leases (at most half of `lease_seconds`). |
+| `MUPIFDB_SCHEDULER_TAKEOVER_INTERVAL` | 60 | Seconds between two takeover passes. |
+| `MUPIFDB_SCHEDULER_TAKEOVER_LIMIT` | 50 | Maximum number of executions taken over in one pass. |
 | `MUPIFDB_SCHEDULER_MAX_JOBS` | 30 | Maximum number of executions run at the same time. |
 | `MUPIFDB_SCHEDULER_POLL_INTERVAL` | 20 | Seconds between two passes over the pending executions. |
 | `MUPIFDB_SCHEDULER_STARTUP_DELAY` | 5 | Seconds to wait at startup, giving the other services of a freshly started deployment time to come up. |
@@ -155,7 +184,4 @@ make smoketest SMOKETEST_ARGS="--register --count 12 --delay 15 --max-concurrent
 
 ## Known limitations
 
-- Only one scheduler may run per deployment: executions are taken with a plain status change, not an atomic claim, so two schedulers could run the same execution twice.
-- Retry delays are kept in memory: after a restart, executions are retried at once.
-
-These are addressed by the next phases of the refactoring (see the changelog).
+- See the remaining risks of [several schedulers](#several-schedulers).

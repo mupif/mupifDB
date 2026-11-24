@@ -42,6 +42,22 @@ Same local stack (`/usr/bin/mongod` 8.0), branches `feature/execution-profiles` 
 
 Observed limits (not fixed): workflows starting in the same second read the same loads and tend to pick the same server (all 4 of P1 on one instance); the fallback keeps it correct, but the spread within a burst is uneven. A crashed instance registered under an instance name stays in the nameserver until removed by hand.
 
+## Phase 5: several schedulers
+
+Same local stack, branch `feature/multi-scheduler`. Two schedulers on one host with their own `scheduler_id`, work directory, pidfile and stat file: `s1` reaches the REST API directly, `s2` through a TCP forwarder, so that `s2` alone can be cut off. Short leases for the tests: `lease_seconds` 60, `renew_interval` 5, `takeover_interval` 10. Two instances of `CVUT.demo01` (4 slots each); `Workflow01p` (`Timeout` 60 s, raised to 600 s from S4 on, so that a 90 s outage does not hit it). "Single take" (`--check-single-take`) means every execution Finished with lease epoch 1: it was claimed once and never taken over.
+
+| Scenario | Command / action | Phase 5 |
+|---|---|---|
+| **S1** sharing | `--count 20 --delay 10 --check-single-take --expect-schedulers 2` | all Finished, single take, 10 on each scheduler; `/status` and `/scheduler_statistics` sum the counters of both (processed 20) |
+| **S2** scheduler killed | `--count 8 --delay 30`, SIGKILL to `s1` while 4 of its executions run | its workflows ended with it; ~58 s later (lease expired, heartbeat gone) `s2` took the 4 over (epoch 2), terminated a leftover model job and ran them again: all Finished |
+| **S2b** restart after the kill | as S2, `s1` restarted at once | first run: the restart was refused the identity until the dead process's heartbeat expired (**fixed**: a dead predecessor on the same host gives up the identity at once). After the fix: identity taken at once, its 4 executions taken back (`takeOverOwn`) and run again |
+| **S3** partition | `--count 8 --delay 40`, forwarder of `s2` stopped for 90 s | `s1` took over `s2`'s executions ~61 s after the cut and ran them; each Finished once, nothing written by `s2`'s copies reached the database; the copies ended on the workflow `Timeout` or when their retries ran out. First run: the takeover log named the new holder as the previous one (**fixed**: `LeaseTakenFrom`) |
+| **S4** REST API outage | `--count 8 --delay 30 --check-single-take`, REST API stopped for 90 s (longer than the lease) | first run: the execution scripts gave up after their retry window (the lease duration, 60 s) and failed; their scheduler could not store the outcome and dropped the jobs; nobody may take over the executions of a live scheduler, so all 8 stayed **Running for good** (**fixed**: the scripts retry until the API answers, the scheduler retries storing outcomes, and a live scheduler takes back its own expired leases). After the fixes: both schedulers renewed when the API returned, no takeover; the workflows waited in their requests and finished: all Finished, single take, 4 on each |
+| **S5** duplicate ID | third scheduler started with ID `s1` | refused (HTTP 409, "Not starting", exit 1) before touching any process. First run: it had replaced `s1`'s nameserver entry before it was refused and removed it when it exited, so `s1` could no longer be monitored or drained (**fixed**: registered only once the identity is held). After the fix: `s1`'s entry unchanged |
+| **S6** old scheduler | scheduler of master before the branch (`8eef247`) started while 8 executions run and 2 wait | its start-up recovery left the running ones alone (their processes run on the same host); its 2 attempts to set an execution `Scheduled` were refused (409); all 10 run by `s1`/`s2`, single take |
+| **S7** drain | `--count 4 --delay 90`, drain of `s1` over Pyro while it runs 3 of them, then `--count 6 --delay 5` | `Draining` in the registry; `s1` kept renewing its leases, `s2` took nothing over, the 3 finished (single take); the 6 new executions all ran on `s2` |
+| **S8** EDM outputs in a partition | – | not run: no demo workflow of the stack maps outputs to EDM objects; covered by the unit tests (fresh output objects per attempt, fencing of EDM writes) |
+
 ## Other checks
 
 | Check | Before | Phase 1 | Phase 2 |
@@ -53,4 +69,4 @@ Observed limits (not fixed): workflows starting in the same second read the same
 
 Remaining issues (addressed in later phases): one scheduler per deployment only; retry delays are lost on restart.
 
-Phase 4 implements the sharing of load among instances of a model server; see its results above.
+Phase 4 implements the sharing of load among instances of a model server; phase 5 several schedulers, with retry delays stored in the database; see their results above.

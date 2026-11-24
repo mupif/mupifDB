@@ -41,6 +41,10 @@ browse:
 scheduler:
 	sleep 7 && API_CREDENTIALS_FILE=$(API_CREDENTIALS_FILE) MUPIF_LOG_LEVEL=DEBUG MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIF_NS=localhost:11001 MUPIFDB_SCHEDULER_POLL_INTERVAL=5 MUPIFDB_SCHEDULER_STAT_FILE=./sched-stat.json PYTHONPATH=. python3 -m mupifDB.scheduler || $(DIE)
 
+# Not part of "run": a second scheduler (several schedulers share the queue; each execution runs on one of them)
+scheduler2:
+	sleep 7 && API_CREDENTIALS_FILE=$(API_CREDENTIALS_FILE) MUPIF_LOG_LEVEL=DEBUG MUPIFDB_REST_SERVER=http://127.0.0.1:11003 MUPIF_NS=localhost:11001 MUPIFDB_SCHEDULER_POLL_INTERVAL=5 MUPIFDB_SCHEDULER_SCHEDULER_ID=local-2 MUPIFDB_SCHEDULER_PIDFILE=./scheduler2.pid MUPIFDB_SCHEDULER_STAT_FILE=./sched-stat-2.json MUPIFDB_SCHEDULER_WORK_DIR=./scheduler2-tmp~ PYTHONPATH=. python3 -m mupifDB.scheduler || $(DIE)
+
 # Not part of "run": model server from mupif example 13, registered as CVUT.demo01 (maxJobs=4);
 # it serves the model used by the demo workflow Workflow01 (mupifDB/api/demo/workflowdemo01.py)
 modelserver13:
@@ -54,7 +58,7 @@ smoketest:
 lint-docs:
 	ruff check --config tools/ruff-docstrings.toml $(DOCLINT_PATHS)
 
-.PHONY: modelserver13 smoketest lint-docs
+.PHONY: modelserver13 smoketest lint-docs scheduler2
 
 kill:
 	# fuser -k 11001/tcp; fuser -k 11002/tcp; fuser -k 11003/tcp; fuser -k 11004/tcp || true

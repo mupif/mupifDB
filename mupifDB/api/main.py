@@ -14,7 +14,7 @@ if __name__ == '__main__' and not cmdline_opts.export_openapi:
     port=int(os.environ.get('MUPIFDB_RESTAPI_PORT','8005'))
     uvicorn.run('main:app', host=host, port=port, reload=True, log_config=None)
 
-from fastapi import APIRouter, FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status
+from fastapi import APIRouter, FastAPI, UploadFile, Depends, HTTPException, Request, File, Response, status, Header
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 import fastapi, fastapi.exceptions
@@ -52,6 +52,7 @@ from rich.pretty import pprint
 from pathlib import Path
 
 from mupifDB import edm
+from mupifDB.api import leases
 
 # EDM Imports
 from typing_extensions import Annotated, Self
@@ -377,6 +378,36 @@ def NotFoundError(detail):
     return HTTPException(status_code=404, detail=detail)
 def ForbiddenError(detail):
     return HTTPException(status_code=403, detail=detail)
+def ConflictError(detail):
+    'A lease condition failed (execution taken by another scheduler, lease lost); see mupifDB.api.leases.'
+    return HTTPException(status_code=409, detail=detail)
+
+
+def require_lease(uid: str, x_mupifdb_lease: Optional[str] = Header(default=None)) -> Optional[str]:
+    """
+    Fencing of writes to execution *uid* (dependency of the endpoints writing to an execution).
+
+    While the execution is held under a lease, the request must name that lease in the header
+    ``X-MupifDB-Lease: <weid>:<scheduler_id>:<epoch>``; a scheduler, or a workflow, whose lease was
+    taken over cannot overwrite the work of the new holder. Executions not held may be written
+    without the header. See :func:`mupifDB.api.leases.checkLease`; a refusal is 409.
+    """
+    leases.checkLease(db.WorkflowExecutions, uid, x_mupifdb_lease)
+    return x_mupifdb_lease
+
+
+def require_lease_if_given(x_mupifdb_lease: Optional[str] = Header(default=None)) -> Optional[str]:
+    """
+    Fencing of EDM writes made by a workflow (dependency of the EDM write endpoints).
+
+    EDM objects are not part of an execution record; a workflow writing its outputs sends its lease,
+    which names its execution, and the write is refused (409) if that lease is no longer current.
+    Requests without the header (users, tools) are not affected.
+    """
+    if x_mupifdb_lease is not None:
+        weid, _, _ = leases.parseLease(x_mupifdb_lease)
+        leases.checkLease(db.WorkflowExecutions, weid, x_mupifdb_lease)
+    return x_mupifdb_lease
 
 # Transaction support for MongoDB, used to re-validate a record after validation,
 # aborting the transaction automatically if it does not validate.
@@ -479,6 +510,22 @@ app = FastAPI(
     # servers=servers_list,
     redirect_slashes=True,
 )
+
+
+@app.exception_handler(leases.LeaseError)
+async def lease_exception_handler(request: fastapi.Request, exc: leases.LeaseError):
+    'A write refused by the lease check (fencing, see mupifDB.api.leases.checkLease): 409 Conflict.'
+    log.warning(f'{request.method} {request.url.path}: {exc}')
+    return fastapi.responses.JSONResponse(content={'detail': str(exc)}, status_code=409)
+
+
+@app.on_event('startup')
+def ensure_lease_indexes():
+    'Indexes used by the lease queries (idempotent); a failure is logged, the API still starts.'
+    try:
+        leases.ensureIndexes(db.WorkflowExecutions, db.Schedulers)
+    except Exception:
+        log.exception('Could not create the indexes of the lease queries')
 
 
 @app.exception_handler(fastapi.exceptions.RequestValidationError)
@@ -1136,6 +1183,7 @@ def get_executions(
     page: int = 1,
     pageSize: int = 20,
     sort: Literal['CreatedDate', '-CreatedDate', 'SubmittedDate', '-SubmittedDate'] = '-CreatedDate',
+    ready: bool = False,
     current_user: User_Model = Depends(get_current_authenticated_user)
 ) -> models.ExecutionCollectionResponse:
     """
@@ -1144,6 +1192,9 @@ def get_executions(
     *sort* names the field to order by, ascending, or descending with a leading ``-``. The default
     (newest created first) suits listings for users; the scheduler takes pending executions oldest
     submitted first (``SubmittedDate``), so that old executions are not starved by newer ones.
+
+    *ready*: only pending executions which may be claimed now (their retry delay ``NotBefore``
+    passed); used by the schedulers.
     """
 
     if page < 1:
@@ -1165,6 +1216,8 @@ def get_executions(
         filtering["WorkflowID"] = workflow_id
     if label:
         filtering["label"] = label
+    if ready:
+        filtering.update(leases.readyFilter())
     
     skip = (page - 1) * pageSize
     
@@ -1570,26 +1623,26 @@ def set_execution_io_item(uid: str, name: str, obj_id: str, inputs: bool, data_c
 
 
 @api_router.patch("/executions/{uid}/input_item/{name}/{obj_id}", tags=["Executions"])
-def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def set_execution_input_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, obj_id, True, data, current_user)
 
 
 @api_router.patch("/executions/{uid}/output_item/{name}/{obj_id}", tags=["Executions"])
-def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def set_execution_output_item(uid: str, name: str, obj_id: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, obj_id, False, data, current_user)
 
 
 @api_router.patch("/executions/{uid}/input_item/{name}", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/input_item/{name}/", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/input_item/{name}//", tags=["Executions"], include_in_schema=False)
-def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def _set_execution_input_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, '', True, data, current_user)
 
 
 @api_router.patch("/executions/{uid}/output_item/{name}", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/output_item/{name}/", tags=["Executions"], include_in_schema=False)
 @api_router.patch("/executions/{uid}/output_item/{name}//", tags=["Executions"], include_in_schema=False)
-def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user)):
+def _set_execution_output_item(uid: str, name: str, data: M_IODataSetContainer, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     return set_execution_io_item(uid, name, '', False, data, current_user)
 
 
@@ -1752,7 +1805,7 @@ class M_ModifyExecutionOntoBaseObjectID(BaseModel):
     value: str
 
 @api_router.patch("/executions/{uid}/set_onto_base_object_id", tags=["Executions"], response_model=models.ExecutionEntityResponse)
-def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.ExecutionEntityResponse:
+def modify_execution_id(uid: str, data: M_ModifyExecutionOntoBaseObjectID, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)) -> models.ExecutionEntityResponse:
     perms.TODO()
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.id": data.value}}, return_document=ReturnDocument.AFTER, session=session)
@@ -1764,7 +1817,7 @@ class M_ModifyExecutionOntoBaseObjectIDMultiple(BaseModel):
     data: list[dict]
 
 @api_router.patch("/executions/{uid}/set_onto_base_object_id_multiple", tags=["Executions"])
-def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_id_multiple(uid: str, data: List[M_ModifyExecutionOntoBaseObjectID], current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     for d in data: modify_execution_id(uid,d, current_user=current_user)
     return get_execution(uid, current_user=current_user)
 
@@ -1773,7 +1826,7 @@ class M_ModifyExecutionOntoBaseObjectIDs(BaseModel):
     value: list[str]
 
 @api_router.patch("/executions/{uid}/set_onto_base_object_ids", tags=["Executions"])
-def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     with db_transaction() as session:
         rec=db.WorkflowExecutions.find_one_and_update({'_id': bson.objectid.ObjectId(uid), "EDMMapping.Name": data.name}, {"$set": {"EDMMapping.$.ids": data.value}}, return_document=ReturnDocument.AFTER, session=session)
         if rec is None: raise NotFoundError(f'Execution with uid={uid} or EDM mapping with name={data.name} not found.')
@@ -1787,8 +1840,18 @@ class M_ModifyExecution(BaseModel):
     value: str | Dict[str, str]
 
 @api_router.patch("/executions/{uid}/set_param", tags=["Executions"])
-def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user)):
+def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
     perms.TODO()
+    # the lease fields are written by the lease operations only (mupifDB.api.leases)
+    if data.key in leases.LEASE_FIELDS:
+        raise HTTPException(status_code=400, detail=f'{data.key} is set by the lease operations only.')
+    if data.key == 'Status':
+        if data.value == 'Scheduled':
+            # taking an execution must be atomic between schedulers: PATCH executions/{uid}/claim
+            raise ConflictError('Executions are taken with PATCH executions/{uid}/claim, not by setting Status=Scheduled.')
+        cur = db.WorkflowExecutions.find_one({'_id': bson.objectid.ObjectId(uid)}, {'Status': 1, 'LeaseExpires': 1})
+        if cur is not None and cur.get('Status') in leases.LEASED and cur.get('LeaseExpires') is not None:
+            raise ConflictError(f'Execution {uid} is held by a scheduler: its status changes through POST executions/{{uid}}/transition.')
     with db_transaction() as session:
         if data.key == 'Status':
             if data.value == 'Created':
@@ -1853,11 +1916,185 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
 @api_router.patch("/executions/{uid}/schedule", tags=["Executions"])
 def schedule_execution(uid: str, current_user: User_Model = Depends(get_current_authenticated_user)):
     execution_record = perms.ensure(get_execution(uid, current_user=current_user).entity, perm='modify')
-    if execution_record.Status == 'Created' or True:
-        data = type('', (), {})()
-        mod=M_ModifyExecution(key = "Status",value = "Pending")
-        return modify_execution_set_param(uid, mod, current_user=current_user)
-    return None
+    # an execution taken by a scheduler cannot be queued again (it used to be: "== 'Created' or True"),
+    # another scheduler would run it a second time
+    if execution_record.Status in ('Scheduled', 'Running'):
+        raise ConflictError(f'Execution {uid} is {execution_record.Status}: it cannot be scheduled again until it ends.')
+    mod=M_ModifyExecution(key = "Status",value = "Pending")
+    ret = modify_execution_set_param(uid, mod, current_user=current_user, _lease=None)
+    # scheduled by the user: no retry delay left from earlier attempts
+    db.WorkflowExecutions.update_one({'_id': bson.objectid.ObjectId(uid)}, {'$set': {'NotBefore': None, 'Deferrals': 0}})
+    return ret
+
+
+# --------------------------------------------------
+# Leases of executions, schedulers (several schedulers at once; see mupifDB.api.leases)
+# --------------------------------------------------
+
+def ensure_scheduler_account(current_user: User_Model):
+    """
+    Allow the lease operations to scheduler accounts only.
+
+    An admin account, or one listed in the environment variable ``MUPIFDB_SCHEDULER_ACCOUNTS``
+    (comma-separated e-mails), e.g. the account of ``API_CREDENTIALS_FILE`` of the schedulers.
+    """
+    allowed = {a.strip() for a in os.environ.get('MUPIFDB_SCHEDULER_ACCOUNTS', '').split(',') if a.strip()}
+    if not (current_user.rights_admin or current_user.mail in allowed):
+        raise ForbiddenError('Lease operations are allowed to scheduler accounts only (admin, or MUPIFDB_SCHEDULER_ACCOUNTS).')
+
+
+def _execution_or_conflict(rec, what: str) -> models.WorkflowExecution_Model:
+    if rec is None:
+        raise ConflictError(what)
+    return models.WorkflowExecution_Model.model_validate(rec)
+
+
+class M_Backoff(BaseModel):
+    """Retry delay: ``min(base * 2**Deferrals, max)``, varied by ±jitter (fraction)."""
+    base: float = Field(ge=0)
+    max: float = Field(ge=0)
+    jitter: float = Field(0., ge=0, le=1)
+
+    def tuple(self): return (self.base, self.max, self.jitter)
+
+
+class M_Claim(BaseModel):
+    scheduler_id: str
+    lease_seconds: float = Field(gt=0)
+
+
+@api_router.patch("/executions/{uid}/claim", tags=["Leases"])
+def claim_execution(uid: str, data: M_Claim, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
+    """Take a pending, due execution under a new lease (Pending -> Scheduled); 409 if another scheduler took it, or it is not pending/due."""
+    ensure_scheduler_account(current_user)
+    return _execution_or_conflict(leases.claim(db.WorkflowExecutions, uid, data.scheduler_id, data.lease_seconds),
+                                  f'Execution {uid} cannot be claimed (taken by another scheduler, not pending, or not due).')
+
+
+class M_Transition(BaseModel):
+    scheduler_id: str
+    epoch: int
+    to: Literal['Running', 'Pending', 'Finished', 'Failed', 'Created']
+    incAttempts: int = 0
+    resetAttempts: bool = False
+    backoff: Optional[M_Backoff] = None
+    lease_seconds: Optional[float] = None
+
+
+@api_router.post("/executions/{uid}/transition", tags=["Leases"])
+def transition_execution(uid: str, data: M_Transition, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
+    """Change the status of an execution held under the given lease; 409 if the lease is not current or the change is not allowed."""
+    ensure_scheduler_account(current_user)
+    rec = leases.transition(db.WorkflowExecutions, uid, data.scheduler_id, data.epoch, data.to, incAttempts=data.incAttempts,
+                            resetAttempts=data.resetAttempts, backoff=(data.backoff.tuple() if data.backoff else None),
+                            leaseSeconds=data.lease_seconds)
+    return _execution_or_conflict(rec, f'Execution {uid} is not held under lease {data.scheduler_id}:{data.epoch}, or cannot change to {data.to}.')
+
+
+class M_Defer(BaseModel):
+    backoff: M_Backoff
+
+
+@api_router.patch("/executions/{uid}/defer", tags=["Leases"])
+def defer_execution(uid: str, data: M_Defer, current_user: User_Model = Depends(get_current_authenticated_user)) -> models.WorkflowExecution_Model:
+    """Postpone a pending execution whose resources are unavailable (attempt + 1, retry delay); 409 if another scheduler did it already."""
+    ensure_scheduler_account(current_user)
+    return _execution_or_conflict(leases.defer(db.WorkflowExecutions, uid, data.backoff.tuple()),
+                                  f'Execution {uid} was deferred or claimed by another scheduler, or is not pending.')
+
+
+class M_Takeover(BaseModel):
+    scheduler_id: str
+    lease_seconds: float = Field(gt=0)
+    limit: int = Field(50, ge=1)
+
+
+@api_router.post("/executions/leases/takeover", tags=["Leases"])
+def takeover_executions(data: M_Takeover, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.WorkflowExecution_Model]:
+    """Take over executions whose lease expired and whose scheduler is not alive; the caller cleans them up and requeues them."""
+    ensure_scheduler_account(current_user)
+    return [models.WorkflowExecution_Model.model_validate(r) for r in leases.takeOver(db.WorkflowExecutions, db.Schedulers, data.scheduler_id, data.lease_seconds, data.limit)]
+
+
+class M_TakeoverOwn(BaseModel):
+    scheduler_id: str
+    instance: str
+    lease_seconds: float = Field(gt=0)
+
+
+@api_router.post("/executions/leases/takeover-own", tags=["Leases"])
+def takeover_own_executions(data: M_TakeoverOwn, current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.WorkflowExecution_Model]:
+    """At the start of a scheduler: take over the executions of its previous process (same ID); 409 if the identity is not held."""
+    ensure_scheduler_account(current_user)
+    return [models.WorkflowExecution_Model.model_validate(r) for r in leases.takeOverOwn(db.WorkflowExecutions, db.Schedulers, data.scheduler_id, data.instance, data.lease_seconds)]
+
+
+class M_Acquire(BaseModel):
+    instance: str
+    host: str = ''
+    pid: int = 0
+    heartbeat_seconds: float = Field(gt=0)
+    #: take the identity also from this instance (found dead by the caller: same host, process gone)
+    replace: Optional[str] = None
+
+
+@api_router.post("/schedulers/{sid}/acquire", tags=["Leases"])
+def acquire_scheduler_identity(sid: str, data: M_Acquire, current_user: User_Model = Depends(get_current_authenticated_user)) -> bool:
+    """Take the scheduler identity *sid* for a process; 409 if another live process holds it."""
+    ensure_scheduler_account(current_user)
+    if not leases.acquireIdentity(db.Schedulers, sid, data.instance, data.host, data.pid, data.heartbeat_seconds, replace=data.replace):
+        raise ConflictError(f'Scheduler identity {sid} is held by another running scheduler process.')
+    return True
+
+
+class M_LeaseRef(BaseModel):
+    weid: str
+    epoch: int
+
+
+class M_Heartbeat(BaseModel):
+    instance: str
+    heartbeat_seconds: float = Field(gt=0)
+    lease_seconds: float = Field(gt=0)
+    leases: List[M_LeaseRef] = []
+    stats: Optional[Dict[str, Any]] = None
+    draining: Optional[bool] = None
+
+
+class M_HeartbeatResponse(BaseModel):
+    #: whether the process still holds the scheduler identity (False: it must stop)
+    identity: bool
+    #: executions still held under the given leases (renewed); the others were lost
+    held: List[str]
+
+
+@api_router.post("/schedulers/{sid}/heartbeat", tags=["Leases"])
+def scheduler_heartbeat(sid: str, data: M_Heartbeat, current_user: User_Model = Depends(get_current_authenticated_user)) -> M_HeartbeatResponse:
+    """Renew the heartbeat of a scheduler and the leases of its executions, in one call."""
+    ensure_scheduler_account(current_user)
+    if not leases.heartbeat(db.Schedulers, sid, data.instance, data.heartbeat_seconds, stats=data.stats, draining=data.draining):
+        return M_HeartbeatResponse(identity=False, held=[])
+    held = leases.renew(db.WorkflowExecutions, sid, [(l.weid, l.epoch) for l in data.leases], data.lease_seconds)
+    return M_HeartbeatResponse(identity=True, held=sorted(held))
+
+
+class M_Release(BaseModel):
+    instance: str
+
+
+@api_router.post("/schedulers/{sid}/release", tags=["Leases"])
+def release_scheduler_identity(sid: str, data: M_Release, current_user: User_Model = Depends(get_current_authenticated_user)) -> bool:
+    """Give up a scheduler identity at a clean shutdown."""
+    ensure_scheduler_account(current_user)
+    leases.releaseIdentity(db.Schedulers, sid, data.instance)
+    return True
+
+
+@api_router.get("/schedulers", tags=["Leases"])
+def get_schedulers(current_user: User_Model = Depends(get_current_authenticated_user)) -> List[models.SchedulerInstance_Model]:
+    """List the registered schedulers (live and not), with their heartbeat and statistics."""
+    live = leases.liveSchedulers(db.Schedulers)
+    return [models.SchedulerInstance_Model.model_validate(r | {'Live': r['_id'] in live}) for r in db.Schedulers.find()]
 
 
 # --------------------------------------------------
@@ -2005,31 +2242,49 @@ def insert_log(data: dict, request: Request, current_user: User_Model = Depends(
 # Stats
 # --------------------------------------------------
 
+def schedulers_statistics() -> tuple[bool, dict]:
+    """
+    Statistics of the schedulers of the deployment: ``(any scheduler alive, counters)``.
+
+    Schedulers send their counters with their heartbeat (registry ``Schedulers``, see
+    mupifDB.api.leases); the counters of the live ones are added up: running, scheduled and
+    processed executions, and the load over their summed capacity. The database queue (pending)
+    is the same for all, so its maximum is taken; waiting = pending + scheduled. Without any
+    registered scheduler (older schedulers), the single statistics document ``Stat`` and the
+    pidfile of a scheduler on this host are used, as before.
+    """
+    live = leases.liveSchedulers(db.Schedulers)
+    stats = [r.get('Stats') or {} for r in db.Schedulers.find({'_id': {'$in': sorted(live)}})] if live else []
+    if not stats:
+        if db.Schedulers.estimated_document_count() == 0:
+            rec = db.Stat.find_one() or {}
+            alive = False
+            try:
+                with open('mupifDB_scheduler_pidfile') as f:
+                    alive = psutil.pid_exists(int(f.read()))
+            except (OSError, ValueError):
+                pass
+            return alive, dict(rec.get('scheduler', {}))
+        return False, {}
+    total = lambda k: sum(int(s.get(k) or 0) for s in stats)
+    running, scheduled = total('runningTasks'), total('scheduledTasks')
+    pending = max(int(s.get('pendingTasks') or 0) for s in stats)
+    capacity = total('capacity')
+    return True, dict(runningTasks=running, scheduledTasks=scheduled, processedTasks=total('processedTasks'), pendingTasks=pending,
+                      waitingTasks=pending + scheduled, load=(round(100 * running / capacity) if capacity else max(float(s.get('load') or 0) for s in stats)))
+
+
 @api_router.get("/status", tags=["Stats"])
 def get_status(current_user: User_Model = Depends(get_current_authenticated_user)):
     mupifDBStatus = 'OK'
-    schedulerStatus = 'OK'
-
-    pidfile = 'mupifDB_scheduler_pidfile'
-    if not os.path.exists(pidfile):
-        schedulerStatus = 'Failed'
-    else:
-        with open(pidfile, "r") as f:
-            try:
-                pid = int(f.read())
-                if not psutil.pid_exists(pid):
-                    schedulerStatus = 'Failed'
-            except (OSError, ValueError):
-                schedulerStatus = 'Failed'
-    rec=db.Stat.find_one()
-    # pprint(rec)
-    statRec=models.MupifDBStatus_Model.Stat_Model.model_validate(rec)
+    # several schedulers may run, on other hosts: alive if any has a live heartbeat
+    alive, stat = schedulers_statistics()
     return models.MupifDBStatus_Model(
-        schedulerStatus=schedulerStatus,
+        schedulerStatus='OK' if alive else 'Failed',
         mupifDBStatus=mupifDBStatus,
         # roundtrip to execution_statistics below via API request back to us? wth
         totalStat=mupifDB.schedulerstat.getGlobalStat(),
-        schedulerStat=statRec.scheduler
+        schedulerStat=models.MupifDBStatus_Model.Stat_Model.SchedulerStat_Model.model_validate({k: v for k, v in stat.items() if k in SCHEDULER_STAT_KEYS})
     )
 
 
@@ -2091,14 +2346,9 @@ SCHEDULER_STAT_KEYS = ["runningTasks", "scheduledTasks", "load", "processedTasks
 @api_router.get("/scheduler_statistics", tags=["Stats"])
 @api_router.get("/scheduler_statistics/", tags=["Stats"], include_in_schema=False)
 def get_scheduler_statistics(current_user: User_Model = Depends(get_current_authenticated_user)):
-    table = db.Stat
-    output = {}
-    for s in table.find():
-        for k in SCHEDULER_STAT_KEYS:
-            if k in s["scheduler"]:
-                output[k] = s["scheduler"][k]
-        break
-    return output
+    """Counters of the schedulers, summed over the live ones (see :func:`schedulers_statistics`)."""
+    _, stat = schedulers_statistics()
+    return {k: stat[k] for k in SCHEDULER_STAT_KEYS if k in stat}
 
 
 class M_ModifyStatistics(BaseModel):
@@ -2898,7 +3148,7 @@ class PatchData(pydantic.BaseModel):
     data: Union[List[Dict[str,Any]],Dict[str,Any]]
 
 @api_router.patch('/EDM/{db}/{type}/{id}', tags=["EDM"])
-def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_user: User_Model = Depends(get_current_authenticated_user)):
+def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)):
     path,data=patchData.path,patchData.data
     RR=_resolve_path_head(db=db,type=type,id=id,path=path)
 
@@ -2928,7 +3178,7 @@ def dms_api_object_patch(db:str, type:str, id:str,patchData:PatchData, current_u
 
 
 @api_router.post('/EDM/{db}/{type}', tags=["EDM"])
-def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)) -> str:
     def _new_object(klass,dta,path,tracker):
         klassSchema=GG.schema_get_type(db,klass)
         rec=_api_value_to_db_rec__obj(dta,klass,klassSchema)
@@ -2970,7 +3220,7 @@ def dms_api_object_post(db: str, type:str, data:dict, current_user: User_Model =
 
 
 @api_router.post('/EDM/{db}/blob/upload', tags=["EDM"])
-def dms_api_blob_upload(db: str, blob: fastapi.UploadFile, current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def dms_api_blob_upload(db: str, blob: fastapi.UploadFile, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)) -> str:
     'Streming blob upload'
     fs = gridfs.GridFS(GG.db_get(db))
     return str(fs.put(blob.file, filename=blob.filename))
@@ -3073,7 +3323,7 @@ def dms_api_path_safe_links(db:str, type:str, id:str, paths:str='', debug:bool=F
 
 
 @api_router.get('/EDM/{db}/{type}/{id}/clone', tags=["EDM"])
-def dms_api_path_clone_get(db:str,type:str,id:str,shallow:str='', current_user: User_Model = Depends(get_current_authenticated_user)) -> str:
+def dms_api_path_clone_get(db:str,type:str,id:str,shallow:str='', current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease_if_given)) -> str:
     dump=dms_api_path_get(db=db,type=type,id=id,path=None,max_level=-1,tracking=True,meta=True,shallow=shallow)
     return dms_api_object_post(db=db,type=type,data=dump)
 

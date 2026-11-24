@@ -242,6 +242,21 @@ class WorkflowExecution_Model(MongoObj_Model):
     ExecutionProfileIndex: int=-1
     #: model name -> model server (registered name) the model was allocated on; set by the execution script once its models are allocated
     ModelServers: Dict[str,str]={}
+    # --- lease of the execution (several schedulers; see mupifDB.api.leases); written only by the lease operations
+    #: scheduler holding the execution (Scheduled/Running), or which held it last
+    SchedulerID: Optional[str]=None
+    #: increased by every claim and takeover; (SchedulerID, LeaseEpoch) is the fencing token of writes
+    LeaseEpoch: int=0
+    #: until when the lease is valid (database time, UTC); None: not held
+    LeaseExpires: Optional[datetime.datetime]=None
+    #: process which took the execution over at its start
+    LeaseInstance: Optional[str]=None
+    #: the scheduler the execution was last taken over from (it was gone); None: never taken over
+    LeaseTakenFrom: Optional[str]=None
+    #: the execution is not claimed before this time (retry delay); None: at once
+    NotBefore: Optional[datetime.datetime]=None
+    #: consecutive retry delays (the next delay grows with it); reset by a final outcome
+    Deferrals: int=0
     # these are only relevant while the execution being processed
     workflowURI: str|None=None
     loggerURI: str|None=None
@@ -256,6 +271,28 @@ class WorkflowExecution_Model(MongoObj_Model):
 
 
 
+
+
+class SchedulerInstance_Model(pydantic.BaseModel):
+    '''
+    A scheduler registered in the database (collection ``Schedulers``; see mupifDB.api.leases): its
+    identity is held by one process at a time, which renews its heartbeat.
+    '''
+    model_config = pydantic.ConfigDict(populate_by_name=True, extra='ignore')
+    #: scheduler ID (configured; default: host name)
+    id: str = Field(alias='_id')
+    #: process holding the identity (UUID)
+    Instance: Optional[str] = None
+    Host: str = ''
+    Pid: int = 0
+    StartedAt: Optional[datetime.datetime] = None
+    #: until when the scheduler counts as alive
+    HeartbeatExpires: Optional[datetime.datetime] = None
+    Draining: bool = False
+    #: statistics sent with the heartbeat (counters of SchedulerStat)
+    Stats: Dict[str, Any] = {}
+    #: heartbeat not expired (computed by the API)
+    Live: bool = False
 
 
 #class ExecutionQuery_Model(StrictBase):

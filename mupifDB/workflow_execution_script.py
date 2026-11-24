@@ -61,6 +61,18 @@ def storeModelServers(weid: str, workflow) -> None:
         log.exception('Could not store the model servers in the execution record')
 
 
+def isLeaseLost(err: BaseException | None) -> bool:
+    """Tell whether *err* (or an exception it was raised from) is a write refused because the lease of this run is not current (409)."""
+    from mupifDB.api.client_util import ConflictResponse
+    seen = set()
+    while err is not None and id(err) not in seen:
+        seen.add(id(err))
+        if isinstance(err, ConflictResponse):
+            return True
+        err = err.__cause__ or err.__context__
+    return False
+
+
 def isNoResourcesError(err: BaseException | None) -> bool:
     """
     Tell whether *err* (or an exception it was raised from) means "model server has no free slot".
@@ -235,6 +247,11 @@ def main():
             # execution to Pending (exit code 2) so that it is retried when resources are free
             log.error('Not enough resources')
             sys.exit(2)
+        if isLeaseLost(err):
+            # another scheduler took the execution over (this run was cut off from the database
+            # longer than its lease): its writes are refused; nothing more to do here
+            log.error('The lease of this run was taken over by another scheduler; its results are not stored')
+            sys.exit(1)
         setStatus(weid, 'Failed')
         sys.exit(1)
 
