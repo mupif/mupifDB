@@ -186,6 +186,10 @@ class Scheduler:
         self.notifier = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='notify')
         #: renews the heartbeat and the leases, takes over executions of dead schedulers (see :meth:`run`)
         self.keeper = LeaseKeeper(self)
+        #: called by :meth:`run` once this process holds the scheduler identity, before anything else
+        #: is done; e.g. registers the monitor in the nameserver (a process refused the identity must
+        #: not replace the entry of the live scheduler under the same name)
+        self.onIdentity: Callable[[], None] | None = None
 
     # --- main loop ------------------------------------------------------------------------------
 
@@ -203,6 +207,8 @@ class Scheduler:
             raise RuntimeError(f'Scheduler identity {self.config.scheduler_id} is held by another running scheduler process; '
                                'give each scheduler its own scheduler_id')
         log.info(f'Scheduler identity {self.config.scheduler_id} taken')
+        if self.onIdentity is not None:
+            self.onIdentity()
         self.recoverOwn()
         self.keeper.start()
         log.info('Entering main loop to check for Pending executions')

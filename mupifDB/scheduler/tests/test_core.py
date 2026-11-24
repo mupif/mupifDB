@@ -249,6 +249,8 @@ def test_run_survives_errors_and_stops(env, monkeypatch):
         calls.append(1)
         return RuntimeError('401 Unauthorized') if len(calls) == 1 else None
     env.backend.failures['pendingExecutions'] = firstPassFails
+    registered = []
+    env.scheduler.onIdentity = lambda: registered.append(env.backend.identityHolder()['Instance'])
     t = threading.Thread(target=env.scheduler.run)
     t.start()
     for _ in range(100):
@@ -259,6 +261,8 @@ def test_run_survives_errors_and_stops(env, monkeypatch):
     t.join(timeout=5)
     assert not t.is_alive()
     assert len(calls) >= 2 and env.backend.status('E0') == 'Finished'
+    # the monitor is registered (onIdentity) once, while the identity is held
+    assert registered == [env.backend.instance]
 
 
 def test_running_execution_processes(tmp_path):
@@ -1052,10 +1056,21 @@ def test_shutdown_releases_identity(env, monkeypatch):
 
 
 def test_duplicate_identity_refuses_to_start(env):
+    """
+    A second process with the same scheduler ID is refused before it does anything else; in
+    particular it does not register in the nameserver (onIdentity).
+
+    Found on the local platform: the refused duplicate had replaced the running scheduler's
+    nameserver entry and removed it when it exited, so that scheduler could not be monitored
+    or drained any more.
+    """
     other = FakeBackend(env.backend.store, 's1')
     assert other.acquireIdentity()
+    registered = []
+    env.scheduler.onIdentity = lambda: registered.append(1)
     with pytest.raises(RuntimeError, match='held by another running scheduler'):
         env.scheduler.run()
+    assert registered == []
 
 
 

@@ -45,7 +45,13 @@ logging.getLogger("urllib3").propagate = False
 
 def build(config: SchedulerConfig, ns) -> Scheduler:
     """
-    Create the scheduler and serve its statistics monitor over Pyro.
+    Create the scheduler; its statistics monitor is served over Pyro once it holds its identity.
+
+    The monitor is registered in the nameserver (``mupif.scheduler.<scheduler_id>``) and the
+    statistics of the previous run are copied to the database only after the scheduler took its
+    identity (:attr:`~mupifDB.scheduler.core.Scheduler.onIdentity`): a second process started by
+    mistake with the same ``scheduler_id`` is refused, and must not replace -- and, when it exits,
+    remove -- the nameserver entry of the running one.
 
     :param config: settings
     :param ns: Pyro nameserver proxy
@@ -66,9 +72,12 @@ def build(config: SchedulerConfig, ns) -> Scheduler:
                           removeModelServer=lambda name, uri: pyroutil.removeOwnRegistration(threadProxy(ns), name, uri))
     monitor.onStop = scheduler.stop
     monitor.onDrain = scheduler.setDrain
-    # copy the statistics of the previous run to the database before anything changes
-    monitor.persist()
-    monitor.runServer(ns)
+
+    def serveMonitor():
+        # copy the statistics of the previous run to the database before anything changes
+        monitor.persist()
+        monitor.runServer(ns)
+    scheduler.onIdentity = serveMonitor
     return scheduler
 
 

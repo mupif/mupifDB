@@ -24,7 +24,10 @@ def test_import_has_no_side_effects():
 
 
 def test_build_wires_the_scheduler(monkeypatch, tmp_path):
-    """build() connects the monitor's stop to the scheduler and runs the subprocesses against the nameserver."""
+    """
+    build() connects the monitor's stop to the scheduler and runs the subprocesses against the
+    nameserver; the monitor is registered in the nameserver only once the identity is held.
+    """
     from mupifDB import restApiControl
     from mupifDB import workflowscheduler as ws
     from mupifDB.scheduler.config import SchedulerConfig
@@ -35,6 +38,8 @@ def test_build_wires_the_scheduler(monkeypatch, tmp_path):
     ns = type('NS', (), {'_pyroUri': 'PYRO:Pyro.NameServer@127.0.0.1:1'})()
     scheduler = ws.build(SchedulerConfig(max_jobs=2, stat_file=str(tmp_path / 'stat.json'), work_dir=str(tmp_path)), ns)
     try:
+        assert served == []
+        scheduler.onIdentity()
         assert served == [ns]
         assert scheduler.runner.nsUri == 'PYRO:Pyro.NameServer@127.0.0.1:1'
         scheduler.monitor.onStop()
