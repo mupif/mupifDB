@@ -852,6 +852,54 @@ def test_lease_lost_while_running_writes_nothing(env, pair):
     assert env.monitor.stat.tasks.running == 0
 
 
+def test_outcome_stored_after_outage(env, caplog):
+    """
+    A workflow ending while the REST API is unreachable keeps its result: the job retries storing
+    its log and status (keeping its slot and lease) until the REST API answers again.
+
+    Found on the local platform: with the outcome lost, the execution stayed Running and had to run again.
+    """
+    env.scheduler.writeRetryPause = 0.01
+    env.backend.addExecution('E0')
+    down = {'storeLog': 3, 'transition': 2}
+
+    def outage(name):
+        def fail(*args):
+            if name == 'transition' and args[1] != 'Finished':
+                return None
+            if down[name] > 0:
+                down[name] -= 1
+                return ConnectionError('REST API unreachable')
+        return fail
+    for name in down:
+        env.backend.failures[name] = outage(name)
+    env.scheduler.schedulePass()
+    env.drain()
+    assert env.backend.statuses('E0') == ['Scheduled', 'Running', 'Finished'] and env.backend.notified == ['E0']
+    assert env.backend.logs['E0'] == b'workflow output' and env.scheduler.jobs == {}
+    assert 'E0: its status stored after all' in caplog.text
+
+
+def test_outcome_write_not_retried_when_refused_or_shutting_down(env):
+    """Only an unreachable REST API is waited for: other errors, and any error once the drain at shutdown ended, are not retried."""
+    calls = []
+
+    def refused():
+        calls.append(1)
+        raise RuntimeError('500 Internal Server Error')
+    with pytest.raises(RuntimeError):
+        env.scheduler.persist('E0', 'its status', refused)
+    assert len(calls) == 1
+    env.scheduler.abandonWrites.set()
+
+    def unreachable():
+        calls.append(1)
+        raise ConnectionError('REST API unreachable')
+    with pytest.raises(ConnectionError):
+        env.scheduler.persist('E0', 'its status', unreachable)
+    assert len(calls) == 2
+
+
 def test_script_gets_the_lease(tmp_path):
     """The workflow subprocess gets the lease (its writes are fenced by the API) and the scheduler ID."""
     from mupifDB.scheduler.runner import JobRunner

@@ -35,6 +35,11 @@ Status changes made here (database access through :class:`~mupifDB.scheduler.bac
 Retry delays are stored in the database (``NotBefore``, growing with consecutive delays), so all
 schedulers respect them and they survive restarts.
 
+The outcome of a run (status, log) is written again and again while the REST API is unreachable
+(:meth:`Scheduler.persist`): the job keeps its slot and its lease (renewed by the lease keeper)
+until the write succeeds, the lease is lost, or the scheduler shuts down. A workflow which finished
+during an outage of the REST API therefore keeps its result instead of running again.
+
 Model servers: the scheduler checks that the models of an execution can find free slots on
 compatible model servers before it takes it (:class:`~mupifDB.scheduler.resources.ResourceBudget`,
 under the execution's execution profile); the workflow itself chooses the server for each model
@@ -59,7 +64,7 @@ from typing import Any, Callable
 
 from mupif import modelplacement
 
-from .backend import ExecutionBackend, Lease, LeaseLost
+from .backend import ExecutionBackend, Lease, LeaseLost, isUnreachable
 from .config import SchedulerConfig
 from .leases import LeaseKeeper
 from .monitor import SchedulerMonitor
@@ -130,6 +135,9 @@ class Scheduler:
     ``Scheduled``) and whose outcome is not stored yet.
     """
 
+    #: first pause before a write is retried while the REST API is unreachable, in seconds (doubles, up to 30; see :meth:`persist`)
+    writeRetryPause: float = 2.
+
     def __init__(self, config: SchedulerConfig, backend: ExecutionBackend, runner: JobRunner,
                  findModelServers: Callable[[Any], list], serverLoad: Callable[[Any], Any], monitor: SchedulerMonitor,
                  terminateModelJobs: Callable[[list[str], str], list[str]] = lambda jobmanagers, loggerURI: [],
@@ -170,6 +178,9 @@ class Scheduler:
         self.stopEvent = threading.Event()
         #: set while draining: no new executions are taken, running ones continue (see :meth:`setDrain`)
         self.draining = threading.Event()
+        #: set when the drain at shutdown ended: writes failing for an unreachable REST API are not
+        #: retried any more (see :meth:`persist`); the restarted scheduler takes those executions back
+        self.abandonWrites = threading.Event()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=config.max_jobs, thread_name_prefix='job')
         #: sends notifications to owners (e-mail) without holding up the job threads
         self.notifier = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='notify')
@@ -253,6 +264,9 @@ class Scheduler:
                 remaining = list(self.jobs.values())
             for job in remaining:
                 job.stop('shutdown')
+        # jobs waiting for the REST API to store their outcome give up now (the restarted scheduler
+        # takes their executions back, see recoverOwn)
+        self.abandonWrites.set()
         # the lease keeper renews the leases until here (drain), then the identity is released, so
         # that a scheduler restarted under the same ID does not wait for the heartbeat to expire
         self.executor.shutdown(wait=True)
@@ -437,7 +451,8 @@ class Scheduler:
                 job.launched = True
                 self.monitor.started(weid, rec.WorkflowID)
 
-            result = self.runner.run(job, workflow, onLaunch=onLaunch, storeLog=lambda path: self.backend.storeLog(weid, path, lease),
+            result = self.runner.run(job, workflow, onLaunch=onLaunch,
+                                     storeLog=lambda path: self.persist(weid, 'its log', lambda: self.backend.storeLog(weid, path, lease)),
                                      timeout=self.jobTimeout(workflow))
             if result.stopReason == 'lease-lost':
                 raise LeaseLost(f'{weid}: lease lost while it ran')
@@ -450,9 +465,9 @@ class Scheduler:
                 # no free model-server slot when the workflow started: retry later, not at once; the
                 # attempt is not counted (it would send executions back to Created when several
                 # schedulers compete for the model servers)
-                self.backend.transition(lease, 'Pending', incAttempts=-1, backoff=self.backoff)
+                self.persist(weid, 'its status', lambda: self.backend.transition(lease, 'Pending', incAttempts=-1, backoff=self.backoff))
             else:
-                self.backend.transition(lease, result.status)
+                self.persist(weid, 'its status', lambda: self.backend.transition(lease, result.status))
             job.outcomeStored = True
             if result.status != 'Pending':
                 self.notify(weid)
@@ -527,6 +542,38 @@ class Scheduler:
         except Exception:
             log.exception(f'{weid}: could not store the message log')
 
+    def persist(self, weid: str, what: str, write: Callable[[], Any]) -> Any:
+        """
+        Make a write for a job (its outcome, its log), retrying it while the REST API is unreachable.
+
+        Called from the job thread, so the job keeps its slot and its lease (renewed by the lease
+        keeper as soon as the REST API answers again) while it waits. Retried after 2, 4, ... (at
+        most 30) seconds (:attr:`writeRetryPause`) until the write succeeds, fails otherwise (refused: raised, e.g.
+        :class:`LeaseLost` when another scheduler took the execution over meanwhile), or the drain
+        at shutdown ended (:attr:`abandonWrites`; the last error is raised).
+
+        :param weid: execution ID (for the log)
+        :param what: what is written (for the log)
+        :param write: makes the write; returns its result
+        :return: the result of *write*
+        """
+        pause, failing = self.writeRetryPause, False
+        while True:
+            try:
+                result = write()
+                if failing:
+                    log.warning(f'{weid}: {what} stored after all', extra={'weid': weid})
+                return result
+            except Exception as e:
+                if not isUnreachable(e) or self.abandonWrites.is_set():
+                    raise
+                if not failing:
+                    log.warning(f'{weid}: could not store {what}, REST API unreachable ({e}); retrying until it answers', extra={'weid': weid})
+                    failing = True
+                if self.abandonWrites.wait(pause):
+                    raise
+                pause = min(pause * 2, 30.)
+
     def jobTimeout(self, workflow: Any) -> float:
         """
         Return the maximum run time of an execution of *workflow* in seconds (0: no limit).
@@ -548,16 +595,17 @@ class Scheduler:
         """
         try:
             if launched or permanent:
-                self.backend.transition(lease, 'Failed')
+                self.persist(weid, 'its status', lambda: self.backend.transition(lease, 'Failed'))
                 self.notify(weid)
             else:
                 # transient (e.g. REST API unreachable): back to the queue, retried after a delay
-                self.backend.transition(lease, 'Pending', backoff=self.backoff)
+                self.persist(weid, 'its status', lambda: self.backend.transition(lease, 'Pending', backoff=self.backoff))
         except LeaseLost:
             log.warning(f'{weid}: lease lost, its status is not changed from here')
         except Exception:
-            # REST API unreachable: nothing more can be done from here; the lease is not renewed
-            # any more, so after it expires a scheduler takes the execution over and requeues it
+            # the write was refused, or the scheduler is shutting down while the REST API is
+            # unreachable: the lease is not renewed any more, so after it expires the execution is
+            # taken over (by this scheduler, or by another one if this one is gone) and requeued
             log.exception(f'Could not update status of execution {weid} after the failure.')
         if launched:
             self.monitor.finished(weid, 'Failed')

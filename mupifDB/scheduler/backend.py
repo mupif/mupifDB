@@ -46,6 +46,17 @@ class LeaseLost(Exception):
     """
 
 
+def isUnreachable(e: BaseException) -> bool:
+    """
+    Whether *e* means that the REST API could not be reached (worth retrying the same request later).
+
+    Connection errors and timeouts, not refused or failed requests: those would fail again. The
+    built-in :class:`ConnectionError` is included for test doubles.
+    """
+    import requests
+    return isinstance(e, (ConnectionError, requests.ConnectionError, requests.Timeout))
+
+
 class ExecutionBackend(Protocol):
     """
     Operations of the scheduler on executions and workflows.
@@ -146,7 +157,7 @@ class ExecutionBackend(Protocol):
         """
 
     def takeOver(self, limit: int) -> list[tuple[Any, Lease]]:
-        """Take over executions whose lease expired, held by schedulers which are not alive (see :func:`mupifDB.api.leases.takeOver`)."""
+        """Take over executions whose lease expired, held by schedulers which are not alive or by this one (see :func:`mupifDB.api.leases.takeOver`)."""
 
     def takeOverOwn(self) -> list[tuple[Any, Lease]]:
         """Take over the executions of an earlier process of this scheduler (same ID), at its start."""
