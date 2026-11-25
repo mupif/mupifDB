@@ -10,7 +10,7 @@ A published package is a record of the collection `Models` (`mupifDB.models.Mode
 |---|---|
 | `ID`, `Version` | model ID (what workflows give as `ModelID`) and package version; unique together |
 | `Entrypoint` | the model class, `module:Class` |
-| `Runtime` | `Type` (`pixi`: the package's pixi environment; `python`: the server's own environment) and `Environment` (pixi environment name) |
+| `Runtime` | `Type` (`pixi`: the package's pixi environment; `apptainer`: a container image; `python`: the server's own environment), `Environment` (pixi environment name); for `apptainer`: `Image` (`docker://`/`oras://` pinned by `@sha256:`, or an `https://`/`file:///` SIF file), `ImageDigest` (sha256 of the SIF file), `Gpu`, `Python` |
 | `RequiresHost` | host capabilities the model needs (e.g. a licensed solver), configured on execution servers |
 | `Description` | free text |
 | `Digest` | `sha256:<hex>` of the archive; execution servers verify every download against it |
@@ -28,7 +28,7 @@ The manifest fields are read from `mupif-model.toml` of the archive. **Versions 
 | `GET /models/{ID}` | all versions of a model; 404 if none |
 | `GET /models/{ID}/versions/{Version}` | one version; `latest` for the latest one (by version order: `1.10` after `1.9`). Execution servers resolve model IDs here. |
 
-The archive is checked as execution servers will unpack it; no code of it is imported by the API (unlike workflow uploads). Execution servers need an ordinary account (reading); its credentials go to `API_CREDENTIALS_FILE` on the server host.
+The archive is checked as execution servers will unpack it; no code of it is imported by the API (unlike workflow uploads). Container images are not stored in mupifDB: the package references them (registry or file), pinned by digest, and execution servers verify them. Execution servers need an ordinary account (reading); its credentials go to `API_CREDENTIALS_FILE` on the server host.
 
 Publishing gives the right to run code on every execution server, which is why it is reserved to administrators.
 
