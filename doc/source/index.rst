@@ -19,6 +19,7 @@ This is a preliminary MupifDB documentation.
    scheduler.md
    scheduler-api.rst
    scheduler-smoketest-results.md
+   model-registry.md
    rest-api.rst
 
 
