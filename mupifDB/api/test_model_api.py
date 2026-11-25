@@ -126,3 +126,17 @@ def test_too_large(api, monkeypatch):
     client, main, users = api
     monkeypatch.setattr(main, 'MAX_MODEL_PACKAGE_BYTES', 10)
     assert publish(client, archive(id='large')).status_code == 413
+
+
+def test_execution_records_model_packages(api):
+    'The execution script stores ModelPackages through set_param (a dict of dicts); cleared when the execution runs again.'
+    client, main, users = api
+    weid = str(main.db.WorkflowExecutions.insert_one({'Status': 'Running', 'Attempts': 0, 'WorkflowID': 'wf', 'WorkflowVersion': 1,
+                                                      'CreatedDate': '2026-01-01T10:00:00', 'RequestedBy': 'u', 'Inputs': '', 'Outputs': ''}).inserted_id)
+    pkg = {'ID': 'oofem-thermal', 'Version': '1.2', 'Digest': 'sha256:' + 'a' * 64}
+    r = client.patch(f'/api/executions/{weid}/set_param', json={'key': 'ModelPackages', 'value': {'m': pkg}})
+    assert r.status_code == 200, r.text
+    assert main.db.WorkflowExecutions.find_one({'_id': main.bson.objectid.ObjectId(weid)})['ModelPackages'] == {'m': pkg}
+    assert client.get(f'/api/executions/{weid}').json()['entity']['ModelPackages'] == {'m': pkg}
+    # model servers are still a dict of strings
+    assert client.patch(f'/api/executions/{weid}/set_param', json={'key': 'ModelServers', 'value': {'m': 'Exec.node1'}}).status_code == 200

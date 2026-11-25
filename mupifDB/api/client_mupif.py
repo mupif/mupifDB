@@ -336,6 +336,10 @@ def setExecutionModelServers(execution_id: str, modelServers: Dict[str, str]):
     """Store the model servers the models of an execution were allocated on (model name -> registered server name)."""
     return setExecutionParameter(execution_id, "ModelServers", dict(modelServers))
 
+def setExecutionModelPackages(execution_id: str, modelPackages: Dict[str, Dict[str, str]]):
+    """Store the model packages execution servers ran for the models of an execution (model name -> {ID, Version, Digest})."""
+    return setExecutionParameter(execution_id, "ModelPackages", {m: dict(p) for m, p in modelPackages.items()})
+
 def setExecutionAttemptsCount(execution_id, val):
     return setExecutionParameter(execution_id, "Attempts", str(val), "int")
 

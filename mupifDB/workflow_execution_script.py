@@ -40,7 +40,8 @@ NO_RESOURCES_EXCEPTION = 'mupif.modelserverbase.ModelServerNoResourcesException'
 
 def storeModelServers(weid: str, workflow) -> None:
     """
-    Log and store the model servers the workflow allocated its models on (``ModelServers`` of the execution).
+    Log and store the model servers the workflow allocated its models on (``ModelServers`` of the
+    execution), and the model packages run by execution servers (``ModelPackages``).
 
     The workflow chooses a server for each model among the compatible ones (all instances of the
     model server, servers of the same model ID; see mupif.modelplacement); the choice is in the
@@ -59,6 +60,16 @@ def storeModelServers(weid: str, workflow) -> None:
         mupifDB.restApiControl.setExecutionModelServers(weid, modelServers)
     except Exception:
         log.exception('Could not store the model servers in the execution record')
+    # models run by execution servers (mupif.executionserver): which package exactly, identified by
+    # its digest -- provenance of the results (older mupif versions do not report it)
+    modelPackages = workflow.getModelPackages() if hasattr(workflow, 'getModelPackages') else {}
+    if not modelPackages:
+        return
+    log.info('Model packages run: ' + ', '.join(f'{m}: {p.get("ID")}@{p.get("Version")} ({p.get("Digest")})' for m, p in sorted(modelPackages.items())))
+    try:
+        mupifDB.restApiControl.setExecutionModelPackages(weid, modelPackages)
+    except Exception:
+        log.exception('Could not store the model packages in the execution record')
 
 
 def isLeaseLost(err: BaseException | None) -> bool:

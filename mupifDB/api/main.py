@@ -1940,7 +1940,8 @@ def modify_execution_ids(uid: str, data: M_ModifyExecutionOntoBaseObjectIDs, cur
 class M_ModifyExecution(BaseModel):
     key: str
     #: a string for most parameters (the record validates and converts it); a dict for ModelServers
-    value: str | Dict[str, str]
+    #: (model -> server) and ModelPackages (model -> {ID, Version, Digest})
+    value: str | Dict[str, str] | Dict[str, Dict[str, str]]
 
 @api_router.patch("/executions/{uid}/set_param", tags=["Executions"])
 def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: User_Model = Depends(get_current_authenticated_user), _lease=Depends(require_lease)):
@@ -2000,6 +2001,7 @@ def modify_execution_set_param(uid: str, data: M_ModifyExecution, current_user: 
                         # set again by the execution script once the models are allocated; values of
                         # an earlier attempt (e.g. interrupted by a scheduler restart) must not count
                         'ModelServers': {},
+                        'ModelPackages': {},
                         'workflowURI': None
                     }},
                     session=session)
