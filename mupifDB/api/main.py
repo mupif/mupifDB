@@ -1173,6 +1173,109 @@ def insert_workflow_history(wf: models.Workflow_Model, current_user: User_Model 
 # Executions
 # --------------------------------------------------
 
+# --------------------------------------------------
+# Model packages: the registry of mupif execution servers (see mupif.modelpackage, mupif.executionserver)
+# --------------------------------------------------
+
+#: largest model package archive accepted (bytes); packages hold code and lock files, environments
+#: are installed by the execution servers
+MAX_MODEL_PACKAGE_BYTES = int(os.environ.get('MUPIFDB_MAX_MODEL_PACKAGE_BYTES', str(256 * 2**20)))
+
+
+@app.on_event('startup')
+def ensure_model_indexes():
+    'Unique (ID, Version) of model packages (idempotent): a version, once published, is never replaced.'
+    try:
+        db.Models.create_index([('ID', ASCENDING), ('Version', ASCENDING)], unique=True, name='ID_Version')
+    except Exception:
+        log.exception('Could not create the index of model packages')
+
+
+def _modelPackageRecords(modelID: str | None = None) -> List[models.ModelPackage_Model]:
+    'Records of the model packages (of one model ID), sorted by ID and version (the latest last).'
+    from mupif.modelpackage import versionKey
+    recs = [models.ModelPackage_Model.model_validate(r) for r in db.Models.find({'ID': modelID} if modelID else {})]
+    recs.sort(key=lambda r: (r.ID, versionKey(r.Version)))
+    return perms.filterSelfRead(recs)
+
+
+@api_router.post("/models", tags=["Models"], response_model=models.ModelPackage_Model)
+async def publish_model_package(
+    package: UploadFile = File(..., description="The model package: a zip archive with mupif-model.toml at its top level (see mupif.modelpackage)."),
+    current_user: User_Model = Depends(get_current_authenticated_user),
+):
+    """
+    Publish a model package (administrators only: execution servers run what is published).
+
+    The archive is checked as execution servers will unpack it (manifest valid, no unsafe paths or
+    links); no code of it is imported here. Its digest (sha256) is recorded; servers verify every
+    download against it. A version published before is refused (409): versions are immutable.
+    """
+    from mupif import modelpackage as mpk
+    if not current_user.rights_admin:
+        raise HTTPException(status_code=403, detail="You don't have permission to perform this action.")
+    data = await package.read()
+    if len(data) > MAX_MODEL_PACKAGE_BYTES:
+        raise HTTPException(status_code=413, detail=f'Model package too large ({len(data)} bytes, at most {MAX_MODEL_PACKAGE_BYTES}).')
+    try:
+        with tempfile.TemporaryDirectory(prefix='mupifDB_model_') as tmp:
+            manifest = mpk.safeExtract(data, tmp)
+    except mpk.ModelPackageError as e:
+        raise HTTPException(status_code=400, detail=f'Invalid model package: {e}')
+    if manifest.Version == 'latest':
+        raise HTTPException(status_code=400, detail='"latest" is not a valid version (it selects the latest version).')
+    if db.Models.find_one({'ID': manifest.ID, 'Version': manifest.Version}) is not None:
+        raise HTTPException(status_code=409, detail=f'Model package {manifest.key()} is published already; publish a new version.')
+    digest = mpk.digest(data)
+    fileName = f'{manifest.ID}-{manifest.Version}.zip'
+    fs = gridfs.GridFS(db)
+    gridfsId = fs.put(data, filename=fileName, metadata={'modelPackage': manifest.key(), 'digest': digest})
+    rec = models.ModelPackage_Model(
+        ID=manifest.ID, Version=manifest.Version, Entrypoint=manifest.Entrypoint,
+        Runtime=models.ModelPackage_Model.Runtime_Model.model_validate(manifest.Runtime.model_dump()),
+        RequiresHost=manifest.RequiresHost, Description=manifest.Description,
+        Digest=digest, GridFSID=str(gridfsId), FileName=fileName, Size=len(data),
+        Publisher=current_user.mail, PublishedDate=datetime.now(timezone.utc),
+    )
+    try:
+        res = db.Models.insert_one(rec.model_dump_db())
+    except pymongo.errors.DuplicateKeyError:
+        # published by someone else between the check and the insert
+        fs.delete(gridfsId)
+        raise HTTPException(status_code=409, detail=f'Model package {manifest.key()} is published already; publish a new version.')
+    log.info(f'Model package {manifest.key()} ({digest}, {len(data)} bytes) published by {current_user.mail}')
+    return models.ModelPackage_Model.model_validate(db.Models.find_one({'_id': res.inserted_id}))
+
+
+@api_router.get("/models", tags=["Models"], response_model=List[models.ModelPackage_Model])
+def get_model_packages(id: Optional[str] = None, current_user: User_Model = Depends(get_current_authenticated_user)):
+    'Published model packages (of the model *id*, if given), sorted by ID and version.'
+    return _modelPackageRecords(id)
+
+
+@api_router.get("/models/{model_id}", tags=["Models"], response_model=List[models.ModelPackage_Model])
+def get_model_package_versions(model_id: str, current_user: User_Model = Depends(get_current_authenticated_user)):
+    'All published versions of a model package, the latest last; 404 if there is none.'
+    recs = _modelPackageRecords(model_id)
+    if not recs:
+        raise HTTPException(status_code=404, detail=f'No model package {model_id}.')
+    return recs
+
+
+@api_router.get("/models/{model_id}/versions/{version}", tags=["Models"], response_model=models.ModelPackage_Model)
+def get_model_package(model_id: str, version: str, current_user: User_Model = Depends(get_current_authenticated_user)):
+    """
+    One model package: the given version, or the latest one for *version* ``latest`` (latest by
+    mupif.modelpackage.versionKey: ``1.10`` after ``1.9``). Execution servers resolve model IDs here.
+    """
+    recs = _modelPackageRecords(model_id)
+    if version != 'latest':
+        recs = [r for r in recs if r.Version == version]
+    if not recs:
+        raise HTTPException(status_code=404, detail=f'No model package {model_id}' + ('' if version == 'latest' else f'@{version}') + '.')
+    return recs[-1]
+
+
 @api_router.get("/executions", tags=["Executions"], response_model=models.ExecutionCollectionResponse)
 def get_executions(
     status: str = "",
