@@ -244,10 +244,19 @@ class ModelPackage_Model(MongoObj_Model):
     A version is immutable: (``ID``, ``Version``) is unique, publishing it again is refused.
     '''
     class Runtime_Model(StrictBase):
-        #: ``pixi`` (the environment of pixi.toml/pixi.lock of the package) or ``python``
-        Type: Literal['pixi','python']
+        #: ``pixi`` (the environment of pixi.toml/pixi.lock of the package), ``python``, or
+        #: ``apptainer`` (a container image; see mupif.modelpackage.RuntimeSpec)
+        Type: Literal['pixi','python','apptainer']
         #: pixi environment name
         Environment: str='default'
+        #: (apptainer) the image: docker://...@sha256:..., oras://...@sha256:..., https://... or file:///... (SIF)
+        Image: str=''
+        #: (apptainer) sha256 of the SIF file of an https:// or file:/// image
+        ImageDigest: str=''
+        #: (apptainer) the container gets the host's NVIDIA GPUs (servers need the host capability "gpu")
+        Gpu: bool=False
+        #: (apptainer) Python interpreter in the image
+        Python: str='python3'
     ID: str
     Version: str
     #: the model class, ``module:Class``

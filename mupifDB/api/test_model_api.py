@@ -67,7 +67,8 @@ def test_publish_and_resolve(api):
     r = publish(client, data)
     assert r.status_code == 200, r.text
     rec = r.json()
-    assert (rec['ID'], rec['Version'], rec['Entrypoint'], rec['Runtime'], rec['RequiresHost']) == ('oofem-thermal', '1.9', 'mymodel.model:MyModel', {'Type': 'pixi', 'Environment': 'default'}, ['abaqus'])
+    assert (rec['ID'], rec['Version'], rec['Entrypoint'], rec['RequiresHost']) == ('oofem-thermal', '1.9', 'mymodel.model:MyModel', ['abaqus'])
+    assert (rec['Runtime']['Type'], rec['Runtime']['Environment'], rec['Runtime']['Image']) == ('pixi', 'default', '')
     assert rec['Digest'] == mpk.digest(data) and rec['Size'] == len(data) and rec['Publisher'] == 'admin@test'
     assert rec['FileName'] == 'oofem-thermal-1.9.zip' and rec['_id']
     # the archive is downloadable by its GridFS ID, unchanged (servers verify the digest)
@@ -140,3 +141,21 @@ def test_execution_records_model_packages(api):
     assert client.get(f'/api/executions/{weid}').json()['entity']['ModelPackages'] == {'m': pkg}
     # model servers are still a dict of strings
     assert client.patch(f'/api/executions/{weid}/set_param', json={'key': 'ModelServers', 'value': {'m': 'Exec.node1'}}).status_code == 200
+
+
+def test_publish_apptainer_package(api):
+    'A container package (runtime apptainer): the image fields are stored; an unpinned image is refused (validated by mupif).'
+    client, main, users = api
+    h = 'c' * 64
+    # an archive with the given [Runtime] (instead of the pixi one of archive())
+    def withRuntime(id, runtime):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as zf:
+            zf.writestr(mpk.MANIFEST_NAME, MANIFEST.format(id=id, version='1').replace('Type = "pixi"', runtime))
+            zf.writestr('mymodel/__init__.py', '')
+        return buf.getvalue()
+    r = publish(client, withRuntime('in-container', f'Type = "apptainer"\nImage = "docker://ghcr.io/x/m@sha256:{h}"\nGpu = true'))
+    assert r.status_code == 200, r.text
+    assert r.json()['Runtime'] == {'Type': 'apptainer', 'Environment': 'default', 'Image': f'docker://ghcr.io/x/m@sha256:{h}', 'ImageDigest': '', 'Gpu': True, 'Python': 'python3'}
+    assert client.get('/api/models/in-container/versions/latest').json()['Runtime']['Gpu'] is True
+    assert publish(client, withRuntime('by-tag', 'Type = "apptainer"\nImage = "docker://ghcr.io/x/m:latest"')).status_code == 400
