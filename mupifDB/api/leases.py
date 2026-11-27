@@ -161,7 +161,7 @@ def transition(coll, weid: str, schedulerId: str, epoch: int, to: str, *, incAtt
     s: dict[str, Any] = {'Status': _lit(to)}
     release = {'LeaseExpires': None}
     if to == 'Running':
-        s.update({'StartDate': _lit(now), 'EndDate': None, 'ExecutionLog': None, 'ModelServers': _lit({}),
+        s.update({'StartDate': _lit(now), 'EndDate': None, 'ExecutionLog': None, 'ModelServers': _lit({}), 'ModelPackages': _lit({}),
                   'workflowURI': None, 'loggerURI': None})
         if leaseSeconds:
             s['LeaseExpires'] = _nowPlus(leaseSeconds)

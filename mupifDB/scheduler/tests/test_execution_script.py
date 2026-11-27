@@ -38,6 +38,8 @@ class _FakeWorkflow:
     initMetadata = None
     #: what getModelServers() returns
     modelServers: dict = {}
+    #: what getModelPackages() returns
+    modelPackages: dict = {}
 
     def _maybeFail(self, stage):
         if self.fail and self.fail[0] == stage:
@@ -52,6 +54,9 @@ class _FakeWorkflow:
 
     def getModelServers(self):
         return dict(self.modelServers)
+
+    def getModelPackages(self):
+        return dict(self.modelPackages)
 
     def solve(self):
         self._maybeFail('solve')
@@ -84,6 +89,8 @@ def execScript(monkeypatch):
     monkeypatch.setattr(rc, 'setExecutionParameter', lambda *a, **kw: None)
     stored = {}
     monkeypatch.setattr(rc, 'setExecutionModelServers', lambda weid, servers: stored.update({weid: servers}))
+    storedPackages = {}
+    monkeypatch.setattr(rc, 'setExecutionModelPackages', lambda weid, packages: storedPackages.update({weid: packages}))
     monkeypatch.setattr(mupifDB.workflowmanager, 'mapInputs', lambda wf, weid: None)
     monkeypatch.setattr(mupifDB.workflowmanager, 'mapOutputs', lambda wf, weid, t: None)
     monkeypatch.setitem(sys.modules, 'fakewf', types.SimpleNamespace(FakeWorkflow=_FakeWorkflow))
@@ -103,7 +110,7 @@ def execScript(monkeypatch):
             # main() installs its SIGTERM handler in this (pytest's) process
             signal.signal(signal.SIGTERM, previousSigterm)
         return exc.value.code, list(statuses)
-    run.record, run.stored = record, stored
+    run.record, run.stored, run.storedPackages = record, stored, storedPackages
     return run
 
 
@@ -125,6 +132,23 @@ def test_exec_script_profile_and_model_servers(execScript, monkeypatch, caplog):
     execScript.record.ExecutionProfileIndex = 1
     assert execScript()[0] == 0
     assert _FakeWorkflow.initMetadata['Execution']['ExecutionProfileIndex'] == 1
+
+
+def test_exec_script_model_packages(execScript, monkeypatch, caplog):
+    """The model packages run by execution servers are logged and stored in the record (provenance)."""
+    import logging
+    pkg = {'ID': 'oofem-thermal', 'Version': '1.2', 'Digest': 'sha256:' + 'a' * 64}
+    monkeypatch.setattr(_FakeWorkflow, 'modelServers', {'m': 'Exec.node1'})
+    monkeypatch.setattr(_FakeWorkflow, 'modelPackages', {'m': pkg})
+    with caplog.at_level(logging.INFO):
+        assert execScript()[0] == 0
+    assert execScript.storedPackages == {'E1': {'m': pkg}}
+    assert 'Model packages run: m: oofem-thermal@1.2 (sha256:aaaa' in caplog.text
+    # no models on execution servers: nothing stored
+    execScript.storedPackages.clear()
+    monkeypatch.setattr(_FakeWorkflow, 'modelPackages', {})
+    assert execScript()[0] == 0
+    assert execScript.storedPackages == {}
 
 
 def test_exec_script_lease_lost(execScript):

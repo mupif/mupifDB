@@ -178,6 +178,8 @@ class Workflow_Model(MongoObj_Model):
         Name: str
         Jobmanager: str=''
         ModelID: Optional[str]=None
+        #: version of the model package an execution server runs (with ModelID); None: the latest one
+        ModelVersion: Optional[str]=None
         Instantiate: Optional[bool]=None
     class ExecutionProfile_Model(pydantic.BaseModel):
         '''
@@ -222,6 +224,59 @@ class Workflow_Model(MongoObj_Model):
     def TEMP_getLookupChildren(self) -> List[TEMP_DbLookup_Model]: return [TEMP_DbLookup_Model(where='WorkflowExecutions',attrs=['WorkflowID','WorkflowVersion'],values=[self.wid,self.Version])]
 
 
+class ModelPackageRef_Model(StrictBase):
+    '''
+    A model package as run by an execution (see mupif.executionserver): what was run exactly, the
+    digest identifying the content of the package.
+    '''
+    ID: str
+    Version: str
+    Digest: str
+
+
+class ModelPackage_Model(MongoObj_Model):
+    '''
+    A model package published to the registry (collection ``Models``; see mupif.modelpackage).
+
+    Execution servers run it on demand, given its ``ID`` (and ``Version``, else the latest one). The
+    manifest fields (``ID`` ... ``Description``) are read from ``mupif-model.toml`` of the uploaded
+    archive and validated by mupif's ``ModelPackageManifest``; the archive itself is in GridFS.
+    A version is immutable: (``ID``, ``Version``) is unique, publishing it again is refused.
+    '''
+    class Runtime_Model(StrictBase):
+        #: ``pixi`` (the environment of pixi.toml/pixi.lock of the package), ``python``, or
+        #: ``apptainer`` (a container image; see mupif.modelpackage.RuntimeSpec)
+        Type: Literal['pixi','python','apptainer']
+        #: pixi environment name
+        Environment: str='default'
+        #: (apptainer) the image: docker://...@sha256:..., oras://...@sha256:..., https://... or file:///... (SIF)
+        Image: str=''
+        #: (apptainer) sha256 of the SIF file of an https:// or file:/// image
+        ImageDigest: str=''
+        #: (apptainer) the container gets the host's NVIDIA GPUs (servers need the host capability "gpu")
+        Gpu: bool=False
+        #: (apptainer) Python interpreter in the image
+        Python: str='python3'
+    ID: str
+    Version: str
+    #: the model class, ``module:Class``
+    Entrypoint: str
+    Runtime: Runtime_Model
+    #: host capabilities the model needs (configured on execution servers)
+    RequiresHost: List[str]=[]
+    Description: str=''
+    #: ``sha256:<hex>`` of the archive; execution servers verify downloads against it
+    Digest: str
+    #: the archive in GridFS (downloaded by GET /file/{GridFSID})
+    GridFSID: str
+    FileName: str=''
+    #: size of the archive in bytes
+    Size: int=0
+    #: e-mail of the user who published it
+    Publisher: str=''
+    PublishedDate: Optional[datetime.datetime]=None
+
+
 class WorkflowExecution_Model(MongoObj_Model):
     workflow: Optional[str]=None
     WorkflowID: str
@@ -242,6 +297,8 @@ class WorkflowExecution_Model(MongoObj_Model):
     ExecutionProfileIndex: int=-1
     #: model name -> model server (registered name) the model was allocated on; set by the execution script once its models are allocated
     ModelServers: Dict[str,str]={}
+    #: model name -> model package run by an execution server (ID, Version, Digest); set by the execution script once its models are allocated
+    ModelPackages: Dict[str,ModelPackageRef_Model]={}
     # --- lease of the execution (several schedulers; see mupifDB.api.leases); written only by the lease operations
     #: scheduler holding the execution (Scheduled/Running), or which held it last
     SchedulerID: Optional[str]=None

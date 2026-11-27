@@ -56,3 +56,18 @@ class TestModels:
         e=models.WorkflowExecution_Model.model_validate(e.model_dump()|dict(ExecutionProfileIndex=1,ModelServers={'m':'CVUT.demo01~node2'}))
         assert e.ModelServers=={'m':'CVUT.demo01~node2'}
         assert models.WorkflowExecutionCreate_Model(wid='w',version=1).ExecutionProfileIndex==-1
+    def test_05_model_packages(self):
+        import pydantic
+        # a published model package (collection Models)
+        p=models.ModelPackage_Model.model_validate(dict(ID='m',Version='1.2',Entrypoint='pkg.mod:M',Runtime=dict(Type='pixi'),
+            Digest='sha256:'+'0'*64,GridFSID='abc',PublishedDate='2026-11-25T10:00:00'))
+        assert p.Runtime.Environment=='default' and p.RequiresHost==[]
+        with pytest.raises(pydantic.ValidationError):
+            models.ModelPackage_Model.model_validate(p.model_dump()|dict(Runtime=dict(Type='docker')))
+        # workflow models may pin a package version; executions record the packages they ran
+        w=models.Workflow_Model.Model_Model(Name='m',ModelID='m',ModelVersion='1.2')
+        assert w.ModelVersion=='1.2' and models.Workflow_Model.Model_Model(Name='m').ModelVersion is None
+        e=models.WorkflowExecution_Model.model_validate(dict(WorkflowID='w',WorkflowVersion=1,CreatedDate='2026-11-23T10:00:00',RequestedBy='x',Inputs='',Outputs=''))
+        assert e.ModelPackages=={}
+        e=models.WorkflowExecution_Model.model_validate(e.model_dump()|dict(ModelPackages={'m':dict(ID='m',Version='1.2',Digest='sha256:'+'0'*64)}))
+        assert e.ModelPackages['m'].Version=='1.2'
